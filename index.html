@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+
+  <?!= include('style'); ?>
+</head>
+<body>
+
+<h2>名前を選択</h2>
+
+<div class="tab">
+  <button onclick="showGroup('a')">あ行</button>
+  <button onclick="showGroup('k')">か行</button>
+  <button onclick="showGroup('s')">さ行</button>
+  <button onclick="showGroup('t')">た行</button>
+  <button onclick="showGroup('n')">な行</button>
+  <button onclick="showGroup('h')">は行</button>
+  <button onclick="showGroup('m')">ま行</button>
+  <button onclick="showGroup('y')">や行</button>
+  <button onclick="showGroup('r')">ら行</button>
+  <button onclick="showGroup('w')">わ行</button>
+</div>
+
+<div id="nameArea" class="names"></div>
+
+<?!= include('script'); ?>
+
+</body>
+</html>

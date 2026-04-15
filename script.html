@@ -1,0 +1,22 @@
+<script>
+const names = {
+  a: ["あい", "あおい", "あきら"],
+  k: ["かずき", "かおり", "けん"]
+};
+
+function showGroup(group) {
+  const area = document.getElementById("nameArea");
+  area.innerHTML = "";
+
+  names[group].forEach(name => {
+    const btn = document.createElement("button");
+    btn.textContent = name;
+    btn.onclick = () => selectName(name);
+    area.appendChild(btn);
+  });
+}
+
+function selectName(name) {
+  alert("選択された名前: " + name);
+}
+</script>
