@@ -1,30 +1,170 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <base target="_top">
-
-  <?!= include('style'); ?>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>有給申請システム</title>
+<style>
+body{font-family:Arial;margin:0;background:#f5f5f5}
+.header{background:#1f2937;color:#fff;padding:12px;display:flex;justify-content:space-between;align-items:center}
+.container{padding:12px}
+.card{background:#fff;border-radius:12px;padding:12px;margin-bottom:12px}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px}
+.tab{padding:10px 14px;background:#e5e7eb;border-radius:20px;cursor:pointer}
+.tab.active{background:#2563eb;color:#fff}
+.name-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.name-btn{padding:22px;background:#f3f4f6;border:none;border-radius:10px;font-size:18px;font-weight:bold}
+.pager{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.pager button{padding:10px 16px;font-size:16px}
+.hidden{display:none}
+.select-btn{padding:12px;margin:4px;background:#e5e7eb;border:none;border-radius:10px}
+.select-btn.active{background:#2563eb;color:#fff}
+.primary{width:100%;padding:16px;background:#10b981;color:#fff;border:none;border-radius:12px;font-size:18px}
+.name-title{font-size:22px;font-weight:bold}
+.date-row{display:flex;gap:10px}
+.date-row input{flex:1;font-size:18px;padding:14px}
+textarea{width:100%;padding:10px;margin-top:6px}
+</style>
 </head>
 <body>
 
-<h2>名前を選択</h2>
-
-<div class="tab">
-  <button onclick="showGroup('a')">あ行</button>
-  <button onclick="showGroup('k')">か行</button>
-  <button onclick="showGroup('s')">さ行</button>
-  <button onclick="showGroup('t')">た行</button>
-  <button onclick="showGroup('n')">な行</button>
-  <button onclick="showGroup('h')">は行</button>
-  <button onclick="showGroup('m')">ま行</button>
-  <button onclick="showGroup('y')">や行</button>
-  <button onclick="showGroup('r')">ら行</button>
-  <button onclick="showGroup('w')">わ行</button>
+<div class="header">
+  <div id="today"></div>
 </div>
 
-<div id="nameArea" class="names"></div>
+<!-- 社員選択 -->
+<div id="select" class="container">
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active">あ行</div>
+      <div class="tab">か行</div>
+      <div class="tab">研修生</div>
+    </div>
 
-<?!= include('script'); ?>
+    <div id="names" class="name-grid"></div>
+
+    <div class="pager">
+      <button onclick="prevPage()">←</button>
+      <div id="pageInfo"></div>
+      <button onclick="nextPage()">→</button>
+    </div>
+  </div>
+</div>
+
+<!-- 個人画面 -->
+<div id="user" class="container hidden">
+
+  <div class="card">
+    <div class="name-title" id="userName"></div>
+  </div>
+
+  <div class="card">
+    <div>残り有給：8日</div>
+    <div>年5日義務：3/5日</div>
+  </div>
+
+  <div class="card">
+
+    <div class="date-row">
+      <input type="date" id="start">
+      <input type="date" id="end" onchange="calcDays()">
+    </div>
+
+    <div style="margin-top:8px">
+      取得日数： <span id="days">0</span> 日
+    </div>
+
+    <div style="margin-top:10px">
+      <button class="select-btn" onclick="selectUnit(this,'full')">1日</button>
+      <button class="select-btn" onclick="selectUnit(this,'half')">半日</button>
+    </div>
+
+    <div id="halfArea" class="hidden">
+      <button class="select-btn" onclick="selectHalf(this,'am')">午前</button>
+      <button class="select-btn" onclick="selectHalf(this,'pm')">午後</button>
+    </div>
+
+    <div style="margin-top:10px">
+      <select id="reason" onchange="changeReason()">
+        <option value="private">私用</option>
+        <option value="sick">病気</option>
+        <option value="other">その他</option>
+      </select>
+      <textarea id="otherText" class="hidden" placeholder="理由を入力"></textarea>
+    </div>
+
+    <button class="primary">申請する</button>
+  </div>
+
+  <button onclick="back()">戻る</button>
+</div>
+
+<script>
+let allNames=["山田 太郎","佐藤 花子","鈴木 一郎","田中 次郎","高橋 健","伊藤 美咲"];
+let page=0;
+const perPage=6;
+
+function setToday(){
+  const d=new Date();
+  document.getElementById("today").innerText="申請日: "+d.toLocaleDateString("ja-JP");
+}
+
+function render(){
+  const start=page*perPage;
+  const list=allNames.slice(start,start+perPage);
+  const container=document.getElementById("names");
+  container.innerHTML="";
+  list.forEach(n=>{
+    const btn=document.createElement("button");
+    btn.className="name-btn";
+    btn.innerText=n;
+    btn.onclick=()=>openUser(n);
+    container.appendChild(btn);
+  });
+  document.getElementById("pageInfo").innerText=(page+1)+" / "+Math.ceil(allNames.length/perPage);
+}
+
+function nextPage(){if((page+1)*perPage<allNames.length){page++;render();}}
+function prevPage(){if(page>0){page--;render();}}
+
+function openUser(name){
+  document.getElementById("select").classList.add("hidden");
+  document.getElementById("user").classList.remove("hidden");
+  document.getElementById("userName").innerText="👤 "+name;
+}
+
+function back(){
+  document.getElementById("user").classList.add("hidden");
+  document.getElementById("select").classList.remove("hidden");
+}
+
+function selectUnit(el,type){
+  document.querySelectorAll('[onclick^="selectUnit"]').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('halfArea').classList.toggle('hidden', type!=='half');
+}
+
+function selectHalf(el){
+  document.querySelectorAll('[onclick^="selectHalf"]').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function calcDays(){
+  const s=new Date(document.getElementById('start').value);
+  const e=new Date(document.getElementById('end').value);
+  if(!s || !e) return;
+  const diff=(e-s)/(1000*60*60*24)+1;
+  document.getElementById('days').innerText=isNaN(diff)?0:diff;
+}
+
+function changeReason(){
+  const v=document.getElementById('reason').value;
+  document.getElementById('otherText').classList.toggle('hidden',v!=='other');
+}
+
+setToday();
+render();
+</script>
 
 </body>
 </html>
