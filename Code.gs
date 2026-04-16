@@ -22,3 +22,21 @@ function getEmployees() {
     name: row[1]
   }));
 }
+
+function getEmployees() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("employees");
+  const data = sheet.getDataRange().getValues();
+
+  const headers = data[0];
+  const rows = data.slice(1);
+
+  const result = rows.map(row => {
+    let obj = {};
+    headers.forEach((h, i) => {
+      obj[h] = row[i];
+    });
+    return obj;
+  });
+
+  return result;
+}

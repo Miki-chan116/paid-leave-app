@@ -47,9 +47,10 @@ textarea{width:100%;padding:10px;margin-top:6px}
   <div class="card">
 
     <div class="tabs">
-      <div class="tab active">あ行</div>
-      <div class="tab">か行</div>
-      <div class="tab">研修生</div>
+     <div class="tab active" onclick="switchTab('あ行')">あ行</div>
+     <div class="tab" onclick="switchTab('か行')">か行</div>
+     <div class="tab" onclick="switchTab('さ行')">さ行</div>
+     <div class="tab" onclick="switchTab('研修生')">研修生</div>
     </div>
 
     <!-- ★ここがGAS表示エリア -->
@@ -108,7 +109,10 @@ textarea{width:100%;padding:10px;margin-top:6px}
 </div>
 
 <script>
-/* 日付表示 */
+let employees = [];
+let currentTab = "あ行";
+
+/* 今日の日付表示 */
 function setToday(){
   const d = new Date();
   document.getElementById("today").innerText =
@@ -118,16 +122,50 @@ function setToday(){
 /* GASから社員取得 */
 function loadEmployees() {
   google.script.run.withSuccessHandler(function(data) {
-    displayEmployees(data);
+    employees = data;
+    renderEmployees(); // 取得したら表示
   }).getEmployees();
 }
 
+/* 名前のグループ分け */
+function getGroup(name){
+
+  // 研修生は優先分類
+  if(name.includes("Nguyen") || name.includes("研修")){
+    return "研修生";
+  }
+
+  const first = name.charAt(0);
+
+  if("あいうえお".includes(first)) return "あ行";
+  if("かきくけこ".includes(first)) return "か行";
+  if("さしすせそ".includes(first)) return "さ行";
+
+  return "その他";
+}
+
+/* タブ切り替え */
+function switchTab(tab){
+  currentTab = tab;
+
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.classList.remove("active");
+    if(t.innerText === tab) t.classList.add("active");
+  });
+
+  renderEmployees();
+}
+
 /* 社員表示 */
-function displayEmployees(data) {
+function renderEmployees(){
   const container = document.getElementById("nameList");
   container.innerHTML = "";
 
-  data.forEach(emp => {
+  const filtered = employees.filter(emp =>
+    getGroup(emp["氏名"]) === currentTab
+  );
+
+  filtered.forEach(emp => {
     const btn = document.createElement("button");
     btn.textContent = emp["氏名"];
     btn.className = "name-btn";
@@ -138,7 +176,7 @@ function displayEmployees(data) {
   });
 }
 
-/* 個人画面表示 */
+/* 個人画面へ */
 function openUser(name){
   document.getElementById("select").classList.add("hidden");
   document.getElementById("user").classList.remove("hidden");
@@ -161,14 +199,14 @@ function calcDays(){
   document.getElementById('days').innerText = isNaN(diff) ? 0 : diff;
 }
 
-/* 1日 or 半日 */
+/* 1日・半日 */
 function selectUnit(el,type){
   document.querySelectorAll('.select-btn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('halfArea').classList.toggle('hidden', type!=='half');
 }
 
-/* 午前午後 */
+/* 午前・午後 */
 function selectHalf(el){
   document.querySelectorAll('#halfArea .select-btn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
