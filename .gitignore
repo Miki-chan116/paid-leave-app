@@ -1,2 +1,9 @@
+# clasp設定（機密）
 .clasp.json
-node_modules
+.clasprc.json
+
+# node関連
+node_modules/
+
+# mac
+.DS_Store

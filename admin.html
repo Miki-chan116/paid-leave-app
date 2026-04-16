@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 20px;
+      }
+
+      .card {
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+      }
+
+      button {
+        margin-right: 10px;
+        padding: 6px 10px;
+      }
+
+      .pending {
+        background: #fff7e6;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h2>🧑‍💼 管理者画面（有給申請一覧）</h2>
+
+    <div id="list">読み込み中...</div>
+
+    <script>
+      // 申請一覧取得
+      function loadRequests() {
+        google.script.run.withSuccessHandler(renderList).getPendingRequests();
+      }
+
+      // 描画
+      function renderList(data) {
+        const container = document.getElementById("list");
+        container.innerHTML = "";
+
+        if (!data.length) {
+          container.innerHTML = "申請はありません";
+          return;
+        }
+
+        data.forEach(item => {
+          const div = document.createElement("div");
+          div.className = "card pending";
+
+          div.innerHTML = `
+            <p>👤 ${item.name}</p>
+            <p>📅 ${item.start_date} 〜 ${item.end_date}</p>
+            <p>📝 ${item.reason}</p>
+            <p>📊 ${item.status}</p>
+
+            <button onclick="approve('${item.request_id}')">承認</button>
+            <button onclick="reject('${item.request_id}')">否認</button>
+          `;
+
+          container.appendChild(div);
+        });
+      }
+
+      // 承認
+      function approve(id) {
+        google.script.run.withSuccessHandler(loadRequests).approveRequest(id);
+      }
+
+      // 否認（後で実装）
+      function reject(id) {
+        alert("否認機能は次で作る");
+      }
+
+      loadRequests();
+    </script>
+  </body>
+</html>
