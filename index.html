@@ -1,229 +1,30 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>有給申請システム</title>
+  <base target="_top">
 
-<style>
-body{font-family:Arial;margin:0;background:#f5f5f5}
-.header{background:#1f2937;color:#fff;padding:12px;display:flex;justify-content:space-between;align-items:center}
-.container{padding:12px}
-.card{background:#fff;border-radius:12px;padding:12px;margin-bottom:12px}
-
-.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px}
-.tab{padding:10px 14px;background:#e5e7eb;border-radius:20px;cursor:pointer}
-.tab.active{background:#2563eb;color:#fff}
-
-.name-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.name-btn{padding:22px;background:#f3f4f6;border:none;border-radius:10px;font-size:18px;font-weight:bold}
-
-.hidden{display:none}
-
-.select-btn{padding:12px;margin:4px;background:#e5e7eb;border:none;border-radius:10px}
-.select-btn.active{background:#2563eb;color:#fff}
-
-.primary{width:100%;padding:16px;background:#10b981;color:#fff;border:none;border-radius:12px;font-size:18px}
-
-.name-title{font-size:22px;font-weight:bold}
-
-.date-row{display:flex;gap:10px}
-.date-row input{flex:1;font-size:18px;padding:14px}
-
-textarea{width:100%;padding:10px;margin-top:6px}
-</style>
-
+  <?!= include('style'); ?>
 </head>
-
 <body>
 
-<div class="header">
-  <div id="today"></div>
+<h2>名前を選択</h2>
+
+<div class="tab">
+  <button onclick="showGroup('a')">あ行</button>
+  <button onclick="showGroup('k')">か行</button>
+  <button onclick="showGroup('s')">さ行</button>
+  <button onclick="showGroup('t')">た行</button>
+  <button onclick="showGroup('n')">な行</button>
+  <button onclick="showGroup('h')">は行</button>
+  <button onclick="showGroup('m')">ま行</button>
+  <button onclick="showGroup('y')">や行</button>
+  <button onclick="showGroup('r')">ら行</button>
+  <button onclick="showGroup('w')">わ行</button>
 </div>
 
-<!-- 社員選択 -->
-<div id="select" class="container">
+<div id="nameArea" class="names"></div>
 
-  <div class="card">
-
-    <div class="tabs">
-     <div class="tab active" onclick="switchTab('あ行')">あ行</div>
-     <div class="tab" onclick="switchTab('か行')">か行</div>
-     <div class="tab" onclick="switchTab('さ行')">さ行</div>
-     <div class="tab" onclick="switchTab('研修生')">研修生</div>
-    </div>
-
-    <!-- ★ここがGAS表示エリア -->
-    <div id="nameList"></div>
-
-  </div>
-</div>
-
-<!-- 個人画面 -->
-<div id="user" class="container hidden">
-
-  <div class="card">
-    <div class="name-title" id="userName"></div>
-  </div>
-
-  <div class="card">
-    <div>残り有給：8日</div>
-    <div>年5日義務：3/5日</div>
-  </div>
-
-  <div class="card">
-
-    <div class="date-row">
-      <input type="date" id="start">
-      <input type="date" id="end" onchange="calcDays()">
-    </div>
-
-    <div style="margin-top:8px">
-      取得日数： <span id="days">0</span> 日
-    </div>
-
-    <div style="margin-top:10px">
-      <button class="select-btn" onclick="selectUnit(this,'full')">1日</button>
-      <button class="select-btn" onclick="selectUnit(this,'half')">半日</button>
-    </div>
-
-    <div id="halfArea" class="hidden">
-      <button class="select-btn" onclick="selectHalf(this,'am')">午前</button>
-      <button class="select-btn" onclick="selectHalf(this,'pm')">午後</button>
-    </div>
-
-    <div style="margin-top:10px">
-      <select id="reason" onchange="changeReason()">
-        <option value="private">私用</option>
-        <option value="sick">病気</option>
-        <option value="other">その他</option>
-      </select>
-      <textarea id="otherText" class="hidden" placeholder="理由を入力"></textarea>
-    </div>
-
-    <button class="primary">申請する</button>
-
-  </div>
-
-  <button onclick="back()">戻る</button>
-</div>
-
-<script>
-let employees = [];
-let currentTab = "あ行";
-
-/* 今日の日付表示 */
-function setToday(){
-  const d = new Date();
-  document.getElementById("today").innerText =
-    "申請日: " + d.toLocaleDateString("ja-JP");
-}
-
-/* GASから社員取得 */
-function loadEmployees() {
-  google.script.run.withSuccessHandler(function(data) {
-    employees = data;
-    renderEmployees(); // 取得したら表示
-  }).getEmployees();
-}
-
-/* 名前のグループ分け */
-function getGroup(name){
-
-  // 研修生は優先分類
-  if(name.includes("Nguyen") || name.includes("研修")){
-    return "研修生";
-  }
-
-  const first = name.charAt(0);
-
-  if("あいうえお".includes(first)) return "あ行";
-  if("かきくけこ".includes(first)) return "か行";
-  if("さしすせそ".includes(first)) return "さ行";
-
-  return "その他";
-}
-
-/* タブ切り替え */
-function switchTab(tab){
-  currentTab = tab;
-
-  document.querySelectorAll(".tab").forEach(t=>{
-    t.classList.remove("active");
-    if(t.innerText === tab) t.classList.add("active");
-  });
-
-  renderEmployees();
-}
-
-/* 社員表示 */
-function renderEmployees(){
-  const container = document.getElementById("nameList");
-  container.innerHTML = "";
-
-  const filtered = employees.filter(emp =>
-    getGroup(emp["氏名"]) === currentTab
-  );
-
-  filtered.forEach(emp => {
-    const btn = document.createElement("button");
-    btn.textContent = emp["氏名"];
-    btn.className = "name-btn";
-
-    btn.onclick = () => openUser(emp["氏名"]);
-
-    container.appendChild(btn);
-  });
-}
-
-/* 個人画面へ */
-function openUser(name){
-  document.getElementById("select").classList.add("hidden");
-  document.getElementById("user").classList.remove("hidden");
-  document.getElementById("userName").innerText = "👤 " + name;
-}
-
-/* 戻る */
-function back(){
-  document.getElementById("user").classList.add("hidden");
-  document.getElementById("select").classList.remove("hidden");
-}
-
-/* 日数計算 */
-function calcDays(){
-  const s = new Date(document.getElementById('start').value);
-  const e = new Date(document.getElementById('end').value);
-  if(!s || !e) return;
-
-  const diff = (e - s) / (1000*60*60*24) + 1;
-  document.getElementById('days').innerText = isNaN(diff) ? 0 : diff;
-}
-
-/* 1日・半日 */
-function selectUnit(el,type){
-  document.querySelectorAll('.select-btn').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('halfArea').classList.toggle('hidden', type!=='half');
-}
-
-/* 午前・午後 */
-function selectHalf(el){
-  document.querySelectorAll('#halfArea .select-btn').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
-}
-
-/* 理由 */
-function changeReason(){
-  const v = document.getElementById('reason').value;
-  document.getElementById('otherText').classList.toggle('hidden', v!=='other');
-}
-
-/* 初期化 */
-window.onload = function(){
-  setToday();
-  loadEmployees();
-};
-</script>
+<?!= include('script'); ?>
 
 </body>
 </html>
