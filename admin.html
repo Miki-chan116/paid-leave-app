@@ -2,114 +2,126 @@
 <html>
 <head>
   <base target="_top">
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f6f7fb;
+    }
+
+    h2 { margin-bottom: 10px; }
+
+    button.refresh {
+      padding: 6px 12px;
+      margin-bottom: 15px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .title {
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+
+    .row {
+      font-size: 13px;
+      margin: 2px 0;
+    }
+
+    .buttons {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .approve {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 6px;
+      flex: 1;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .reject {
+      background: #f44336;
+      color: white;
+      border: none;
+      padding: 6px;
+      flex: 1;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
 
-<h2>承認待ち一覧</h2>
+<h2>有給申請（承認待ち）</h2>
 
-<table border="1" id="requestTable">
-  <thead>
-    <tr>
-      <th>申請ID</th>
-      <th>社員名</th>
-      <th>日付</th>
-      <th>日数</th>
-      <th>半日区分</th>
-      <th>操作</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
+<button class="refresh" onclick="loadData()">再読み込み</button>
+
+<div class="container" id="cards"></div>
 
 <script>
-console.log("admin loaded");
-
-/**
- * 初期読み込み
- */
-window.onload = function () {
-  loadRequests();
-};
-
-/**
- * 承認待ち取得
- */
-function loadRequests() {
-  console.log("loadRequests start");
-
+function loadData() {
   google.script.run
-    .withSuccessHandler(function(data) {
-      console.log("success:", data);
-      renderTable(data);
-    })
-    .withFailureHandler(function(err) {
-      console.error("ERROR:", err);
-      alert("APIエラー: " + err.message);
-    })
-    .getPendingRequests();
+    .withSuccessHandler(renderCards)
+    .getRequestsByStatus("pending");
 }
 
-/**
- * テーブル描画
- */
-function renderTable(data) {
-  console.log("renderTable:", data);
-
-  const tbody = document.querySelector("#requestTable tbody");
-  tbody.innerHTML = "";
+function renderCards(data) {
+  const container = document.getElementById("cards");
+  container.innerHTML = "";
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6">承認待ちデータなし</td></tr>`;
+    container.innerHTML = "データなし";
     return;
   }
 
-  data.forEach(req => {
-    const tr = document.createElement("tr");
+  data.forEach(row => {
+    const div = document.createElement("div");
+    div.className = "card";
 
-    tr.innerHTML = `
-      <td>${req.request_id || ""}</td>
-      <td>${req.employee_name || ""}</td>
-      <td>${req.date || ""}</td>
-      <td>${req.days || ""}</td>
-      <td>${req.half_day || ""}</td>
-      <td>
-        <button onclick="approve('${req.request_id}')">承認</button>
-        <button onclick="reject('${req.request_id}')">否認</button>
-      </td>
+    div.innerHTML = `
+      <div class="title">${row.employee_id}</div>
+      <div class="row">申請日: ${row["申請日"]}</div>
+      <div class="row">日数: ${row["取得日数"]}</div>
+      <div class="row">ステータス: ${row.status}</div>
+
+      <div class="buttons">
+        <button class="approve" onclick="approve('${row.request_id}')">承認</button>
+        <button class="reject" onclick="reject('${row.request_id}')">却下</button>
+      </div>
     `;
 
-    tbody.appendChild(tr);
+    container.appendChild(div);
   });
 }
 
-/**
- * 承認
- */
 function approve(id) {
   google.script.run
-    .withSuccessHandler(() => {
-      alert("承認しました");
-      loadRequests();
-    })
-    .approveRequest(id);
+    .withSuccessHandler(loadData)
+    .updateStatus(id, "approved");
 }
 
-/**
- * 否認
- */
 function reject(id) {
-  const reason = prompt("否認理由を入力してください");
-  if (!reason) return;
-
   google.script.run
-    .withSuccessHandler(() => {
-      alert("否認しました");
-      loadRequests();
-    })
-    .rejectRequest(id, reason);
+    .withSuccessHandler(loadData)
+    .updateStatus(id, "rejected");
 }
 
-google.script.run.withSuccessHandler(console.log).whoAmI();
+loadData();
 </script>
 
 </body>
