@@ -22,12 +22,18 @@
 </table>
 
 <script>
-  alert("admin loaded");
-</script>
+console.log("admin loaded");
 
-<script>
-alert("admin loaded");
+/**
+ * 初期読み込み
+ */
+window.onload = function () {
+  loadRequests();
+};
 
+/**
+ * 承認待ち取得
+ */
 function loadRequests() {
   console.log("loadRequests start");
 
@@ -43,7 +49,12 @@ function loadRequests() {
     .getPendingRequests();
 }
 
+/**
+ * テーブル描画
+ */
 function renderTable(data) {
+  console.log("renderTable:", data);
+
   const tbody = document.querySelector("#requestTable tbody");
   tbody.innerHTML = "";
 
@@ -56,11 +67,11 @@ function renderTable(data) {
     const tr = document.createElement("tr");
 
     tr.innerHTML = `
-      <td>${req.request_id}</td>
-      <td>${req.employee_name}</td>
-      <td>${req.date}</td>
-      <td>${req.days}</td>
-      <td>${req.half_day}</td>
+      <td>${req.request_id || ""}</td>
+      <td>${req.employee_name || ""}</td>
+      <td>${req.date || ""}</td>
+      <td>${req.days || ""}</td>
+      <td>${req.half_day || ""}</td>
       <td>
         <button onclick="approve('${req.request_id}')">承認</button>
         <button onclick="reject('${req.request_id}')">否認</button>
@@ -71,6 +82,9 @@ function renderTable(data) {
   });
 }
 
+/**
+ * 承認
+ */
 function approve(id) {
   google.script.run
     .withSuccessHandler(() => {
@@ -80,6 +94,9 @@ function approve(id) {
     .approveRequest(id);
 }
 
+/**
+ * 否認
+ */
 function reject(id) {
   const reason = prompt("否認理由を入力してください");
   if (!reason) return;
@@ -92,7 +109,7 @@ function reject(id) {
     .rejectRequest(id, reason);
 }
 
-window.onload = loadRequests;
+google.script.run.withSuccessHandler(console.log).whoAmI();
 </script>
 
 </body>
