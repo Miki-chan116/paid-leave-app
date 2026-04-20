@@ -1,81 +1,99 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <base target="_top">
-    <style>
-      body {
-        font-family: sans-serif;
-        padding: 20px;
-      }
+<head>
+  <base target="_top">
+</head>
+<body>
 
-      .card {
-        border: 1px solid #ddd;
-        padding: 10px;
-        margin-bottom: 10px;
-        border-radius: 8px;
-      }
+<h2>承認待ち一覧</h2>
 
-      button {
-        margin-right: 10px;
-        padding: 6px 10px;
-      }
+<table border="1" id="requestTable">
+  <thead>
+    <tr>
+      <th>申請ID</th>
+      <th>社員名</th>
+      <th>日付</th>
+      <th>日数</th>
+      <th>半日区分</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
 
-      .pending {
-        background: #fff7e6;
-      }
-    </style>
-  </head>
+<script>
+  alert("admin loaded");
+</script>
 
-  <body>
-    <h2>🧑‍💼 管理者画面（有給申請一覧）</h2>
+<script>
+alert("admin loaded");
 
-    <div id="list">読み込み中...</div>
+function loadRequests() {
+  console.log("loadRequests start");
 
-    <script>
-      // 申請一覧取得
-      function loadRequests() {
-        google.script.run.withSuccessHandler(renderList).getPendingRequests();
-      }
+  google.script.run
+    .withSuccessHandler(function(data) {
+      console.log("success:", data);
+      renderTable(data);
+    })
+    .withFailureHandler(function(err) {
+      console.error("ERROR:", err);
+      alert("APIエラー: " + err.message);
+    })
+    .getPendingRequests();
+}
 
-      // 描画
-      function renderList(data) {
-        const container = document.getElementById("list");
-        container.innerHTML = "";
+function renderTable(data) {
+  const tbody = document.querySelector("#requestTable tbody");
+  tbody.innerHTML = "";
 
-        if (!data.length) {
-          container.innerHTML = "申請はありません";
-          return;
-        }
+  if (!data || data.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6">承認待ちデータなし</td></tr>`;
+    return;
+  }
 
-        data.forEach(item => {
-          const div = document.createElement("div");
-          div.className = "card pending";
+  data.forEach(req => {
+    const tr = document.createElement("tr");
 
-          div.innerHTML = `
-            <p>👤 ${item.name}</p>
-            <p>📅 ${item.start_date} 〜 ${item.end_date}</p>
-            <p>📝 ${item.reason}</p>
-            <p>📊 ${item.status}</p>
+    tr.innerHTML = `
+      <td>${req.request_id}</td>
+      <td>${req.employee_name}</td>
+      <td>${req.date}</td>
+      <td>${req.days}</td>
+      <td>${req.half_day}</td>
+      <td>
+        <button onclick="approve('${req.request_id}')">承認</button>
+        <button onclick="reject('${req.request_id}')">否認</button>
+      </td>
+    `;
 
-            <button onclick="approve('${item.request_id}')">承認</button>
-            <button onclick="reject('${item.request_id}')">否認</button>
-          `;
+    tbody.appendChild(tr);
+  });
+}
 
-          container.appendChild(div);
-        });
-      }
-
-      // 承認
-      function approve(id) {
-        google.script.run.withSuccessHandler(loadRequests).approveRequest(id);
-      }
-
-      // 否認（後で実装）
-      function reject(id) {
-        alert("否認機能は次で作る");
-      }
-
+function approve(id) {
+  google.script.run
+    .withSuccessHandler(() => {
+      alert("承認しました");
       loadRequests();
-    </script>
-  </body>
+    })
+    .approveRequest(id);
+}
+
+function reject(id) {
+  const reason = prompt("否認理由を入力してください");
+  if (!reason) return;
+
+  google.script.run
+    .withSuccessHandler(() => {
+      alert("否認しました");
+      loadRequests();
+    })
+    .rejectRequest(id, reason);
+}
+
+window.onload = loadRequests;
+</script>
+
+</body>
 </html>
