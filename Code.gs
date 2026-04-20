@@ -5,7 +5,7 @@
  */
 function submitLeaveRequest(data) {
   try {
-    const ss = SpreadsheetApp.openById("【スプレッドシートID】");
+    const ss = SpreadsheetApp.openById("1o7KbHHsPMiL684YJq_Fpzg6gHjD6HebjeL0BhQImkt4");
 
     const leaveSheet = ss.getSheetByName("leave_requests");
     const calendarSheet = ss.getSheetByName("company_calendar");
@@ -95,7 +95,7 @@ function submitLeaveRequest(data) {
 }
 function approveRequest(requestId) {
   try {
-    const ss = SpreadsheetApp.openById("【スプレッドシートID】");
+    const ss = SpreadsheetApp.openById("1o7KbHHsPMiL684YJq_Fpzg6gHjD6HebjeL0BhQImkt4");
 
     const sheet = ss.getSheetByName("leave_requests");
     const logSheet = ss.getSheetByName("usage_log");
@@ -147,7 +147,7 @@ function approveRequest(requestId) {
 }
 
 function getPendingRequests() {
-  const ss = SpreadsheetApp.openById("【スプレッドシートID】");
+  const ss = SpreadsheetApp.openById("1o7KbHHsPMiL684YJq_Fpzg6gHjD6HebjeL0BhQImkt4");
   const sheet = ss.getSheetByName("leave_requests");
 
   const data = sheet.getDataRange().getValues();
@@ -170,4 +170,9 @@ function getPendingRequests() {
     });
 
   return result;
+}
+
+function testAll() {
+  const days = calculateLeaveDays("2026-04-01", "2026-04-10");
+  Logger.log("日数：" + days);
 }
