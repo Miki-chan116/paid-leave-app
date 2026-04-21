@@ -2,127 +2,566 @@
 <html>
 <head>
   <base target="_top">
+  <meta charset="UTF-8">
   <style>
+    :root {
+      --bg-main: #f5f3ef;
+      --bg-sub: #ebe6dc;
+      --card-bg: #ffffff;
+
+      --primary: #6f8b6b;
+      --primary-dark: #4f6650;
+      --primary-light: #dfe8dc;
+
+      --accent-blue: #2f6fb3;
+      --accent-red: #c94c4c;
+      --accent-orange: #d98c2b;
+
+      --text-main: #2f2f2f;
+      --text-sub: #6f6b63;
+      --border: #ddd6ca;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
+      margin: 0;
       font-family: sans-serif;
-      background: #f6f7fb;
+      background: var(--bg-main);
+      color: var(--text-main);
     }
 
-    h2 { margin-bottom: 10px; }
-
-    button.refresh {
-      padding: 6px 12px;
-      margin-bottom: 15px;
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
     }
 
-    .container {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 12px;
-    }
-
-    .card {
-      background: white;
-      border-radius: 10px;
-      padding: 12px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    .header {
+      background: linear-gradient(135deg, var(--primary-light), var(--bg-sub));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow);
     }
 
     .title {
-      font-weight: bold;
-      margin-bottom: 6px;
+      margin: 0 0 8px;
+      font-size: 28px;
+      color: var(--primary-dark);
     }
 
-    .row {
-      font-size: 13px;
-      margin: 2px 0;
+    .subtitle {
+      margin: 0;
+      color: var(--text-sub);
+      font-size: 14px;
     }
 
-    .buttons {
-      margin-top: 10px;
+    .tabs {
       display: flex;
-      gap: 8px;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
     }
 
-    .approve {
-      background: #4caf50;
-      color: white;
+    .tab-btn {
       border: none;
-      padding: 6px;
-      flex: 1;
-      border-radius: 6px;
+      border-radius: 999px;
+      padding: 10px 18px;
       cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      background: #fff;
+      color: var(--primary-dark);
+      border: 1px solid var(--border);
+      transition: 0.2s;
     }
 
-    .reject {
-      background: #f44336;
+    .tab-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow);
+    }
+
+    .tab-btn.active {
+      background: var(--primary-dark);
       color: white;
-      border: none;
-      padding: 6px;
+      border-color: var(--primary-dark);
+    }
+
+    .panel {
+      min-height: 240px;
+    }
+
+    .message {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      color: var(--text-sub);
+      box-shadow: var(--shadow);
+    }
+
+    .message.error {
+      border-left: 6px solid var(--accent-red);
+      color: var(--accent-red);
+      font-weight: bold;
+    }
+
+    .card-container {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .card.pending {
+      border-left: 8px solid var(--accent-blue);
+    }
+
+    .card.approved {
+      border-left: 8px solid var(--primary);
+    }
+
+    .card.rejected {
+      border-left: 8px solid var(--accent-red);
+    }
+
+    .card-left {
       flex: 1;
-      border-radius: 6px;
+    }
+
+    .card-id {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-bottom: 8px;
+      word-break: break-all;
+    }
+
+    .employee-name {
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .info-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px 12px;
+      margin-bottom: 10px;
+    }
+
+    .info-item {
+      background: #faf9f6;
+      border: 1px solid #eee8dc;
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    .info-label {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-bottom: 4px;
+    }
+
+    .info-value {
+      font-size: 14px;
+      font-weight: bold;
+      color: var(--text-main);
+    }
+
+    .reason-box {
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 10px;
+      background: #faf9f6;
+      border: 1px solid #eee8dc;
+    }
+
+    .reason-title {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-bottom: 4px;
+    }
+
+    .status-badge {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+      color: white;
+    }
+
+    .status-badge.pending {
+      background: var(--accent-blue);
+    }
+
+    .status-badge.approved {
+      background: var(--primary);
+    }
+
+    .status-badge.rejected {
+      background: var(--accent-red);
+    }
+
+    .card-right {
+      min-width: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: bold;
       cursor: pointer;
+      color: white;
+      transition: 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow);
+    }
+
+    .btn-approve {
+      background: var(--primary);
+    }
+
+    .btn-reject {
+      background: var(--accent-red);
+    }
+
+    .btn-refresh {
+      background: var(--accent-orange);
+    }
+
+    .log-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .log-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    .log-title {
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: var(--primary-dark);
+    }
+
+    .log-meta {
+      color: var(--text-sub);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 760px) {
+      .card {
+        flex-direction: column;
+      }
+
+      .card-right {
+        min-width: auto;
+        width: 100%;
+      }
+
+      .btn {
+        width: 100%;
+      }
     }
   </style>
 </head>
 <body>
+  <div class="page">
+    <div class="header">
+      <h1 class="title">有給申請 管理画面</h1>
+      <p class="subtitle">承認待ち・承認済み・否認・ログをここで確認できます。</p>
+    </div>
 
-<h2>有給申請（承認待ち）</h2>
+    <div class="tabs">
+      <button id="tab-pending" class="tab-btn" onclick="loadRequests('pending')">承認待ち</button>
+      <button id="tab-approved" class="tab-btn" onclick="loadRequests('approved')">承認済み</button>
+      <button id="tab-rejected" class="tab-btn" onclick="loadRequests('rejected')">否認</button>
+      <button id="tab-logs" class="tab-btn" onclick="loadLogs()">ログ</button>
+    </div>
 
-<button class="refresh" onclick="loadData()">再読み込み</button>
+    <div class="panel">
+      <div id="requestView" class="card-container"></div>
+      <div id="logView" style="display:none;"></div>
+    </div>
+  </div>
 
-<div class="container" id="cards"></div>
+  <script>
+    let currentStatus = "pending";
 
-<script>
-function loadData() {
-  google.script.run
-    .withSuccessHandler(renderCards)
-    .getRequestsByStatus("pending");
-}
+    window.addEventListener("DOMContentLoaded", () => {
+      console.log("admin loaded");
+      loadRequests("pending");
+    });
 
-function renderCards(data) {
-  const container = document.getElementById("cards");
-  container.innerHTML = "";
+    function setActiveTab(tabName) {
+      const ids = ["pending", "approved", "rejected", "logs"];
+      ids.forEach(name => {
+        const el = document.getElementById("tab-" + name);
+        if (!el) return;
 
-  if (!data || data.length === 0) {
-    container.innerHTML = "データなし";
-    return;
-  }
+        if (name === tabName) {
+          el.classList.add("active");
+        } else {
+          el.classList.remove("active");
+        }
+      });
+    }
 
-  data.forEach(row => {
-    const div = document.createElement("div");
-    div.className = "card";
+    function showLoading(targetId, text) {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      el.innerHTML = `<div class="message">${text || "読み込み中..."}</div>`;
+    }
 
-    div.innerHTML = `
-      <div class="title">${row.employee_id}</div>
-      <div class="row">申請日: ${row["申請日"]}</div>
-      <div class="row">日数: ${row["取得日数"]}</div>
-      <div class="row">ステータス: ${row.status}</div>
+    function showError(targetId, text) {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      el.innerHTML = `<div class="message error">${escapeHtml(text || "エラーが発生しました")}</div>`;
+    }
 
-      <div class="buttons">
-        <button class="approve" onclick="approve('${row.request_id}')">承認</button>
-        <button class="reject" onclick="reject('${row.request_id}')">却下</button>
-      </div>
-    `;
+    function escapeHtml(str) {
+      return String(str == null ? "" : str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
 
-    container.appendChild(div);
-  });
-}
+    function getStatusLabel(status) {
+      if (status === "pending") return "承認待ち";
+      if (status === "approved") return "承認済み";
+      if (status === "rejected") return "否認";
+      return status || "";
+    }
 
-function approve(id) {
-  google.script.run
-    .withSuccessHandler(loadData)
-    .updateStatus(id, "approved");
-}
+    function loadRequests(status) {
+      currentStatus = status;
 
-function reject(id) {
-  google.script.run
-    .withSuccessHandler(loadData)
-    .updateStatus(id, "rejected");
-}
+      const requestView = document.getElementById("requestView");
+      const logView = document.getElementById("logView");
 
-loadData();
-</script>
+      requestView.style.display = "flex";
+      logView.style.display = "none";
 
+      setActiveTab(status);
+      showLoading("requestView", "申請データを読み込み中です...");
+
+      console.log("送信status:", status);
+
+      google.script.run
+        .withSuccessHandler((data) => {
+          console.log("GAS成功受信:", data);
+          renderCards(data);
+        })
+        .withFailureHandler((err) => {
+          console.error("GASエラー:", err);
+          showError("requestView", "申請データ取得でエラーが発生しました");
+        })
+        .getRequestsByStatus(status);
+    }
+
+    function renderCards(data) {
+      const container = document.getElementById("requestView");
+      container.innerHTML = "";
+
+      console.log("render受信:", data);
+
+      if (!data) {
+        container.innerHTML = `<div class="message error">null を受信しました</div>`;
+        return;
+      }
+
+      if (!Array.isArray(data)) {
+        container.innerHTML = `<div class="message error">配列ではないデータを受信しました</div>`;
+        return;
+      }
+
+      if (data.length === 0) {
+        container.innerHTML = `<div class="message">該当する申請はありません。</div>`;
+        return;
+      }
+
+      data.forEach(req => {
+        const card = document.createElement("div");
+        card.className = "card " + escapeHtml(req.status || "pending");
+
+        let buttonsHtml = `
+          <button class="btn btn-refresh" onclick="loadRequests(currentStatus)">再読み込み</button>
+        `;
+
+        if (req.status === "pending") {
+          buttonsHtml = `
+            <button class="btn btn-approve" onclick="approveRequest('${escapeHtml(req.request_id)}')">承認する</button>
+            <button class="btn btn-reject" onclick="rejectRequest('${escapeHtml(req.request_id)}')">否認する</button>
+            <button class="btn btn-refresh" onclick="loadRequests(currentStatus)">再読み込み</button>
+          `;
+        }
+
+        card.innerHTML = `
+          <div class="card-left">
+            <div class="card-id">申請ID: ${escapeHtml(req.request_id)}</div>
+            <div class="employee-name">${escapeHtml(req.employee_name)}</div>
+
+            <div class="info-list">
+              <div class="info-item">
+                <div class="info-label">日付</div>
+                <div class="info-value">${escapeHtml(req.date_label || "")}</div>
+              </div>
+
+              <div class="info-item">
+                <div class="info-label">日数</div>
+                <div class="info-value">${escapeHtml(req.days)}</div>
+              </div>
+
+              <div class="info-item">
+                <div class="info-label">半日区分</div>
+                <div class="info-value">${escapeHtml(req.half_day || "なし")}</div>
+              </div>
+            </div>
+
+            <div class="reason-box">
+              <div class="reason-title">理由</div>
+              <div>${escapeHtml(req.reason || "記載なし")}</div>
+            </div>
+
+            <span class="status-badge ${escapeHtml(req.status)}">
+              ${escapeHtml(getStatusLabel(req.status))}
+            </span>
+          </div>
+
+          <div class="card-right">
+            ${buttonsHtml}
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+    }
+
+    function approveRequest(requestId) {
+      if (!confirm("この申請を承認しますか？")) {
+        return;
+      }
+
+      showLoading("requestView", "承認処理を実行中です...");
+
+      google.script.run
+        .withSuccessHandler(() => {
+          alert("承認しました");
+          loadRequests("pending");
+        })
+        .withFailureHandler((err) => {
+          console.error("承認エラー:", err);
+          showError("requestView", "承認処理でエラーが発生しました");
+        })
+        .approveRequest(requestId);
+    }
+
+    function rejectRequest(requestId) {
+      const reason = prompt("否認理由を入力してください", "");
+      if (reason === null) {
+        return;
+      }
+
+      showLoading("requestView", "否認処理を実行中です...");
+
+      google.script.run
+        .withSuccessHandler(() => {
+          alert("否認しました");
+          loadRequests("pending");
+        })
+        .withFailureHandler((err) => {
+          console.error("否認エラー:", err);
+          showError("requestView", "否認処理でエラーが発生しました");
+        })
+        .rejectRequest(requestId, reason);
+    }
+
+    function loadLogs() {
+      const requestView = document.getElementById("requestView");
+      const logView = document.getElementById("logView");
+
+      requestView.style.display = "none";
+      logView.style.display = "block";
+
+      setActiveTab("logs");
+      showLoading("logView", "ログを読み込み中です...");
+
+      google.script.run
+        .withSuccessHandler((data) => {
+          console.log("ログ受信:", data);
+          renderLogs(data);
+        })
+        .withFailureHandler((err) => {
+          console.error("ログ取得エラー:", err);
+          showError("logView", "ログ取得でエラーが発生しました");
+        })
+        .getUsageLogs();
+    }
+
+    function renderLogs(data) {
+      const container = document.getElementById("logView");
+      container.innerHTML = "";
+
+      if (!Array.isArray(data) || data.length === 0) {
+        container.innerHTML = `<div class="message">ログはありません。</div>`;
+        return;
+      }
+
+      const list = document.createElement("div");
+      list.className = "log-list";
+
+      data.forEach(log => {
+        const div = document.createElement("div");
+        div.className = "log-card";
+        div.innerHTML = `
+          <div class="log-title">${escapeHtml(log.type || "ログ")}</div>
+          <div class="log-meta">
+            申請ID: ${escapeHtml(log.request_id || "")}<br>
+            ユーザー: ${escapeHtml(log.user_name || "")}<br>
+            日付: ${escapeHtml(log.date || "")}<br>
+            コメント: ${escapeHtml(log.comment || "")}
+          </div>
+        `;
+        list.appendChild(div);
+      });
+
+      container.appendChild(list);
+    }
+  </script>
 </body>
 </html>
