@@ -8,15 +8,13 @@
       --bg-main: #f5f3ef;
       --bg-sub: #ebe6dc;
       --card-bg: #ffffff;
-
       --primary: #6f8b6b;
       --primary-dark: #4f6650;
       --primary-light: #dfe8dc;
-
       --accent-blue: #2f6fb3;
       --accent-red: #c94c4c;
       --accent-orange: #d98c2b;
-
+      --accent-brown: #8b6b4f;
       --text-main: #2f2f2f;
       --text-sub: #6f6b63;
       --border: #ddd6ca;
@@ -36,7 +34,7 @@
     }
 
     .page {
-      max-width: 1100px;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 24px 16px 40px;
     }
@@ -59,6 +57,50 @@
     .subtitle {
       margin: 0;
       color: var(--text-sub);
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .tool-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .tool-title {
+      font-size: 15px;
+      font-weight: bold;
+      color: var(--primary-dark);
+      margin-bottom: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .field label {
+      font-size: 13px;
+      color: var(--text-sub);
+      font-weight: bold;
+    }
+
+    .field input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
       font-size: 14px;
     }
 
@@ -109,6 +151,12 @@
     .message.error {
       border-left: 6px solid var(--accent-red);
       color: var(--accent-red);
+      font-weight: bold;
+    }
+
+    .message.success {
+      border-left: 6px solid var(--primary);
+      color: var(--primary-dark);
       font-weight: bold;
     }
 
@@ -185,6 +233,33 @@
       color: var(--text-main);
     }
 
+    .balance-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px 12px;
+      margin-top: 12px;
+      margin-bottom: 10px;
+    }
+
+    .balance-item {
+      background: #f8f6f1;
+      border: 1px solid #e7e0d4;
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    .balance-label {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-bottom: 4px;
+    }
+
+    .balance-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--primary-dark);
+    }
+
     .reason-box {
       margin-top: 10px;
       padding: 12px;
@@ -256,6 +331,16 @@
       background: var(--accent-orange);
     }
 
+    .btn-export-monthly {
+      background: var(--accent-blue);
+      width: 100%;
+    }
+
+    .btn-export-yearly {
+      background: var(--accent-brown);
+      width: 100%;
+    }
+
     .log-list {
       display: flex;
       flex-direction: column;
@@ -302,7 +387,38 @@
   <div class="page">
     <div class="header">
       <h1 class="title">有給申請 管理画面</h1>
-      <p class="subtitle">承認待ち・承認済み・否認・ログをここで確認できます。</p>
+      <p class="subtitle">承認待ち・承認済み・否認・ログ・出力機能をここで管理できます。</p>
+    </div>
+
+    <div class="toolbar">
+      <div class="tool-card">
+        <div class="tool-title">月間一覧出力</div>
+
+        <div class="field">
+          <label for="monthlyYear">対象年</label>
+          <input type="number" id="monthlyYear" placeholder="例: 2026">
+        </div>
+
+        <div class="field">
+          <label for="monthlyMonth">対象月</label>
+          <input type="number" id="monthlyMonth" min="1" max="12" placeholder="例: 5">
+        </div>
+
+        <button class="btn btn-export-monthly" onclick="exportMonthlyReport()">月間一覧を出力</button>
+      </div>
+
+      <div class="tool-card">
+        <div class="tool-title">年間一覧出力</div>
+
+        <div class="field">
+          <label for="yearlyFiscalYear">対象年度</label>
+          <input type="number" id="yearlyFiscalYear" placeholder="例: 2026">
+        </div>
+
+        <button class="btn btn-export-yearly" onclick="exportYearlyReport()">年間一覧を出力</button>
+      </div>
+
+      <div id="exportMessage"></div>
     </div>
 
     <div class="tabs">
@@ -323,8 +439,23 @@
 
     window.addEventListener("DOMContentLoaded", () => {
       console.log("admin loaded");
+      setDefaultReportValues();
       loadRequests("pending");
     });
+
+    function setDefaultReportValues() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+
+      const monthlyYear = document.getElementById("monthlyYear");
+      const monthlyMonth = document.getElementById("monthlyMonth");
+      const yearlyFiscalYear = document.getElementById("yearlyFiscalYear");
+
+      if (monthlyYear) monthlyYear.value = year;
+      if (monthlyMonth) monthlyMonth.value = month;
+      if (yearlyFiscalYear) yearlyFiscalYear.value = month >= 4 ? year : year - 1;
+    }
 
     function setActiveTab(tabName) {
       const ids = ["pending", "approved", "rejected", "logs"];
@@ -352,6 +483,14 @@
       el.innerHTML = `<div class="message error">${escapeHtml(text || "エラーが発生しました")}</div>`;
     }
 
+    function showExportMessage(message, type) {
+      const el = document.getElementById("exportMessage");
+      if (!el) return;
+
+      const cls = type === "error" ? "message error" : "message success";
+      el.innerHTML = `<div class="${cls}">${escapeHtml(message)}</div>`;
+    }
+
     function escapeHtml(str) {
       return String(str == null ? "" : str)
         .replace(/&/g, "&amp;")
@@ -368,6 +507,11 @@
       return status || "";
     }
 
+    function formatDays(value) {
+      const num = Number(value || 0);
+      return `${num}日`;
+    }
+
     function loadRequests(status) {
       currentStatus = status;
 
@@ -379,8 +523,6 @@
 
       setActiveTab(status);
       showLoading("requestView", "申請データを読み込み中です...");
-
-      console.log("送信status:", status);
 
       google.script.run
         .withSuccessHandler((data) => {
@@ -397,8 +539,6 @@
     function renderCards(data) {
       const container = document.getElementById("requestView");
       container.innerHTML = "";
-
-      console.log("render受信:", data);
 
       if (!data) {
         container.innerHTML = `<div class="message error">null を受信しました</div>`;
@@ -443,13 +583,35 @@
               </div>
 
               <div class="info-item">
-                <div class="info-label">日数</div>
+                <div class="info-label">申請日数</div>
                 <div class="info-value">${escapeHtml(req.days)}</div>
               </div>
 
               <div class="info-item">
                 <div class="info-label">半日区分</div>
                 <div class="info-value">${escapeHtml(req.half_day || "なし")}</div>
+              </div>
+            </div>
+
+            <div class="balance-grid">
+              <div class="balance-item">
+                <div class="balance-label">残日数</div>
+                <div class="balance-value">${escapeHtml(formatDays(req.current_remaining_days))}</div>
+              </div>
+
+              <div class="balance-item">
+                <div class="balance-label">今年度付与日数</div>
+                <div class="balance-value">${escapeHtml(formatDays(req.grant_days))}</div>
+              </div>
+
+              <div class="balance-item">
+                <div class="balance-label">前年度残日数</div>
+                <div class="balance-value">${escapeHtml(formatDays(req.carry_over_days))}</div>
+              </div>
+
+              <div class="balance-item">
+                <div class="balance-label">今年度取得済み日数</div>
+                <div class="balance-value">${escapeHtml(formatDays(req.used_days))}</div>
               </div>
             </div>
 
@@ -523,7 +685,6 @@
 
       google.script.run
         .withSuccessHandler((data) => {
-          console.log("ログ受信:", data);
           renderLogs(data);
         })
         .withFailureHandler((err) => {
@@ -549,18 +710,72 @@
         const div = document.createElement("div");
         div.className = "log-card";
         div.innerHTML = `
-          <div class="log-title">${escapeHtml(log.type || "ログ")}</div>
+          <div class="log-title">${escapeHtml(log.type || "log")}</div>
           <div class="log-meta">
-            申請ID: ${escapeHtml(log.request_id || "")}<br>
-            ユーザー: ${escapeHtml(log.user_name || "")}<br>
-            日付: ${escapeHtml(log.date || "")}<br>
-            コメント: ${escapeHtml(log.comment || "")}
+            Request ID: ${escapeHtml(log.request_id || "")}<br>
+            User: ${escapeHtml(log.user_name || "")}<br>
+            Date: ${escapeHtml(log.date || "")}<br>
+            Comment: ${escapeHtml(log.comment || "")}
           </div>
         `;
         list.appendChild(div);
       });
 
       container.appendChild(list);
+    }
+
+    function exportMonthlyReport() {
+      const year = Number(document.getElementById("monthlyYear").value);
+      const month = Number(document.getElementById("monthlyMonth").value);
+
+      if (!year || !month) {
+        showExportMessage("月間一覧の対象年・対象月を入力してください。", "error");
+        return;
+      }
+
+      if (month < 1 || month > 12) {
+        showExportMessage("対象月は1〜12で入力してください。", "error");
+        return;
+      }
+
+      showExportMessage("月間一覧を出力しています...", "success");
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          showExportMessage(
+            `月間一覧を出力しました。対象期間: ${res.period_start} ～ ${res.period_end} / 明細 ${res.detail_count} 件 / 集計 ${res.total_count} 件`,
+            "success"
+          );
+        })
+        .withFailureHandler((err) => {
+          console.error("月間出力エラー:", err);
+          showExportMessage("月間一覧の出力でエラーが発生しました。", "error");
+        })
+        .exportMonthlyPaidLeaveReport(year, month);
+    }
+
+    function exportYearlyReport() {
+      const fiscalYear = Number(document.getElementById("yearlyFiscalYear").value);
+
+      if (!fiscalYear) {
+        showExportMessage("年間一覧の対象年度を入力してください。", "error");
+        return;
+      }
+
+      showExportMessage("年間一覧を出力しています...", "success");
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          showExportMessage(
+            `年間一覧を出力しました。対象年度: ${res.period_start} ～ ${res.period_end} / ${res.row_count} 名分`,
+            "success"
+          );
+        })
+        .withFailureHandler((err) => {
+          console.error("年間出力エラー:", err);
+          showExportMessage("年間一覧の出力でエラーが発生しました。", "error");
+        })
+        .exportYearlyPaidLeaveReport(fiscalYear);
     }
   </script>
 </body>

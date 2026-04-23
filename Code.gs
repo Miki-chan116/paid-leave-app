@@ -1,4 +1,5 @@
 const SS_ID = "1o7KbHHsPMiL684YJq_Fpzg6gHjD6HebjeL0BhQImkt4";
+const OUTPUT_SS_ID = "1SP7kD0wuxKQAwJ5YrMBGj3HAkMHW2U6Rdwzfhlu_Z_E";
 
 /* =========================
    ステータス定義
@@ -7,6 +8,14 @@ const STATUS = {
   PENDING: "pending",
   APPROVED: "approved",
   REJECTED: "rejected"
+};
+
+/* =========================
+   出力シート名
+========================= */
+const OUTPUT_SHEET = {
+  MONTHLY: "月間有給取得一覧",
+  YEARLY: "年間有給取得一覧"
 };
 
 /* =========================
@@ -26,6 +35,17 @@ function getSheet(name) {
 
   if (!sheet) {
     throw new Error(name + " シートが見つかりません");
+  }
+
+  return sheet;
+}
+
+function getOutputSheet(name) {
+  const ss = SpreadsheetApp.openById(OUTPUT_SS_ID);
+  let sheet = ss.getSheetByName(name);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
   }
 
   return sheet;
@@ -132,6 +152,88 @@ function objectToRow(obj, headers) {
 }
 
 /* =========================
+   期間計算
+========================= */
+function getFiscalYearRange(fiscalYear) {
+  const start = new Date(fiscalYear, 3, 1);    // 4/1
+  const end = new Date(fiscalYear + 1, 2, 31); // 翌3/31
+  return { start, end };
+}
+
+function getFiscalYearFromDate(dateValue) {
+  const date = new Date(dateValue);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  return month >= 4 ? year : year - 1;
+}
+
+function getClosingMonthRange(targetYear, targetMonth) {
+  // 例: 2026年5月指定 → 2026/04/26〜2026/05/25
+  const start = new Date(targetYear, targetMonth - 2, 26);
+  const end = new Date(targetYear, targetMonth - 1, 25);
+  return { start, end };
+}
+
+function isDateInRange(dateValue, start, end) {
+  const date = new Date(dateValue);
+  if (isNaN(date.getTime())) return false;
+
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const from = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const to = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  return target >= from && target <= to;
+}
+
+/* =========================
+   日別展開
+   半日申請: start_date のみ 0.5
+   それ以外: start_date〜end_date の平日を1日ずつ
+========================= */
+function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfDayValue) {
+  const result = [];
+
+  const start = new Date(startDateValue);
+  const end = new Date(endDateValue);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return result;
+  }
+
+  const normalizedHalfDay = norm(halfDayValue);
+
+  if (normalizedHalfDay) {
+    result.push({
+      date: new Date(start),
+      days: 0.5
+    });
+    return result;
+  }
+
+  let cursor = new Date(start);
+
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) {
+      result.push({
+        date: new Date(cursor),
+        days: 1
+      });
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  if (result.length === 0 && Number(days || 0) > 0) {
+    result.push({
+      date: new Date(start),
+      days: Number(days || 0)
+    });
+  }
+
+  return result;
+}
+
+/* =========================
    社員一覧取得
 ========================= */
 function getEmployees() {
@@ -189,9 +291,6 @@ function calculateLeaveDays(startDate, endDate) {
 
 /* =========================
    使用ログ追加
-   usage_log:
-   log_id, request_id, action_type, operator_id,
-   operator_name, action_date, comment
 ========================= */
 function appendUsageLog(logData) {
   const sheet = getSheet("usage_log");
@@ -220,7 +319,6 @@ function appendUsageLog(logData) {
 
 /* =========================
    申請登録
-   手動実行時の undefined ガード付き
 ========================= */
 function submitLeaveRequest(data) {
   if (!data || typeof data !== "object") {
@@ -285,7 +383,7 @@ function submitLeaveRequest(data) {
   rowObj.approver_name = "";
   rowObj.approved_at = "";
   rowObj.rejected_reason = "";
-  rowObj.year = start.getFullYear();
+  rowObj.year = getFiscalYearFromDate(start);
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
@@ -306,7 +404,143 @@ function submitLeaveRequest(data) {
 }
 
 /* =========================
-   申請一覧取得
+   付与情報取得
+========================= */
+function getGrantMapByFiscalYear(fiscalYear) {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "grant_days",
+    "carry_over_days",
+    "year"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const rowYear = Number(rowObj.year);
+
+    if (!employeeId) return;
+    if (rowYear !== Number(fiscalYear)) return;
+
+    if (!result[employeeId]) {
+      result[employeeId] = {
+        employee_id: employeeId,
+        grant_days: 0,
+        carry_over_days: 0
+      };
+    }
+
+    result[employeeId].grant_days += Number(rowObj.grant_days || 0);
+    result[employeeId].carry_over_days += Number(rowObj.carry_over_days || 0);
+  });
+
+  return result;
+}
+
+/* =========================
+   承認済み取得日数集計
+========================= */
+function getApprovedUsedDaysByFiscalYear(fiscalYear) {
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "status"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+  const range = getFiscalYearRange(fiscalYear);
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const status = norm(rowObj.status);
+
+    if (!employeeId) return;
+    if (status !== STATUS.APPROVED) return;
+
+    const dailyRows = expandLeaveRequestToDailyRows(
+      rowObj.start_date,
+      rowObj.end_date,
+      rowObj.days,
+      rowObj.half_day
+    );
+
+    dailyRows.forEach(item => {
+      if (!isDateInRange(item.date, range.start, range.end)) return;
+
+      if (!result[employeeId]) {
+        result[employeeId] = 0;
+      }
+
+      result[employeeId] += Number(item.days || 0);
+    });
+  });
+
+  return result;
+}
+
+/* =========================
+   年間残日数計算
+========================= */
+function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
+  const grantMap = getGrantMapByFiscalYear(fiscalYear);
+  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
+
+  const grantInfo = grantMap[employeeId] || {
+    employee_id: employeeId,
+    grant_days: 0,
+    carry_over_days: 0
+  };
+
+  const previousDays = Number(grantInfo.carry_over_days || 0);
+  const grantDays = Number(grantInfo.grant_days || 0);
+  const usedDays = Number(usedMap[employeeId] || 0);
+
+  const remainingFromPrevious = previousDays - usedDays;
+
+  let nextCarryOverDays = 0;
+  let expiredDays = 0;
+
+  if (remainingFromPrevious >= 0) {
+    expiredDays = remainingFromPrevious;
+    nextCarryOverDays = grantDays;
+  } else {
+    expiredDays = 0;
+    nextCarryOverDays = grantDays + remainingFromPrevious;
+  }
+
+  if (nextCarryOverDays < 0) {
+    nextCarryOverDays = 0;
+  }
+
+  const currentRemainingDays = previousDays + grantDays - usedDays;
+
+  return {
+    employee_id: employeeId,
+    carry_over_days: previousDays,
+    grant_days: grantDays,
+    used_days: usedDays,
+    next_carry_over_days: nextCarryOverDays,
+    expired_days: expiredDays,
+    current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays
+  };
+}
+
+/* =========================
+   管理画面用：申請一覧取得
 ========================= */
 function getRequestsByStatus(status) {
   const sheet = getSheet("leave_requests");
@@ -332,6 +566,8 @@ function getRequestsByStatus(status) {
       const rowObj = rowToObject(row, headerInfo.headers);
       const rowStatus = norm(rowObj.status);
       const employeeId = String(rowObj.employee_id || "").trim();
+      const fiscalYear = getFiscalYearFromDate(rowObj.start_date);
+      const balance = calculateYearlyBalanceByEmployee(employeeId, fiscalYear);
 
       return {
         request_id: String(rowObj.request_id || ""),
@@ -351,7 +587,11 @@ function getRequestsByStatus(status) {
         days: rowObj.days || 0,
         half_day: String(rowObj.half_day || ""),
         reason: String(rowObj.reason || ""),
-        status: rowStatus
+        status: rowStatus,
+        current_remaining_days: balance.current_remaining_days,
+        grant_days: balance.grant_days,
+        carry_over_days: balance.carry_over_days,
+        used_days: balance.used_days
       };
     })
     .filter(item => item.status === target);
@@ -499,6 +739,201 @@ function getUsageLogs() {
 }
 
 /* =========================
+   月間取得一覧出力
+   1日ずつ分解して出力
+========================= */
+function exportMonthlyPaidLeaveReport(targetYear, targetMonth) {
+  if (!targetYear || !targetMonth) {
+    const today = new Date();
+    targetYear = today.getFullYear();
+    targetMonth = today.getMonth() + 1;
+  }
+
+  const range = getClosingMonthRange(Number(targetYear), Number(targetMonth));
+  const leaveSheet = getSheet("leave_requests");
+  const leaveHeaderInfo = requireHeaders(leaveSheet, [
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "status"
+  ]);
+
+  const leaveData = leaveSheet.getDataRange().getValues();
+  const employeeMap = getEmployeeMap();
+
+  const detailRows = [];
+  const totalMap = {};
+
+  if (leaveData.length > 1) {
+    leaveData.slice(1).forEach(row => {
+      const rowObj = rowToObject(row, leaveHeaderInfo.headers);
+      const employeeId = String(rowObj.employee_id || "").trim();
+      const status = norm(rowObj.status);
+
+      if (!employeeId) return;
+      if (status !== STATUS.APPROVED) return;
+
+      const employeeName = employeeMap[employeeId] || employeeId;
+      const dailyRows = expandLeaveRequestToDailyRows(
+        rowObj.start_date,
+        rowObj.end_date,
+        rowObj.days,
+        rowObj.half_day
+      );
+
+      dailyRows.forEach(item => {
+        if (!isDateInRange(item.date, range.start, range.end)) return;
+
+        detailRows.push([
+          employeeId,
+          employeeName,
+          formatDateValue(item.date),
+          Number(item.days || 0)
+        ]);
+
+        if (!totalMap[employeeId]) {
+          totalMap[employeeId] = {
+            employee_id: employeeId,
+            name: employeeName,
+            total_days: 0
+          };
+        }
+
+        totalMap[employeeId].total_days += Number(item.days || 0);
+      });
+    });
+  }
+
+  detailRows.sort((a, b) => {
+    if (a[0] !== b[0]) return a[0] > b[0] ? 1 : -1;
+    return a[2] > b[2] ? 1 : -1;
+  });
+
+  const totalRows = Object.values(totalMap)
+    .sort((a, b) => a.employee_id > b.employee_id ? 1 : -1)
+    .map(item => [
+      item.employee_id,
+      item.name,
+      item.total_days
+    ]);
+
+  const outputSheet = getOutputSheet(OUTPUT_SHEET.MONTHLY);
+  outputSheet.clearContents();
+
+  const values = [];
+  values.push(["月間有給取得一覧"]);
+  values.push([
+    "対象期間：" + formatDateValue(range.start) + " ～ " + formatDateValue(range.end)
+  ]);
+  values.push([]);
+  values.push(["社員ID", "氏名", "取得日", "取得日数"]);
+
+  if (detailRows.length > 0) {
+    detailRows.forEach(row => values.push(row));
+  } else {
+    values.push(["該当データなし", "", "", ""]);
+  }
+
+  values.push([]);
+  values.push(["月間合計"]);
+  values.push(["社員ID", "氏名", "月間合計取得日数"]);
+
+  if (totalRows.length > 0) {
+    totalRows.forEach(row => values.push(row));
+  } else {
+    values.push(["該当データなし", "", ""]);
+  }
+
+  const maxLen = Math.max(...values.map(r => r.length || 1));
+  const normalizedValues = values.map(row => {
+    const newRow = row.slice();
+    while (newRow.length < maxLen) newRow.push("");
+    return newRow;
+  });
+
+  outputSheet.getRange(1, 1, normalizedValues.length, maxLen).setValues(normalizedValues);
+
+  return {
+    ok: true,
+    period_start: formatDateValue(range.start),
+    period_end: formatDateValue(range.end),
+    detail_count: detailRows.length,
+    total_count: totalRows.length
+  };
+}
+
+/* =========================
+   年間取得一覧出力
+========================= */
+function exportYearlyPaidLeaveReport(fiscalYear) {
+  if (!fiscalYear) {
+    fiscalYear = getFiscalYearFromDate(new Date());
+  }
+
+  const yearRange = getFiscalYearRange(Number(fiscalYear));
+  const employees = getEmployees();
+
+  const reportRows = employees
+    .map(emp => {
+      const balance = calculateYearlyBalanceByEmployee(emp.id, Number(fiscalYear));
+
+      return [
+        emp.id,
+        emp.name,
+        balance.carry_over_days,
+        balance.grant_days,
+        balance.used_days,
+        balance.next_carry_over_days,
+        balance.expired_days
+      ];
+    })
+    .sort((a, b) => a[0] > b[0] ? 1 : -1);
+
+  const outputSheet = getOutputSheet(OUTPUT_SHEET.YEARLY);
+  outputSheet.clearContents();
+
+  const values = [];
+  values.push(["年間有給取得一覧"]);
+  values.push([
+    "対象年度：" + formatDateValue(yearRange.start) + " ～ " + formatDateValue(yearRange.end)
+  ]);
+  values.push([]);
+  values.push([
+    "社員ID",
+    "氏名",
+    "前年度残日数",
+    "今年度付与日数",
+    "今年度取得済み日数",
+    "来年度繰越日数",
+    "消滅日数"
+  ]);
+
+  if (reportRows.length > 0) {
+    reportRows.forEach(row => values.push(row));
+  } else {
+    values.push(["該当データなし", "", "", "", "", "", ""]);
+  }
+
+  const normalizedValues = values.map(row => {
+    const newRow = row.slice();
+    while (newRow.length < 7) newRow.push("");
+    return newRow;
+  });
+
+  outputSheet.getRange(1, 1, normalizedValues.length, 7).setValues(normalizedValues);
+
+  return {
+    ok: true,
+    fiscal_year: Number(fiscalYear),
+    period_start: formatDateValue(yearRange.start),
+    period_end: formatDateValue(yearRange.end),
+    row_count: reportRows.length
+  };
+}
+
+/* =========================
    ステータス確認用
 ========================= */
 function debugStatusValues() {
@@ -527,8 +962,7 @@ function debugStatusValues() {
 }
 
 /* =========================
-   手動確認用のテスト関数
-   必要なときだけ使う
+   手動確認用テスト関数
 ========================= */
 function testSubmitLeaveRequest() {
   return submitLeaveRequest({
@@ -540,4 +974,12 @@ function testSubmitLeaveRequest() {
     reason: "テスト申請",
     reason_detail: ""
   });
+}
+
+function testExportMonthlyPaidLeaveReport() {
+  return exportMonthlyPaidLeaveReport(2026, 5);
+}
+
+function testExportYearlyPaidLeaveReport() {
+  return exportYearlyPaidLeaveReport(2026);
 }
