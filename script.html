@@ -1,25 +1,623 @@
 <script>
-const names = {
-  a: ["あい", "あおい", "あきら"],
-  k: ["かずき", "かおり", "けん"]
-};
+  let employees = [];
+  let calendarRules = {};
+  let selectedEmployee = null;
 
-function showGroup(group) {
-  const area = document.getElementById("nameArea");
-  area.innerHTML = "";
+  let currentGroup = "a";
+  let currentPage = 0;
+  const pageSize = 8;
 
-  names[group].forEach(name => {
-    const btn = document.createElement("button");
-    btn.textContent = name;
-    btn.onclick = () => selectName(name);
-    area.appendChild(btn);
-  });
-}
+  let currentRequestType = "";
+  let currentLang = "ja";
 
-function selectName(name) {
-  alert("選択された名前: " + name);
-}
+  let touchStartX = 0;
+  let touchEndX = 0;
 
-google.script.run.withSuccessHandler(console.log).whoAmI();
+  const TEXTS = {
+    ja: {
+      appTitle: "有給申請",
+      appSubtitle: "名前を選んで申請してください",
+      employeeScreenSubtitle: "名前を押すと申請画面へ進みます",
+      selectedEmployeeLabel: "選択中の社員",
+      backBtn: "← 戻る",
+      requestSectionDate: "1. 希望日を選択",
+      singleDateLabel: "希望日",
+      requestSectionType: "2. 申請区分を選択",
+      typeOneDay: "1日",
+      typeHalfAm: "半日 AM",
+      typeHalfPm: "半日 PM",
+      typeMultiDay: "複数日",
+      multiDayTitle: "複数日申請",
+      rangeStartDateLabel: "開始日",
+      rangeEndDateLabel: "終了日",
+      requestSectionReason: "3. 理由を選択",
+      reasonTypeLabel: "申請理由",
+      reasonDetailLabel: "理由詳細",
+      reasonDetailPlaceholder: "その他の場合のみ入力してください",
+      submitBtn: "申請する",
+      statusDefault: "日付と申請区分を選択してください。",
+      noEmployee: "この行に該当する社員はいません。",
+      remain: "残",
+      days: "日",
+      group: {
+        a: "あ行", k: "か行", s: "さ行", t: "た行", n: "な行",
+        h: "は行", m: "ま行", y: "や行", r: "ら行", w: "わ行",
+        global: "外国人"
+      },
+      tab: {
+        a: "あ行", k: "か行", s: "さ行", t: "た行", n: "な行",
+        h: "は行", m: "ま行", y: "や行", r: "ら行", w: "わ行",
+        global: "外国人"
+      },
+      reasonOptions: [
+        { value: "", label: "選択してください" },
+        { value: "私用", label: "私用" },
+        { value: "体調不良", label: "体調不良" },
+        { value: "その他", label: "その他" }
+      ],
+      calendarType: {
+        workday: "営業日",
+        holiday: "休日",
+        no_leave: "有給NG"
+      },
+      statusPossible: {
+        one_day: "1日申請が可能です。",
+        half_am: "半日（午前）申請が可能です。",
+        half_pm: "半日（午後）申請が可能です。",
+        multi_day: "複数日申請が可能です。"
+      },
+      errors: {
+        selectEmployee: "社員を選択してください。",
+        selectType: "申請区分を選択してください。",
+        selectDate: "希望日を入力してください。",
+        selectRange: "開始日と終了日を入力してください。",
+        selectReason: "申請理由を選択してください。",
+        inputReasonDetail: "その他を選んだ場合は理由詳細を入力してください。",
+        cannotApplyPrefix: "この日付では申請できません。"
+      },
+      checking: "申請内容を確認しています...",
+      submitted: "申請が完了しました。"
+    },
+    en: {
+      appTitle: "Paid Leave Request",
+      appSubtitle: "Select your name and submit your request",
+      employeeScreenSubtitle: "Tap a name to continue",
+      selectedEmployeeLabel: "Selected employee",
+      backBtn: "← Back",
+      requestSectionDate: "1. Select date",
+      singleDateLabel: "Requested date",
+      requestSectionType: "2. Select request type",
+      typeOneDay: "Full day",
+      typeHalfAm: "Half AM",
+      typeHalfPm: "Half PM",
+      typeMultiDay: "Multiple days",
+      multiDayTitle: "Multiple day request",
+      rangeStartDateLabel: "Start date",
+      rangeEndDateLabel: "End date",
+      requestSectionReason: "3. Select reason",
+      reasonTypeLabel: "Reason",
+      reasonDetailLabel: "Reason detail",
+      reasonDetailPlaceholder: "Enter only if you selected Other",
+      submitBtn: "Submit",
+      statusDefault: "Please select a date and request type.",
+      noEmployee: "No employees in this tab.",
+      remain: "Left",
+      days: "d",
+      group: {
+        a: "A", k: "K", s: "S", t: "T", n: "N",
+        h: "H", m: "M", y: "Y", r: "R", w: "W",
+        global: "Global"
+      },
+      tab: {
+        a: "A", k: "K", s: "S", t: "T", n: "N",
+        h: "H", m: "M", y: "Y", r: "R", w: "W",
+        global: "Global"
+      },
+      reasonOptions: [
+        { value: "", label: "Please select" },
+        { value: "私用", label: "Private" },
+        { value: "体調不良", label: "Sick" },
+        { value: "その他", label: "Other" }
+      ],
+      calendarType: {
+        workday: "Workday",
+        holiday: "Holiday",
+        no_leave: "No leave"
+      },
+      statusPossible: {
+        one_day: "Full day request is allowed.",
+        half_am: "Half day (AM) request is allowed.",
+        half_pm: "Half day (PM) request is allowed.",
+        multi_day: "Multiple day request is allowed."
+      },
+      errors: {
+        selectEmployee: "Please select an employee.",
+        selectType: "Please select a request type.",
+        selectDate: "Please select a date.",
+        selectRange: "Please enter start and end dates.",
+        selectReason: "Please select a reason.",
+        inputReasonDetail: "Please enter details when selecting Other.",
+        cannotApplyPrefix: "This date cannot be requested."
+      },
+      checking: "Checking your request...",
+      submitted: "Request submitted."
+    }
+  };
 
+  function t(path) {
+    const keys = path.split(".");
+    let obj = TEXTS[currentLang];
+    for (const key of keys) {
+      obj = obj[key];
+      if (obj == null) return path;
+    }
+    return obj;
+  }
+
+  function setLanguage(lang) {
+    currentLang = lang;
+
+    document.getElementById("langJaBtn").classList.toggle("active", lang === "ja");
+    document.getElementById("langEnBtn").classList.toggle("active", lang === "en");
+
+    applyLanguage();
+    render();
+    handleRequestTypeChange();
+  }
+
+  function applyLanguage() {
+    document.getElementById("appTitle").textContent = t("appTitle");
+    document.getElementById("appSubtitle").textContent = t("appSubtitle");
+    document.getElementById("employeeScreenSubtitle").textContent = t("employeeScreenSubtitle");
+    document.getElementById("selectedEmployeeLabel").textContent = t("selectedEmployeeLabel");
+    document.getElementById("backBtn").textContent = t("backBtn");
+    document.getElementById("requestSectionDate").textContent = t("requestSectionDate");
+    document.getElementById("singleDateLabel").textContent = t("singleDateLabel");
+    document.getElementById("requestSectionType").textContent = t("requestSectionType");
+    document.getElementById("typeOneDay").textContent = t("typeOneDay");
+    document.getElementById("typeHalfAm").textContent = t("typeHalfAm");
+    document.getElementById("typeHalfPm").textContent = t("typeHalfPm");
+    document.getElementById("typeMultiDay").textContent = t("typeMultiDay");
+    document.getElementById("multiDayTitle").textContent = t("multiDayTitle");
+    document.getElementById("rangeStartDateLabel").textContent = t("rangeStartDateLabel");
+    document.getElementById("rangeEndDateLabel").textContent = t("rangeEndDateLabel");
+    document.getElementById("requestSectionReason").textContent = t("requestSectionReason");
+    document.getElementById("reasonTypeLabel").textContent = t("reasonTypeLabel");
+    document.getElementById("reasonDetailLabel").textContent = t("reasonDetailLabel");
+    document.getElementById("reasonDetail").placeholder = t("reasonDetailPlaceholder");
+    document.getElementById("submitBtn").textContent = t("submitBtn");
+
+    const tabButtons = document.querySelectorAll("#kanaTabs button");
+    const order = ["a", "k", "s", "t", "n", "h", "m", "y", "r", "w", "global"];
+    tabButtons.forEach((btn, i) => {
+      btn.textContent = t("tab." + order[i]);
+    });
+
+    renderReasonOptions();
+
+    const statusBox = document.getElementById("calendarStatus");
+    if (!statusBox.classList.contains("ok") && !statusBox.classList.contains("error")) {
+      statusBox.textContent = t("statusDefault");
+    }
+  }
+
+  function renderReasonOptions() {
+    const select = document.getElementById("reasonType");
+    const currentValue = select.value;
+    select.innerHTML = "";
+
+    t("reasonOptions").forEach(opt => {
+      const option = document.createElement("option");
+      option.value = opt.value;
+      option.textContent = opt.label;
+      if (opt.value === currentValue) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+  }
+
+  function getKanaGroup(emp) {
+    const kana = String(emp.name_kana || "").trim();
+
+    if (!kana || /^[A-Za-z]/.test(kana)) return "global";
+
+    const ch = kana[0];
+
+    if ("あいうえおぁぃぅぇぉ".includes(ch)) return "a";
+    if ("かきくけこがぎぐげご".includes(ch)) return "k";
+    if ("さしすせそざじずぜぞ".includes(ch)) return "s";
+    if ("たちつてとだぢづでど".includes(ch)) return "t";
+    if ("なにぬねの".includes(ch)) return "n";
+    if ("はひふへほばびぶべぼぱぴぷぺぽ".includes(ch)) return "h";
+    if ("まみむめも".includes(ch)) return "m";
+    if ("やゆよゃゅょ".includes(ch)) return "y";
+    if ("らりるれろ".includes(ch)) return "r";
+    if ("わをん".includes(ch)) return "w";
+
+    return "global";
+  }
+
+  function getGroupLabel(group) {
+    return t("group." + group);
+  }
+
+  function sortEmployees(list) {
+    return list.slice().sort((a, b) => {
+      return String(a.name_kana || "").localeCompare(String(b.name_kana || ""), "ja");
+    });
+  }
+
+  function getFilteredEmployees(group) {
+    return sortEmployees(
+      employees.filter(emp => getKanaGroup(emp) === group)
+    );
+  }
+
+  function changeGroup(group) {
+    currentGroup = group;
+    currentPage = 0;
+    updateKanaTabs();
+    render();
+  }
+
+  function updateKanaTabs() {
+    const buttons = document.querySelectorAll("#kanaTabs button");
+    buttons.forEach(btn => btn.classList.remove("active"));
+
+    const map = {
+      a: 0, k: 1, s: 2, t: 3, n: 4,
+      h: 5, m: 6, y: 7, r: 8, w: 9,
+      global: 10
+    };
+
+    const idx = map[currentGroup];
+    if (buttons[idx]) buttons[idx].classList.add("active");
+  }
+
+  function render() {
+    const list = getFilteredEmployees(currentGroup);
+    const grid = document.getElementById("employeeSwipeArea");
+    const groupTitle = document.getElementById("groupTitle");
+    const pageIndicator = document.getElementById("pageIndicator");
+    const bottomIndicator = document.getElementById("pageIndicatorBottom");
+    const prevBtn = document.getElementById("prevPageBtn");
+    const nextBtn = document.getElementById("nextPageBtn");
+
+    grid.innerHTML = "";
+    groupTitle.textContent = getGroupLabel(currentGroup);
+
+    const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    if (currentPage >= totalPages) currentPage = totalPages - 1;
+    if (currentPage < 0) currentPage = 0;
+
+    const start = currentPage * pageSize;
+    const pageItems = list.slice(start, start + pageSize);
+
+    for (let i = 0; i < pageSize; i++) {
+      const emp = pageItems[i];
+      const btn = document.createElement("button");
+      btn.className = "employee-btn";
+
+      if (emp) {
+        btn.onclick = () => selectEmployee(emp);
+        btn.innerHTML = `
+          <div class="employee-name">${escapeHtml(emp.name)}</div>
+          <div class="employee-kana">${escapeHtml(emp.name_kana || "")}</div>
+          <div class="employee-balance">${t("remain")} ${Number(emp.current_remaining_days || 0)}${t("days")}</div>
+        `;
+      } else {
+        btn.classList.add("empty");
+        btn.innerHTML = `
+          <div class="employee-name"></div>
+          <div class="employee-kana"></div>
+        `;
+      }
+
+      grid.appendChild(btn);
+    }
+
+    pageIndicator.textContent = `${currentPage + 1} / ${totalPages}`;
+    bottomIndicator.textContent = `${currentPage + 1} / ${totalPages}`;
+
+    prevBtn.disabled = currentPage <= 0;
+    nextBtn.disabled = currentPage >= totalPages - 1;
+  }
+
+  function prevPage() {
+    if (currentPage > 0) {
+      currentPage--;
+      render();
+    }
+  }
+
+  function nextPage() {
+    const list = getFilteredEmployees(currentGroup);
+    const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+
+    if (currentPage < totalPages - 1) {
+      currentPage++;
+      render();
+    }
+  }
+
+  function selectEmployee(emp) {
+    selectedEmployee = emp;
+    document.getElementById("selectedEmployeeName").textContent =
+      `${emp.name} (${emp.employee_id})`;
+
+    document.getElementById("employeeScreen").classList.remove("active");
+    document.getElementById("requestScreen").classList.add("active");
+    resetRequestForm();
+  }
+
+  function backToEmployeeList() {
+    document.getElementById("requestScreen").classList.remove("active");
+    document.getElementById("employeeScreen").classList.add("active");
+  }
+
+  function resetRequestForm() {
+    currentRequestType = "";
+    document.getElementById("singleDate").value = "";
+    document.getElementById("rangeStartDate").value = "";
+    document.getElementById("rangeEndDate").value = "";
+    document.getElementById("reasonType").value = "";
+    document.getElementById("reasonDetail").value = "";
+    document.getElementById("reasonDetailWrap").style.display = "none";
+    document.getElementById("multiDayArea").style.display = "none";
+
+    document.querySelectorAll(".type-btn").forEach(btn => btn.classList.remove("active"));
+
+    const statusBox = document.getElementById("calendarStatus");
+    statusBox.className = "status-box";
+    statusBox.textContent = t("statusDefault");
+  }
+
+  function handleReasonTypeChange() {
+    const reasonType = document.getElementById("reasonType").value;
+    const wrap = document.getElementById("reasonDetailWrap");
+    wrap.style.display = reasonType === "その他" ? "block" : "none";
+  }
+
+  function selectRequestType(type) {
+    currentRequestType = type;
+
+    document.querySelectorAll(".type-btn").forEach(btn => btn.classList.remove("active"));
+
+    const btnMap = {
+      one_day: "typeOneDay",
+      half_am: "typeHalfAm",
+      half_pm: "typeHalfPm",
+      multi_day: "typeMultiDay"
+    };
+
+    const targetBtn = document.getElementById(btnMap[type]);
+    if (targetBtn) targetBtn.classList.add("active");
+
+    document.getElementById("multiDayArea").style.display = type === "multi_day" ? "block" : "none";
+
+    handleRequestTypeChange();
+  }
+
+  function getDateRange(startStr, endStr) {
+    const result = [];
+
+    if (!startStr || !endStr) return result;
+
+    const start = new Date(startStr + "T00:00:00");
+    const end = new Date(endStr + "T00:00:00");
+
+    let cursor = new Date(start);
+
+    while (cursor <= end) {
+      const y = cursor.getFullYear();
+      const m = String(cursor.getMonth() + 1).padStart(2, "0");
+      const d = String(cursor.getDate()).padStart(2, "0");
+      result.push(`${y}-${m}-${d}`);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return result;
+  }
+
+  function getCalendarTypeLabel(type) {
+    const map = TEXTS[currentLang].calendarType;
+    return map[type] || type || "";
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function getRequestDatesForCheck() {
+    if (!currentRequestType) return null;
+
+    const singleDate = document.getElementById("singleDate").value;
+    const rangeStartDate = document.getElementById("rangeStartDate").value;
+    const rangeEndDate = document.getElementById("rangeEndDate").value;
+
+    if (currentRequestType === "multi_day") {
+      if (!rangeStartDate || !rangeEndDate) return null;
+      return {
+        startDate: rangeStartDate,
+        endDate: rangeEndDate
+      };
+    }
+
+    if (!singleDate) return null;
+
+    return {
+      startDate: singleDate,
+      endDate: singleDate
+    };
+  }
+
+  function handleRequestTypeChange() {
+    const statusBox = document.getElementById("calendarStatus");
+    statusBox.className = "status-box";
+    statusBox.textContent = t("statusDefault");
+
+    if (!currentRequestType) return;
+
+    const dateInfo = getRequestDatesForCheck();
+    if (!dateInfo) return;
+
+    const dates = getDateRange(dateInfo.startDate, dateInfo.endDate);
+    const invalids = [];
+
+    dates.forEach(dateStr => {
+      const type = calendarRules[dateStr] || (new Date(dateStr + "T00:00:00").getDay() === 0 ? "holiday" : "workday");
+      if (type !== "workday") {
+        invalids.push(`${dateStr} : ${getCalendarTypeLabel(type)}`);
+      }
+    });
+
+    if (invalids.length > 0) {
+      statusBox.className = "status-box error";
+      statusBox.textContent = `${t("errors.cannotApplyPrefix")}\n${invalids.join("\n")}`;
+      return;
+    }
+
+    statusBox.className = "status-box ok";
+    statusBox.textContent = t("statusPossible." + currentRequestType);
+  }
+
+  function submitRequest() {
+    const reasonType = document.getElementById("reasonType").value;
+    const reasonDetail = document.getElementById("reasonDetail").value;
+    const statusBox = document.getElementById("calendarStatus");
+
+    if (!selectedEmployee) {
+      statusBox.className = "status-box error";
+      statusBox.textContent = t("errors.selectEmployee");
+      return;
+    }
+
+    if (!currentRequestType) {
+      statusBox.className = "status-box error";
+      statusBox.textContent = t("errors.selectType");
+      return;
+    }
+
+    const dateInfo = getRequestDatesForCheck();
+    if (!dateInfo) {
+      statusBox.className = "status-box error";
+      statusBox.textContent = currentRequestType === "multi_day"
+        ? t("errors.selectRange")
+        : t("errors.selectDate");
+      return;
+    }
+
+    if (!reasonType) {
+      statusBox.className = "status-box error";
+      statusBox.textContent = t("errors.selectReason");
+      return;
+    }
+
+    if (reasonType === "その他" && !reasonDetail.trim()) {
+      statusBox.className = "status-box error";
+      statusBox.textContent = t("errors.inputReasonDetail");
+      return;
+    }
+
+    let halfDay = false;
+    let halfType = "";
+
+    if (currentRequestType === "half_am") {
+      halfDay = true;
+      halfType = "morning";
+    } else if (currentRequestType === "half_pm") {
+      halfDay = true;
+      halfType = "afternoon";
+    }
+
+    const payload = {
+      employee_id: selectedEmployee.employee_id,
+      start_date: dateInfo.startDate,
+      end_date: dateInfo.endDate,
+      half_day: halfDay,
+      half_type: halfType,
+      reason: reasonType,
+      reason_detail: reasonType === "その他" ? reasonDetail : ""
+    };
+
+    statusBox.className = "status-box";
+    statusBox.textContent = t("checking");
+
+    google.script.run
+      .withSuccessHandler(() => {
+        google.script.run
+          .withSuccessHandler(() => {
+            statusBox.className = "status-box ok";
+            statusBox.textContent = t("submitted");
+
+            setTimeout(() => {
+              backToEmployeeList();
+              resetRequestForm();
+            }, 1200);
+          })
+          .withFailureHandler(err => {
+            statusBox.className = "status-box error";
+            statusBox.textContent = err.message || "Error";
+          })
+          .submitLeaveRequest(payload);
+      })
+      .withFailureHandler(err => {
+        statusBox.className = "status-box error";
+        statusBox.textContent = err.message || "Error";
+      })
+      .validateRequestDatesOnly(dateInfo.startDate, dateInfo.endDate, halfDay, halfType);
+  }
+
+  function attachSwipe() {
+    const swipeArea = document.getElementById("employeeSwipeArea");
+    if (!swipeArea) return;
+
+    swipeArea.addEventListener("touchstart", e => {
+      touchStartX = e.changedTouches[0].screenX;
+    });
+
+    swipeArea.addEventListener("touchend", e => {
+      touchEndX = e.changedTouches[0].screenX;
+      handleSwipeGesture();
+    });
+  }
+
+  function handleSwipeGesture() {
+    const diff = touchEndX - touchStartX;
+    if (Math.abs(diff) < 80) return;
+
+    if (diff < 0) {
+      nextPage();
+    } else {
+      prevPage();
+    }
+  }
+
+  function initPage() {
+    google.script.run
+      .withSuccessHandler(data => {
+        employees = data || [];
+        updateKanaTabs();
+        applyLanguage();
+        render();
+      })
+      .getEmployeesForRequest();
+
+    google.script.run
+      .withSuccessHandler(data => {
+        calendarRules = data || {};
+      })
+      .getCalendarRules();
+
+    attachSwipe();
+    applyLanguage();
+  }
+
+  window.addEventListener("DOMContentLoaded", initPage);
 </script>

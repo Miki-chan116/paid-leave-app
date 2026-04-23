@@ -38,9 +38,16 @@ function getAppTimeZone() {
 /* =========================
    管理画面
 ========================= */
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile("admin")
-    .setTitle("Paid Leave Admin");
+function doGet(e) {
+  const page = e && e.parameter && e.parameter.page ? e.parameter.page : "index";
+
+  if (page === "admin") {
+    return HtmlService.createHtmlOutputFromFile("admin")
+      .setTitle("Paid Leave Admin");
+  }
+
+  return HtmlService.createTemplateFromFile("index").evaluate()
+    .setTitle("Paid Leave App");
 }
 
 /* =========================
@@ -408,6 +415,61 @@ function getEmployees() {
       };
     })
     .filter(emp => emp.id);
+}
+
+function getCurrentFiscalYear() {
+  return getFiscalYearFromDate(new Date());
+}
+
+function getEmployeeBalanceMapForFiscalYear(fiscalYear) {
+  const grantMap = getGrantMapByFiscalYear(fiscalYear);
+  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
+  const employees = getEmployees();
+
+  const result = {};
+
+  employees.forEach(emp => {
+    const employeeId = emp.id;
+    const grantInfo = grantMap[employeeId] || {
+      employee_id: employeeId,
+      grant_days: 0,
+      carry_over_days: 0
+    };
+
+    const previousDays = Number(grantInfo.carry_over_days || 0);
+    const grantDays = Number(grantInfo.grant_days || 0);
+    const usedDays = Number(usedMap[employeeId] || 0);
+
+    const remainingFromPrevious = previousDays - usedDays;
+
+    let nextCarryOverDays = 0;
+    let expiredDays = 0;
+
+    if (remainingFromPrevious >= 0) {
+      expiredDays = remainingFromPrevious;
+      nextCarryOverDays = grantDays;
+    } else {
+      expiredDays = 0;
+      nextCarryOverDays = grantDays + remainingFromPrevious;
+    }
+
+    if (nextCarryOverDays < 0) {
+      nextCarryOverDays = 0;
+    }
+
+    const currentRemainingDays = previousDays + grantDays - usedDays;
+
+    result[employeeId] = {
+      current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays,
+      carry_over_days: previousDays,
+      grant_days: grantDays,
+      used_days: usedDays,
+      next_carry_over_days: nextCarryOverDays,
+      expired_days: expiredDays
+    };
+  });
+
+  return result;
 }
 
 /* =========================
@@ -1214,4 +1276,73 @@ function testWorkdayRequestAllowed() {
     reason: "workday test",
     reason_detail: ""
   });
+}
+
+/* =========================
+   include
+========================= */
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+/* =========================
+   社員一覧（申請画面用）
+   かなグループ判定用に name_kana も返す
+========================= */
+function getEmployeesForRequest() {
+  const sheet = getSheet("employees");
+  const headerInfo = requireHeaders(sheet, ["employee_id", "name", "name_kana"]);
+  const data = sheet.getDataRange().getValues();
+
+  if (data.length <= 1) return [];
+
+  const fiscalYear = getCurrentFiscalYear();
+  const balanceMap = getEmployeeBalanceMapForFiscalYear(fiscalYear);
+
+  return data.slice(1)
+    .map(row => {
+      const rowObj = rowToObject(row, headerInfo.headers);
+      const employeeId = String(rowObj.employee_id || "").trim();
+      const balance = balanceMap[employeeId] || {
+        current_remaining_days: 0,
+        carry_over_days: 0,
+        grant_days: 0,
+        used_days: 0
+      };
+
+      return {
+        employee_id: employeeId,
+        name: String(rowObj.name || "").trim(),
+        name_kana: String(rowObj.name_kana || "").trim(),
+        current_remaining_days: Number(balance.current_remaining_days || 0),
+        carry_over_days: Number(balance.carry_over_days || 0),
+        grant_days: Number(balance.grant_days || 0),
+        used_days: Number(balance.used_days || 0)
+      };
+    })
+    .filter(emp => emp.employee_id && emp.name);
+}
+
+/* =========================
+   company_calendar をフロント用に返す
+   date -> yyyy-MM-dd
+========================= */
+function getCalendarRules() {
+  const calendarMap = getCompanyCalendarMap();
+  return calendarMap;
+}
+
+/* =========================
+   申請前チェック（フロント確認用）
+========================= */
+function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
+  validateLeaveRequestDates(
+    startDate,
+    endDate,
+    halfType || (halfDay ? "half" : "")
+  );
+
+  return {
+    ok: true
+  };
 }

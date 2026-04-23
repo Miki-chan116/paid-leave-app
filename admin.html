@@ -62,7 +62,7 @@
 
     .toolbar {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 16px;
       margin-bottom: 20px;
     }
@@ -76,7 +76,7 @@
     }
 
     .tool-title {
-      font-size: 15px;
+      font-size: 16px;
       font-weight: bold;
       color: var(--primary-dark);
       margin-bottom: 12px;
@@ -367,6 +367,12 @@
       line-height: 1.7;
     }
 
+    @media (max-width: 900px) {
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 760px) {
       .card {
         flex-direction: column;
@@ -417,9 +423,9 @@
 
         <button class="btn btn-export-yearly" onclick="exportYearlyReport()">年間一覧を出力</button>
       </div>
-
-      <div id="exportMessage"></div>
     </div>
+
+    <div id="exportMessage" style="margin-bottom:20px;"></div>
 
     <div class="tabs">
       <button id="tab-pending" class="tab-btn" onclick="loadRequests('pending')">承認待ち</button>
@@ -438,7 +444,6 @@
     let currentStatus = "pending";
 
     window.addEventListener("DOMContentLoaded", () => {
-      console.log("admin loaded");
       setDefaultReportValues();
       loadRequests("pending");
     });
@@ -526,7 +531,6 @@
 
       google.script.run
         .withSuccessHandler((data) => {
-          console.log("GAS成功受信:", data);
           renderCards(data);
         })
         .withFailureHandler((err) => {
@@ -565,8 +569,8 @@
 
         if (req.status === "pending") {
           buttonsHtml = `
-            <button class="btn btn-approve" onclick="approveRequest('${escapeHtml(req.request_id)}')">承認する</button>
-            <button class="btn btn-reject" onclick="rejectRequest('${escapeHtml(req.request_id)}')">否認する</button>
+            <button class="btn btn-approve" onclick="approveRequestAction('${escapeHtml(req.request_id)}')">承認する</button>
+            <button class="btn btn-reject" onclick="rejectRequestAction('${escapeHtml(req.request_id)}')">否認する</button>
             <button class="btn btn-refresh" onclick="loadRequests(currentStatus)">再読み込み</button>
           `;
         }
@@ -634,10 +638,8 @@
       });
     }
 
-    function approveRequest(requestId) {
-      if (!confirm("この申請を承認しますか？")) {
-        return;
-      }
+    function approveRequestAction(requestId) {
+      if (!confirm("この申請を承認しますか？")) return;
 
       showLoading("requestView", "承認処理を実行中です...");
 
@@ -653,11 +655,9 @@
         .approveRequest(requestId);
     }
 
-    function rejectRequest(requestId) {
+    function rejectRequestAction(requestId) {
       const reason = prompt("否認理由を入力してください", "");
-      if (reason === null) {
-        return;
-      }
+      if (reason === null) return;
 
       showLoading("requestView", "否認処理を実行中です...");
 

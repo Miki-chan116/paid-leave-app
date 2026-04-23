@@ -2,29 +2,130 @@
 <html>
 <head>
   <base target="_top">
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <?!= include('style'); ?>
 </head>
 <body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="lang-switch">
+        <button id="langJaBtn" class="lang-btn active" onclick="setLanguage('ja')">日本語</button>
+        <button id="langEnBtn" class="lang-btn" onclick="setLanguage('en')">English</button>
+      </div>
 
-<h2>名前を選択</h2>
+      <h1 id="appTitle" class="app-title">有給申請</h1>
+      <p id="appSubtitle" class="app-subtitle">名前を選んで申請してください</p>
+    </header>
 
-<div class="tab">
-  <button onclick="showGroup('a')">あ行</button>
-  <button onclick="showGroup('k')">か行</button>
-  <button onclick="showGroup('s')">さ行</button>
-  <button onclick="showGroup('t')">た行</button>
-  <button onclick="showGroup('n')">な行</button>
-  <button onclick="showGroup('h')">は行</button>
-  <button onclick="showGroup('m')">ま行</button>
-  <button onclick="showGroup('y')">や行</button>
-  <button onclick="showGroup('r')">ら行</button>
-  <button onclick="showGroup('w')">わ行</button>
-</div>
+    <section id="employeeScreen" class="screen active">
+      <div class="sticky-tabs-wrap">
+        <div class="kana-tabs" id="kanaTabs">
+          <button onclick="changeGroup('a')">あ行</button>
+          <button onclick="changeGroup('k')">か行</button>
+          <button onclick="changeGroup('s')">さ行</button>
+          <button onclick="changeGroup('t')">た行</button>
+          <button onclick="changeGroup('n')">な行</button>
+          <button onclick="changeGroup('h')">は行</button>
+          <button onclick="changeGroup('m')">ま行</button>
+          <button onclick="changeGroup('y')">や行</button>
+          <button onclick="changeGroup('r')">ら行</button>
+          <button onclick="changeGroup('w')">わ行</button>
+          <button onclick="changeGroup('global')">外国人</button>
+        </div>
+      </div>
 
-<div id="nameArea" class="names"></div>
+      <div class="screen-card">
+        <div class="group-header">
+          <div>
+            <div class="section-title" id="groupTitle">あ行</div>
+            <div id="employeeScreenSubtitle" class="section-subtitle">名前を押すと申請画面へ進みます</div>
+          </div>
+          <div class="page-indicator" id="pageIndicator">1 / 1</div>
+        </div>
 
-<?!= include('script'); ?>
+        <div id="employeeSwipeArea" class="employee-grid"></div>
 
+        <div class="bottom-pager">
+          <button id="prevPageBtn" class="pager-btn" onclick="prevPage()">◀</button>
+          <div class="pager-center" id="pageIndicatorBottom">1 / 1</div>
+          <button id="nextPageBtn" class="pager-btn" onclick="nextPage()">▶</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="requestScreen" class="screen">
+      <div class="screen-card">
+        <div class="request-topbar">
+          <button id="backBtn" class="back-btn" onclick="backToEmployeeList()">← 戻る</button>
+
+          <div class="selected-employee-box">
+            <div id="selectedEmployeeLabel" class="selected-employee-label">選択中の社員</div>
+            <div id="selectedEmployeeName" class="selected-employee-name"></div>
+          </div>
+        </div>
+
+        <div class="request-section">
+          <div id="requestSectionDate" class="request-section-title">1. 希望日を選択</div>
+
+          <div class="field single-date-field">
+            <label id="singleDateLabel" for="singleDate">希望日</label>
+            <input type="date" id="singleDate" onchange="handleRequestTypeChange()">
+          </div>
+        </div>
+
+        <div class="request-section">
+          <div id="requestSectionType" class="request-section-title">2. 申請区分を選択</div>
+
+          <div class="request-type-grid">
+            <button class="type-btn" id="typeOneDay" onclick="selectRequestType('one_day')">1日</button>
+            <button class="type-btn" id="typeHalfAm" onclick="selectRequestType('half_am')">半日 AM</button>
+            <button class="type-btn" id="typeHalfPm" onclick="selectRequestType('half_pm')">半日 PM</button>
+            <button class="type-btn" id="typeMultiDay" onclick="selectRequestType('multi_day')">複数日</button>
+          </div>
+        </div>
+
+        <div id="multiDayArea" class="request-section" style="display:none;">
+          <div id="multiDayTitle" class="request-section-title">複数日申請</div>
+
+          <div class="multi-day-grid">
+            <div class="field">
+              <label id="rangeStartDateLabel" for="rangeStartDate">開始日</label>
+              <input type="date" id="rangeStartDate" onchange="handleRequestTypeChange()">
+            </div>
+
+            <div class="field">
+              <label id="rangeEndDateLabel" for="rangeEndDate">終了日</label>
+              <input type="date" id="rangeEndDate" onchange="handleRequestTypeChange()">
+            </div>
+          </div>
+        </div>
+
+        <div class="request-section">
+          <div id="requestSectionReason" class="request-section-title">3. 理由を選択</div>
+
+          <div class="field">
+            <label id="reasonTypeLabel" for="reasonType">申請理由</label>
+            <select id="reasonType" onchange="handleReasonTypeChange()"></select>
+          </div>
+
+          <div class="field full-width" id="reasonDetailWrap" style="display:none;">
+            <label id="reasonDetailLabel" for="reasonDetail">理由詳細</label>
+            <textarea id="reasonDetail" rows="3" placeholder="その他の場合のみ入力してください"></textarea>
+          </div>
+        </div>
+
+        <div id="calendarStatus" class="status-box">
+          日付と申請区分を選択してください。
+        </div>
+
+        <div class="submit-area">
+          <button id="submitBtn" class="submit-btn" onclick="submitRequest()">申請する</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <?!= include('script'); ?>
 </body>
 </html>
