@@ -1,0 +1,376 @@
+<script>
+let currentStatus = "pending";
+
+window.addEventListener("DOMContentLoaded", () => {
+  setDefaultReportValues();
+  loadRequests("pending");
+});
+
+/* =========================
+   初期値設定
+========================= */
+function setDefaultReportValues() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const monthlyYear = document.getElementById("monthlyYear");
+  const monthlyMonth = document.getElementById("monthlyMonth");
+  const yearlyFiscalYear = document.getElementById("yearlyFiscalYear");
+
+  if (monthlyYear) monthlyYear.value = year;
+  if (monthlyMonth) monthlyMonth.value = month;
+  if (yearlyFiscalYear) yearlyFiscalYear.value = month >= 4 ? year : year - 1;
+}
+
+/* =========================
+   タブ切替
+========================= */
+function setActiveTab(tabName) {
+  const ids = ["pending", "approved", "rejected", "logs"];
+
+  ids.forEach(name => {
+    const el = document.getElementById("tab-" + name);
+    if (!el) return;
+
+    el.classList.toggle("active", name === tabName);
+  });
+}
+
+/* =========================
+   表示補助
+========================= */
+function showLoading(targetId, text) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+
+  el.innerHTML = `<div class="message">${escapeHtml(text || "読み込み中...")}</div>`;
+}
+
+function showError(targetId, text) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+
+  el.innerHTML = `<div class="message error">${escapeHtml(text || "エラーが発生しました")}</div>`;
+}
+
+function showExportMessage(message, type) {
+  const el = document.getElementById("exportMessage");
+  if (!el) return;
+
+  const cls = type === "error" ? "message error" : "message success";
+  el.innerHTML = `<div class="${cls}">${escapeHtml(message)}</div>`;
+}
+
+function escapeHtml(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function getStatusLabel(status) {
+  if (status === "pending") return "承認待ち";
+  if (status === "approved") return "承認済み";
+  if (status === "rejected") return "否認";
+  return status || "";
+}
+
+function formatDays(value) {
+  const num = Number(value || 0);
+  return `${num}日`;
+}
+
+/* =========================
+   申請一覧取得
+========================= */
+function loadRequests(status) {
+  currentStatus = status;
+
+  const requestView = document.getElementById("requestView");
+  const logView = document.getElementById("logView");
+
+  if (requestView) requestView.style.display = "flex";
+  if (logView) logView.style.display = "none";
+
+  setActiveTab(status);
+  showLoading("requestView", "申請データを読み込み中です...");
+
+  google.script.run
+    .withSuccessHandler((data) => {
+      renderCards(data);
+    })
+    .withFailureHandler((err) => {
+      console.error("GASエラー:", err);
+      showError("requestView", "申請データ取得でエラーが発生しました");
+    })
+    .getRequestsByStatus(status);
+}
+
+/* =========================
+   申請カード描画
+========================= */
+function renderCards(data) {
+  const container = document.getElementById("requestView");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  if (!data) {
+    container.innerHTML = `<div class="message error">null を受信しました</div>`;
+    return;
+  }
+
+  if (!Array.isArray(data)) {
+    container.innerHTML = `<div class="message error">配列ではないデータを受信しました</div>`;
+    return;
+  }
+
+  if (data.length === 0) {
+    container.innerHTML = `<div class="message">該当する申請はありません。</div>`;
+    return;
+  }
+
+  data.forEach(req => {
+    const card = document.createElement("div");
+    card.className = "card " + escapeHtml(req.status || "pending");
+
+    let buttonsHtml = `
+      <button class="btn btn-refresh" type="button" onclick="loadRequests(currentStatus)">再読み込み</button>
+    `;
+
+    if (req.status === "pending") {
+      buttonsHtml = `
+        <button class="btn btn-approve" type="button" onclick="approveRequestAction('${escapeHtml(req.request_id)}')">承認する</button>
+        <button class="btn btn-reject" type="button" onclick="rejectRequestAction('${escapeHtml(req.request_id)}')">否認する</button>
+        <button class="btn btn-refresh" type="button" onclick="loadRequests(currentStatus)">再読み込み</button>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="card-left">
+        <div class="card-id">申請ID: ${escapeHtml(req.request_id)}</div>
+        <div class="employee-name">${escapeHtml(req.employee_name)}</div>
+
+        <div class="info-list">
+          <div class="info-item">
+            <div class="info-label">日付</div>
+            <div class="info-value">${escapeHtml(req.date_label || "")}</div>
+          </div>
+
+          <div class="info-item">
+            <div class="info-label">申請日数</div>
+            <div class="info-value">${escapeHtml(formatDays(req.days))}</div>
+          </div>
+
+          <div class="info-item">
+            <div class="info-label">半日区分</div>
+            <div class="info-value">${escapeHtml(req.half_day || "なし")}</div>
+          </div>
+        </div>
+
+        <div class="balance-grid">
+          <div class="balance-item">
+            <div class="balance-label">残日数</div>
+            <div class="balance-value">${escapeHtml(formatDays(req.current_remaining_days))}</div>
+          </div>
+
+          <div class="balance-item">
+            <div class="balance-label">今年度付与日数</div>
+            <div class="balance-value">${escapeHtml(formatDays(req.grant_days))}</div>
+          </div>
+
+          <div class="balance-item">
+            <div class="balance-label">前年度残日数</div>
+            <div class="balance-value">${escapeHtml(formatDays(req.carry_over_days))}</div>
+          </div>
+
+          <div class="balance-item">
+            <div class="balance-label">今年度取得済み日数</div>
+            <div class="balance-value">${escapeHtml(formatDays(req.used_days))}</div>
+          </div>
+        </div>
+
+        <div class="reason-box">
+          <div class="reason-title">理由</div>
+          <div>${escapeHtml(req.reason || "記載なし")}</div>
+        </div>
+
+        <span class="status-badge ${escapeHtml(req.status)}">
+          ${escapeHtml(getStatusLabel(req.status))}
+        </span>
+      </div>
+
+      <div class="card-right">
+        ${buttonsHtml}
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+}
+
+/* =========================
+   承認
+========================= */
+function approveRequestAction(requestId) {
+  if (!requestId) return;
+  if (!confirm("この申請を承認しますか？")) return;
+
+  showLoading("requestView", "承認処理を実行中です...");
+
+  google.script.run
+    .withSuccessHandler(() => {
+      alert("承認しました");
+      loadRequests("pending");
+    })
+    .withFailureHandler((err) => {
+      console.error("承認エラー:", err);
+      showError("requestView", "承認処理でエラーが発生しました");
+    })
+    .approveRequest(requestId);
+}
+
+/* =========================
+   否認
+========================= */
+function rejectRequestAction(requestId) {
+  if (!requestId) return;
+
+  const reason = prompt("否認理由を入力してください", "");
+  if (reason === null) return;
+
+  showLoading("requestView", "否認処理を実行中です...");
+
+  google.script.run
+    .withSuccessHandler(() => {
+      alert("否認しました");
+      loadRequests("pending");
+    })
+    .withFailureHandler((err) => {
+      console.error("否認エラー:", err);
+      showError("requestView", "否認処理でエラーが発生しました");
+    })
+    .rejectRequest(requestId, reason);
+}
+
+/* =========================
+   ログ表示
+========================= */
+function loadLogs() {
+  const requestView = document.getElementById("requestView");
+  const logView = document.getElementById("logView");
+
+  if (requestView) requestView.style.display = "none";
+  if (logView) logView.style.display = "block";
+
+  setActiveTab("logs");
+  showLoading("logView", "ログを読み込み中です...");
+
+  google.script.run
+    .withSuccessHandler((data) => {
+      renderLogs(data);
+    })
+    .withFailureHandler((err) => {
+      console.error("ログ取得エラー:", err);
+      showError("logView", "ログ取得でエラーが発生しました");
+    })
+    .getUsageLogs();
+}
+
+function renderLogs(data) {
+  const container = document.getElementById("logView");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  if (!Array.isArray(data) || data.length === 0) {
+    container.innerHTML = `<div class="message">ログはありません。</div>`;
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "log-list";
+
+  data.forEach(log => {
+    const div = document.createElement("div");
+    div.className = "log-card";
+
+    div.innerHTML = `
+      <div class="log-title">${escapeHtml(log.type || "log")}</div>
+      <div class="log-meta">
+        Request ID: ${escapeHtml(log.request_id || "")}<br>
+        User: ${escapeHtml(log.user_name || "")}<br>
+        Date: ${escapeHtml(log.date || "")}<br>
+        Comment: ${escapeHtml(log.comment || "")}
+      </div>
+    `;
+
+    list.appendChild(div);
+  });
+
+  container.appendChild(list);
+}
+
+/* =========================
+   月間出力
+========================= */
+function exportMonthlyReport() {
+  const year = Number(document.getElementById("monthlyYear")?.value);
+  const month = Number(document.getElementById("monthlyMonth")?.value);
+
+  if (!year || !month) {
+    showExportMessage("月間一覧の対象年・対象月を入力してください。", "error");
+    return;
+  }
+
+  if (month < 1 || month > 12) {
+    showExportMessage("対象月は1〜12で入力してください。", "error");
+    return;
+  }
+
+  showExportMessage("月間一覧を出力しています...", "success");
+
+  google.script.run
+    .withSuccessHandler((res) => {
+      showExportMessage(
+        `月間一覧を出力しました。対象期間: ${res.period_start} ～ ${res.period_end} / 明細 ${res.detail_count} 件 / 集計 ${res.total_count} 件`,
+        "success"
+      );
+    })
+    .withFailureHandler((err) => {
+      console.error("月間出力エラー:", err);
+      showExportMessage("月間一覧の出力でエラーが発生しました。", "error");
+    })
+    .exportMonthlyPaidLeaveReport(year, month);
+}
+
+/* =========================
+   年間出力
+========================= */
+function exportYearlyReport() {
+  const fiscalYear = Number(document.getElementById("yearlyFiscalYear")?.value);
+
+  if (!fiscalYear) {
+    showExportMessage("年間一覧の対象年度を入力してください。", "error");
+    return;
+  }
+
+  showExportMessage("年間一覧を出力しています...", "success");
+
+  google.script.run
+    .withSuccessHandler((res) => {
+      showExportMessage(
+        `年間一覧を出力しました。対象年度: ${res.period_start} ～ ${res.period_end} / ${res.row_count} 名分`,
+        "success"
+      );
+    })
+    .withFailureHandler((err) => {
+      console.error("年間出力エラー:", err);
+      showExportMessage("年間一覧の出力でエラーが発生しました。", "error");
+    })
+    .exportYearlyPaidLeaveReport(fiscalYear);
+}
+</script>

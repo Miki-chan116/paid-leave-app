@@ -29,25 +29,26 @@ const OUTPUT_SHEET = {
 
 /* =========================
    アプリで使うタイムゾーン
-   ※ スクリプトではなくスプレッドシート基準
 ========================= */
 function getAppTimeZone() {
   return SpreadsheetApp.openById(SS_ID).getSpreadsheetTimeZone();
 }
 
 /* =========================
-   管理画面
+   画面表示
 ========================= */
 function doGet(e) {
   const page = e && e.parameter && e.parameter.page ? e.parameter.page : "index";
 
-  if (page === "admin") {
-    return HtmlService.createHtmlOutputFromFile("admin")
-      .setTitle("Paid Leave Admin");
-  }
+  return HtmlService.createTemplateFromFile(page).evaluate()
+    .setTitle(page === "admin" ? "Paid Leave Admin" : "Paid Leave App");
+}
 
-  return HtmlService.createTemplateFromFile("index").evaluate()
-    .setTitle("Paid Leave App");
+/* =========================
+   include
+========================= */
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
 /* =========================
@@ -93,33 +94,24 @@ function formatDateValue(value) {
   const date = new Date(value);
   if (isNaN(date.getTime())) return String(value);
 
-  return Utilities.formatDate(
-    date,
-    getAppTimeZone(),
-    "yyyy/MM/dd"
-  );
+  return Utilities.formatDate(date, getAppTimeZone(), "yyyy/MM/dd");
 }
 
 /* =========================
    ローカル日付安全変換
-   Date型でも文字列でも、
-   スプレッドシート基準の日付として扱う
 ========================= */
 function parseLocalDate(value) {
   if (value instanceof Date) {
     const ymd = Utilities.formatDate(value, getAppTimeZone(), "yyyy-MM-dd");
     const parts = ymd.split("-");
-
     const year = Number(parts[0]);
     const month = Number(parts[1]);
     const day = Number(parts[2]);
 
     const d = new Date(year, month - 1, day);
-
     if (isNaN(d.getTime())) {
       throw new Error("日付が不正です");
     }
-
     return d;
   }
 
@@ -185,10 +177,7 @@ function getHeaderMap(sheet) {
     }
   });
 
-  return {
-    headers,
-    map
-  };
+  return { headers, map };
 }
 
 /* =========================
@@ -199,9 +188,7 @@ function requireHeaders(sheet, requiredHeaders) {
   const missing = requiredHeaders.filter(h => !(h in headerInfo.map));
 
   if (missing.length > 0) {
-    throw new Error(
-      sheet.getName() + " に不足ヘッダーがあります: " + missing.join(", ")
-    );
+    throw new Error(sheet.getName() + " に不足ヘッダーがあります: " + missing.join(", "));
   }
 
   return headerInfo;
@@ -244,8 +231,8 @@ function objectToRow(obj, headers) {
    期間計算
 ========================= */
 function getFiscalYearRange(fiscalYear) {
-  const start = new Date(fiscalYear, 3, 1);    // 4/1
-  const end = new Date(fiscalYear + 1, 2, 31); // 翌3/31
+  const start = new Date(fiscalYear, 3, 1);
+  const end = new Date(fiscalYear + 1, 2, 31);
   return { start, end };
 }
 
@@ -257,7 +244,6 @@ function getFiscalYearFromDate(dateValue) {
 }
 
 function getClosingMonthRange(targetYear, targetMonth) {
-  // 例: 2026年5月指定 -> 2026/04/26 ～ 2026/05/25
   const start = new Date(targetYear, targetMonth - 2, 26);
   const end = new Date(targetYear, targetMonth - 1, 25);
   return { start, end };
@@ -278,7 +264,6 @@ function isDateInRange(dateValue, start, end) {
 function getCompanyCalendarMap() {
   const sheet = getSheet("company_calendar");
   const headerInfo = requireHeaders(sheet, ["date", "type"]);
-
   const data = sheet.getDataRange().getValues();
   const map = {};
 
@@ -305,7 +290,6 @@ function getCalendarTypeForDate(dateValue, calendarMap) {
     return calendarMap[key];
   }
 
-  // company_calendar に未登録なら日曜だけ holiday、それ以外 workday
   const date = parseLocalDate(dateValue);
   return date.getDay() === 0 ? CALENDAR_TYPE.HOLIDAY : CALENDAR_TYPE.WORKDAY;
 }
@@ -353,7 +337,6 @@ function validateLeaveRequestDates(startDateValue, endDateValue, halfDayValue) {
 
 /* =========================
    日別展開
-   holiday / no_leave は除外
 ========================= */
 function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfDayValue) {
   const result = [];
@@ -408,7 +391,6 @@ function getEmployees() {
   return data.slice(1)
     .map(row => {
       const rowObj = rowToObject(row, headerInfo.headers);
-
       return {
         id: String(rowObj.employee_id || "").trim(),
         name: String(rowObj.name || rowObj.employee_id || "").trim()
@@ -419,6 +401,88 @@ function getEmployees() {
 
 function getCurrentFiscalYear() {
   return getFiscalYearFromDate(new Date());
+}
+
+function getGrantMapByFiscalYear(fiscalYear) {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "grant_days",
+    "carry_over_days",
+    "year"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const rowYear = Number(rowObj.year);
+
+    if (!employeeId) return;
+    if (rowYear !== Number(fiscalYear)) return;
+
+    if (!result[employeeId]) {
+      result[employeeId] = {
+        employee_id: employeeId,
+        grant_days: 0,
+        carry_over_days: 0
+      };
+    }
+
+    result[employeeId].grant_days += Number(rowObj.grant_days || 0);
+    result[employeeId].carry_over_days += Number(rowObj.carry_over_days || 0);
+  });
+
+  return result;
+}
+
+function getApprovedUsedDaysByFiscalYear(fiscalYear) {
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "status"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+  const range = getFiscalYearRange(fiscalYear);
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const status = norm(rowObj.status);
+
+    if (!employeeId) return;
+    if (status !== STATUS.APPROVED) return;
+
+    const dailyRows = expandLeaveRequestToDailyRows(
+      rowObj.start_date,
+      rowObj.end_date,
+      rowObj.days,
+      rowObj.half_day
+    );
+
+    dailyRows.forEach(item => {
+      if (!isDateInRange(item.date, range.start, range.end)) return;
+
+      if (!result[employeeId]) {
+        result[employeeId] = 0;
+      }
+      result[employeeId] += Number(item.days || 0);
+    });
+  });
+
+  return result;
 }
 
 function getEmployeeBalanceMapForFiscalYear(fiscalYear) {
@@ -472,6 +536,50 @@ function getEmployeeBalanceMapForFiscalYear(fiscalYear) {
   return result;
 }
 
+function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
+  const grantMap = getGrantMapByFiscalYear(fiscalYear);
+  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
+
+  const grantInfo = grantMap[employeeId] || {
+    employee_id: employeeId,
+    grant_days: 0,
+    carry_over_days: 0
+  };
+
+  const previousDays = Number(grantInfo.carry_over_days || 0);
+  const grantDays = Number(grantInfo.grant_days || 0);
+  const usedDays = Number(usedMap[employeeId] || 0);
+
+  const remainingFromPrevious = previousDays - usedDays;
+
+  let nextCarryOverDays = 0;
+  let expiredDays = 0;
+
+  if (remainingFromPrevious >= 0) {
+    expiredDays = remainingFromPrevious;
+    nextCarryOverDays = grantDays;
+  } else {
+    expiredDays = 0;
+    nextCarryOverDays = grantDays + remainingFromPrevious;
+  }
+
+  if (nextCarryOverDays < 0) {
+    nextCarryOverDays = 0;
+  }
+
+  const currentRemainingDays = previousDays + grantDays - usedDays;
+
+  return {
+    employee_id: employeeId,
+    carry_over_days: previousDays,
+    grant_days: grantDays,
+    used_days: usedDays,
+    next_carry_over_days: nextCarryOverDays,
+    expired_days: expiredDays,
+    current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays
+  };
+}
+
 /* =========================
    社員名マップ
 ========================= */
@@ -488,7 +596,6 @@ function getEmployeeMap() {
 
 /* =========================
    有給日数計算
-   company_calendar 対応
 ========================= */
 function calculateLeaveDays(startDate, endDate) {
   const calendarMap = getCompanyCalendarMap();
@@ -523,7 +630,6 @@ function appendUsageLog(logData) {
   ]);
 
   const rowObj = createEmptyRowObject(headerInfo.headers);
-
   rowObj.log_id = Utilities.getUuid();
   rowObj.request_id = logData.request_id || "";
   rowObj.action_type = logData.action_type || "";
@@ -583,7 +689,6 @@ function submitLeaveRequest(data) {
   const now = new Date();
 
   const rowObj = createEmptyRowObject(headerInfo.headers);
-
   rowObj.request_id = Utilities.getUuid();
   rowObj.employee_id = data.employee_id || "";
   rowObj.request_date = now;
@@ -620,143 +725,8 @@ function submitLeaveRequest(data) {
 }
 
 /* =========================
-   付与情報取得
-========================= */
-function getGrantMapByFiscalYear(fiscalYear) {
-  const sheet = getSheet("paid_leave_grants");
-  const headerInfo = requireHeaders(sheet, [
-    "employee_id",
-    "grant_days",
-    "carry_over_days",
-    "year"
-  ]);
-
-  const data = sheet.getDataRange().getValues();
-  const result = {};
-
-  if (data.length <= 1) return result;
-
-  data.slice(1).forEach(row => {
-    const rowObj = rowToObject(row, headerInfo.headers);
-    const employeeId = String(rowObj.employee_id || "").trim();
-    const rowYear = Number(rowObj.year);
-
-    if (!employeeId) return;
-    if (rowYear !== Number(fiscalYear)) return;
-
-    if (!result[employeeId]) {
-      result[employeeId] = {
-        employee_id: employeeId,
-        grant_days: 0,
-        carry_over_days: 0
-      };
-    }
-
-    result[employeeId].grant_days += Number(rowObj.grant_days || 0);
-    result[employeeId].carry_over_days += Number(rowObj.carry_over_days || 0);
-  });
-
-  return result;
-}
-
-/* =========================
-   承認済み取得日数集計
-========================= */
-function getApprovedUsedDaysByFiscalYear(fiscalYear) {
-  const sheet = getSheet("leave_requests");
-  const headerInfo = requireHeaders(sheet, [
-    "employee_id",
-    "start_date",
-    "end_date",
-    "days",
-    "half_day",
-    "status"
-  ]);
-
-  const data = sheet.getDataRange().getValues();
-  const result = {};
-  const range = getFiscalYearRange(fiscalYear);
-
-  if (data.length <= 1) return result;
-
-  data.slice(1).forEach(row => {
-    const rowObj = rowToObject(row, headerInfo.headers);
-    const employeeId = String(rowObj.employee_id || "").trim();
-    const status = norm(rowObj.status);
-
-    if (!employeeId) return;
-    if (status !== STATUS.APPROVED) return;
-
-    const dailyRows = expandLeaveRequestToDailyRows(
-      rowObj.start_date,
-      rowObj.end_date,
-      rowObj.days,
-      rowObj.half_day
-    );
-
-    dailyRows.forEach(item => {
-      if (!isDateInRange(item.date, range.start, range.end)) return;
-
-      if (!result[employeeId]) {
-        result[employeeId] = 0;
-      }
-
-      result[employeeId] += Number(item.days || 0);
-    });
-  });
-
-  return result;
-}
-
-/* =========================
-   年間残日数計算
-========================= */
-function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
-  const grantMap = getGrantMapByFiscalYear(fiscalYear);
-  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
-
-  const grantInfo = grantMap[employeeId] || {
-    employee_id: employeeId,
-    grant_days: 0,
-    carry_over_days: 0
-  };
-
-  const previousDays = Number(grantInfo.carry_over_days || 0);
-  const grantDays = Number(grantInfo.grant_days || 0);
-  const usedDays = Number(usedMap[employeeId] || 0);
-
-  const remainingFromPrevious = previousDays - usedDays;
-
-  let nextCarryOverDays = 0;
-  let expiredDays = 0;
-
-  if (remainingFromPrevious >= 0) {
-    expiredDays = remainingFromPrevious;
-    nextCarryOverDays = grantDays;
-  } else {
-    expiredDays = 0;
-    nextCarryOverDays = grantDays + remainingFromPrevious;
-  }
-
-  if (nextCarryOverDays < 0) {
-    nextCarryOverDays = 0;
-  }
-
-  const currentRemainingDays = previousDays + grantDays - usedDays;
-
-  return {
-    employee_id: employeeId,
-    carry_over_days: previousDays,
-    grant_days: grantDays,
-    used_days: usedDays,
-    next_carry_over_days: nextCarryOverDays,
-    expired_days: expiredDays,
-    current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays
-  };
-}
-
-/* =========================
    管理画面用：申請一覧取得
+   軽量化版
 ========================= */
 function getRequestsByStatus(status) {
   const sheet = getSheet("leave_requests");
@@ -777,20 +747,42 @@ function getRequestsByStatus(status) {
   const employeeMap = getEmployeeMap();
   const target = norm(status);
 
+  const fiscalYears = [...new Set(
+    data.slice(1)
+      .map(row => {
+        const rowObj = rowToObject(row, headerInfo.headers);
+        if (!rowObj.start_date) return null;
+        return getFiscalYearFromDate(rowObj.start_date);
+      })
+      .filter(v => v != null)
+  )];
+
+  const balanceMapByYear = {};
+  fiscalYears.forEach(year => {
+    balanceMapByYear[year] = getEmployeeBalanceMapForFiscalYear(year);
+  });
+
   const result = data.slice(1)
     .map(row => {
       const rowObj = rowToObject(row, headerInfo.headers);
       const rowStatus = norm(rowObj.status);
       const employeeId = String(rowObj.employee_id || "").trim();
+
+      if (!rowObj.start_date) return null;
+
       const fiscalYear = getFiscalYearFromDate(rowObj.start_date);
-      const balance = calculateYearlyBalanceByEmployee(employeeId, fiscalYear);
+      const balanceMap = balanceMapByYear[fiscalYear] || {};
+      const balance = balanceMap[employeeId] || {
+        current_remaining_days: 0,
+        grant_days: 0,
+        carry_over_days: 0,
+        used_days: 0
+      };
 
       return {
         request_id: String(rowObj.request_id || ""),
         employee_id: employeeId,
-        employee_name: String(
-          employeeMap[employeeId] || employeeId || "Unknown"
-        ),
+        employee_name: String(employeeMap[employeeId] || employeeId || "Unknown"),
         start_date: formatDateValue(rowObj.start_date),
         end_date: formatDateValue(rowObj.end_date),
         date_label:
@@ -810,7 +802,7 @@ function getRequestsByStatus(status) {
         used_days: balance.used_days
       };
     })
-    .filter(item => item.status === target);
+    .filter(item => item && item.status === target);
 
   return result;
 }
@@ -940,7 +932,6 @@ function getUsageLogs() {
   return data.slice(1)
     .map(row => {
       const rowObj = rowToObject(row, headerInfo.headers);
-
       return {
         log_id: rowObj.log_id,
         request_id: rowObj.request_id,
@@ -1028,20 +1019,14 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth) {
 
   const totalRows = Object.values(totalMap)
     .sort((a, b) => a.employee_id > b.employee_id ? 1 : -1)
-    .map(item => [
-      item.employee_id,
-      item.name,
-      item.total_days
-    ]);
+    .map(item => [item.employee_id, item.name, item.total_days]);
 
   const outputSheet = getOutputSheet(OUTPUT_SHEET.MONTHLY);
   outputSheet.clearContents();
 
   const values = [];
   values.push(["月間有給取得一覧"]);
-  values.push([
-    "対象期間：" + formatDateValue(range.start) + " ～ " + formatDateValue(range.end)
-  ]);
+  values.push(["対象期間：" + formatDateValue(range.start) + " ～ " + formatDateValue(range.end)]);
   values.push([]);
   values.push(["社員ID", "氏名", "取得日", "取得日数"]);
 
@@ -1093,7 +1078,6 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
   const reportRows = employees
     .map(emp => {
       const balance = calculateYearlyBalanceByEmployee(emp.id, Number(fiscalYear));
-
       return [
         emp.id,
         emp.name,
@@ -1111,9 +1095,7 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
 
   const values = [];
   values.push(["年間有給取得一覧"]);
-  values.push([
-    "対象年度：" + formatDateValue(yearRange.start) + " ～ " + formatDateValue(yearRange.end)
-  ]);
+  values.push(["対象年度：" + formatDateValue(yearRange.start) + " ～ " + formatDateValue(yearRange.end)]);
   values.push([]);
   values.push([
     "社員ID",
@@ -1149,145 +1131,7 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
 }
 
 /* =========================
-   デバッグ関数
-========================= */
-function debugStatusValues() {
-  const sheet = getSheet("leave_requests");
-  const headerInfo = requireHeaders(sheet, [
-    "request_id",
-    "status"
-  ]);
-
-  const data = sheet.getDataRange().getValues();
-
-  if (data.length <= 1) {
-    Logger.log("データなし");
-    return;
-  }
-
-  data.slice(1).forEach((row, i) => {
-    const rowObj = rowToObject(row, headerInfo.headers);
-    Logger.log(
-      "row " + (i + 2) +
-      " | request_id=" + rowObj.request_id +
-      " | rawStatus=[" + rowObj.status + "]" +
-      " | normalized=[" + norm(rowObj.status) + "]"
-    );
-  });
-}
-
-function debugCompanyCalendarForDates() {
-  const calendarMap = getCompanyCalendarMap();
-  const targets = [
-    "2026-04-05",
-    "2026-04-10",
-    "2026-04-11",
-    "2026-04-12"
-  ];
-
-  const results = targets.map(dateStr => {
-    return {
-      date: dateStr,
-      type: calendarMap[dateStr] || "(未登録)",
-      label: getCalendarLabel(calendarMap[dateStr] || "")
-    };
-  });
-
-  Logger.log(JSON.stringify(results, null, 2));
-}
-
-function debugCurrentSpreadsheetAndCalendarSheet() {
-  const ss = SpreadsheetApp.openById(SS_ID);
-  const sheet = ss.getSheetByName("company_calendar");
-
-  if (!sheet) {
-    Logger.log("company_calendar シートが見つかりません");
-    return;
-  }
-
-  Logger.log("Spreadsheet Name: " + ss.getName());
-  Logger.log("Spreadsheet ID: " + ss.getId());
-  Logger.log("Sheet Name: " + sheet.getName());
-
-  const values = sheet.getRange(1, 1, 15, 3).getValues();
-  Logger.log(JSON.stringify(values, null, 2));
-}
-
-function debugTimeZones() {
-  const ss = SpreadsheetApp.openById(SS_ID);
-  Logger.log("Script TimeZone: " + Session.getScriptTimeZone());
-  Logger.log("Spreadsheet TimeZone: " + ss.getSpreadsheetTimeZone());
-}
-
-/* =========================
-   手動確認用テスト関数
-========================= */
-function testSubmitLeaveRequest() {
-  return submitLeaveRequest({
-    employee_id: "TEST001",
-    start_date: "2026-04-23",
-    end_date: "2026-04-23",
-    half_day: false,
-    half_type: "",
-    reason: "テスト申請",
-    reason_detail: ""
-  });
-}
-
-function testExportMonthlyPaidLeaveReport() {
-  return exportMonthlyPaidLeaveReport(2026, 5);
-}
-
-function testExportYearlyPaidLeaveReport() {
-  return exportYearlyPaidLeaveReport(2026);
-}
-
-function testHolidayRequestBlocked() {
-  return submitLeaveRequest({
-    employee_id: "T001",
-    start_date: "2026-04-05",
-    end_date: "2026-04-05",
-    half_day: false,
-    half_type: "",
-    reason: "holiday test",
-    reason_detail: ""
-  });
-}
-
-function testNoLeaveRequestBlocked() {
-  return submitLeaveRequest({
-    employee_id: "T001",
-    start_date: "2026-04-11",
-    end_date: "2026-04-11",
-    half_day: false,
-    half_type: "",
-    reason: "no leave test",
-    reason_detail: ""
-  });
-}
-
-function testWorkdayRequestAllowed() {
-  return submitLeaveRequest({
-    employee_id: "T001",
-    start_date: "2026-04-10",
-    end_date: "2026-04-10",
-    half_day: false,
-    half_type: "",
-    reason: "workday test",
-    reason_detail: ""
-  });
-}
-
-/* =========================
-   include
-========================= */
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
-
-/* =========================
-   社員一覧（申請画面用）
-   かなグループ判定用に name_kana も返す
+   申請画面用社員一覧
 ========================= */
 function getEmployeesForRequest() {
   const sheet = getSheet("employees");
@@ -1310,6 +1154,10 @@ function getEmployeesForRequest() {
         used_days: 0
       };
 
+      const usedDays = Number(balance.used_days || 0);
+      const fiveDayUsed = Math.min(usedDays, 5);
+      const fiveDayRemaining = Math.max(0, 5 - usedDays);
+
       return {
         employee_id: employeeId,
         name: String(rowObj.name || "").trim(),
@@ -1317,24 +1165,22 @@ function getEmployeesForRequest() {
         current_remaining_days: Number(balance.current_remaining_days || 0),
         carry_over_days: Number(balance.carry_over_days || 0),
         grant_days: Number(balance.grant_days || 0),
-        used_days: Number(balance.used_days || 0)
+        used_days: usedDays,
+        five_day_used: fiveDayUsed,
+        five_day_remaining: fiveDayRemaining,
+        five_day_completed: fiveDayRemaining === 0
       };
     })
     .filter(emp => emp.employee_id && emp.name);
 }
 
 /* =========================
-   company_calendar をフロント用に返す
-   date -> yyyy-MM-dd
+   フロント用返却
 ========================= */
 function getCalendarRules() {
-  const calendarMap = getCompanyCalendarMap();
-  return calendarMap;
+  return getCompanyCalendarMap();
 }
 
-/* =========================
-   申請前チェック（フロント確認用）
-========================= */
 function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
   validateLeaveRequestDates(
     startDate,
@@ -1342,7 +1188,5 @@ function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
     halfType || (halfDay ? "half" : "")
   );
 
-  return {
-    ok: true
-  };
+  return { ok: true };
 }
