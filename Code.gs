@@ -11,12 +11,29 @@ const STATUS = {
 };
 
 /* =========================
+   カレンダー種別
+========================= */
+const CALENDAR_TYPE = {
+  WORKDAY: "workday",
+  HOLIDAY: "holiday",
+  NO_LEAVE: "no_leave"
+};
+
+/* =========================
    出力シート名
 ========================= */
 const OUTPUT_SHEET = {
   MONTHLY: "月間有給取得一覧",
   YEARLY: "年間有給取得一覧"
 };
+
+/* =========================
+   アプリで使うタイムゾーン
+   ※ スクリプトではなくスプレッドシート基準
+========================= */
+function getAppTimeZone() {
+  return SpreadsheetApp.openById(SS_ID).getSpreadsheetTimeZone();
+}
 
 /* =========================
    管理画面
@@ -71,9 +88,74 @@ function formatDateValue(value) {
 
   return Utilities.formatDate(
     date,
-    Session.getScriptTimeZone(),
+    getAppTimeZone(),
     "yyyy/MM/dd"
   );
+}
+
+/* =========================
+   ローカル日付安全変換
+   Date型でも文字列でも、
+   スプレッドシート基準の日付として扱う
+========================= */
+function parseLocalDate(value) {
+  if (value instanceof Date) {
+    const ymd = Utilities.formatDate(value, getAppTimeZone(), "yyyy-MM-dd");
+    const parts = ymd.split("-");
+
+    const year = Number(parts[0]);
+    const month = Number(parts[1]);
+    const day = Number(parts[2]);
+
+    const d = new Date(year, month - 1, day);
+
+    if (isNaN(d.getTime())) {
+      throw new Error("日付が不正です");
+    }
+
+    return d;
+  }
+
+  const str = String(value || "").trim();
+  if (!str) {
+    throw new Error("日付が空です");
+  }
+
+  const normalized = str.replace(/\//g, "-");
+  const parts = normalized.split("-");
+
+  if (parts.length !== 3) {
+    throw new Error("日付形式が不正です: " + str);
+  }
+
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+
+  if (!year || !month || !day) {
+    throw new Error("日付形式が不正です: " + str);
+  }
+
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    throw new Error("存在しない日付です: " + str);
+  }
+
+  return date;
+}
+
+function toDateKey(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, getAppTimeZone(), "yyyy-MM-dd");
+  }
+
+  const date = parseLocalDate(value);
+  return Utilities.formatDate(date, getAppTimeZone(), "yyyy-MM-dd");
 }
 
 /* =========================
@@ -161,23 +243,21 @@ function getFiscalYearRange(fiscalYear) {
 }
 
 function getFiscalYearFromDate(dateValue) {
-  const date = new Date(dateValue);
+  const date = parseLocalDate(dateValue);
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   return month >= 4 ? year : year - 1;
 }
 
 function getClosingMonthRange(targetYear, targetMonth) {
-  // 例: 2026年5月指定 → 2026/04/26〜2026/05/25
+  // 例: 2026年5月指定 -> 2026/04/26 ～ 2026/05/25
   const start = new Date(targetYear, targetMonth - 2, 26);
   const end = new Date(targetYear, targetMonth - 1, 25);
   return { start, end };
 }
 
 function isDateInRange(dateValue, start, end) {
-  const date = new Date(dateValue);
-  if (isNaN(date.getTime())) return false;
-
+  const date = parseLocalDate(dateValue);
   const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const from = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const to = new Date(end.getFullYear(), end.getMonth(), end.getDate());
@@ -186,35 +266,110 @@ function isDateInRange(dateValue, start, end) {
 }
 
 /* =========================
-   日別展開
-   半日申請: start_date のみ 0.5
-   それ以外: start_date〜end_date の平日を1日ずつ
+   company_calendar 取得
 ========================= */
-function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfDayValue) {
-  const result = [];
+function getCompanyCalendarMap() {
+  const sheet = getSheet("company_calendar");
+  const headerInfo = requireHeaders(sheet, ["date", "type"]);
 
-  const start = new Date(startDateValue);
-  const end = new Date(endDateValue);
+  const data = sheet.getDataRange().getValues();
+  const map = {};
 
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    return result;
+  if (data.length <= 1) return map;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const rawDate = rowObj.date;
+    const rawType = norm(rowObj.type);
+
+    if (!rawDate) return;
+
+    const key = toDateKey(rawDate);
+    map[key] = rawType;
+  });
+
+  return map;
+}
+
+function getCalendarTypeForDate(dateValue, calendarMap) {
+  const key = toDateKey(dateValue);
+
+  if (calendarMap && key in calendarMap) {
+    return calendarMap[key];
   }
 
+  // company_calendar に未登録なら日曜だけ holiday、それ以外 workday
+  const date = parseLocalDate(dateValue);
+  return date.getDay() === 0 ? CALENDAR_TYPE.HOLIDAY : CALENDAR_TYPE.WORKDAY;
+}
+
+function isLeaveAllowedDate(dateValue, calendarMap) {
+  const type = getCalendarTypeForDate(dateValue, calendarMap);
+  return type === CALENDAR_TYPE.WORKDAY;
+}
+
+function getCalendarLabel(type) {
+  if (type === CALENDAR_TYPE.WORKDAY) return "営業日";
+  if (type === CALENDAR_TYPE.HOLIDAY) return "休日";
+  if (type === CALENDAR_TYPE.NO_LEAVE) return "有給NG";
+  return type || "";
+}
+
+function validateLeaveRequestDates(startDateValue, endDateValue, halfDayValue) {
+  const calendarMap = getCompanyCalendarMap();
+  const start = parseLocalDate(startDateValue);
+  const end = parseLocalDate(endDateValue);
   const normalizedHalfDay = norm(halfDayValue);
 
   if (normalizedHalfDay) {
-    result.push({
-      date: new Date(start),
-      days: 0.5
-    });
+    const type = getCalendarTypeForDate(start, calendarMap);
+    if (type !== CALENDAR_TYPE.WORKDAY) {
+      throw new Error(
+        formatDateValue(start) + " は " + getCalendarLabel(type) + " のため有給申請できません"
+      );
+    }
+    return;
+  }
+
+  let cursor = new Date(start);
+
+  while (cursor <= end) {
+    const type = getCalendarTypeForDate(cursor, calendarMap);
+    if (type !== CALENDAR_TYPE.WORKDAY) {
+      throw new Error(
+        formatDateValue(cursor) + " は " + getCalendarLabel(type) + " のため有給申請できません"
+      );
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+}
+
+/* =========================
+   日別展開
+   holiday / no_leave は除外
+========================= */
+function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfDayValue) {
+  const result = [];
+  const calendarMap = getCompanyCalendarMap();
+
+  const start = parseLocalDate(startDateValue);
+  const end = parseLocalDate(endDateValue);
+  const normalizedHalfDay = norm(halfDayValue);
+
+  if (normalizedHalfDay) {
+    if (isLeaveAllowedDate(start, calendarMap)) {
+      result.push({
+        date: new Date(start),
+        days: 0.5
+      });
+    }
     return result;
   }
 
   let cursor = new Date(start);
 
   while (cursor <= end) {
-    const day = cursor.getDay();
-    if (day !== 0 && day !== 6) {
+    if (isLeaveAllowedDate(cursor, calendarMap)) {
       result.push({
         date: new Date(cursor),
         days: 1
@@ -223,7 +378,7 @@ function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfD
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  if (result.length === 0 && Number(days || 0) > 0) {
+  if (result.length === 0 && Number(days || 0) > 0 && isLeaveAllowedDate(start, calendarMap)) {
     result.push({
       date: new Date(start),
       days: Number(days || 0)
@@ -270,17 +425,18 @@ function getEmployeeMap() {
 }
 
 /* =========================
-   土日除外
+   有給日数計算
+   company_calendar 対応
 ========================= */
 function calculateLeaveDays(startDate, endDate) {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const calendarMap = getCompanyCalendarMap();
+  const start = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
 
   let count = 0;
 
   while (start <= end) {
-    const day = start.getDay();
-    if (day !== 0 && day !== 6) {
+    if (isLeaveAllowedDate(start, calendarMap)) {
       count++;
     }
     start.setDate(start.getDate() + 1);
@@ -355,12 +511,10 @@ function submitLeaveRequest(data) {
     throw new Error("start_date または end_date がありません");
   }
 
-  const start = new Date(data.start_date);
-  const end = new Date(data.end_date);
+  const start = parseLocalDate(data.start_date);
+  const end = parseLocalDate(data.end_date);
 
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    throw new Error("日付が不正です");
-  }
+  validateLeaveRequestDates(start, end, data.half_type || (data.half_day ? "half" : ""));
 
   const isHalf = data.half_day === true;
   const days = isHalf ? 0.5 : calculateLeaveDays(start, end);
@@ -740,7 +894,6 @@ function getUsageLogs() {
 
 /* =========================
    月間取得一覧出力
-   1日ずつ分解して出力
 ========================= */
 function exportMonthlyPaidLeaveReport(targetYear, targetMonth) {
   if (!targetYear || !targetMonth) {
@@ -934,7 +1087,7 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
 }
 
 /* =========================
-   ステータス確認用
+   デバッグ関数
 ========================= */
 function debugStatusValues() {
   const sheet = getSheet("leave_requests");
@@ -961,6 +1114,49 @@ function debugStatusValues() {
   });
 }
 
+function debugCompanyCalendarForDates() {
+  const calendarMap = getCompanyCalendarMap();
+  const targets = [
+    "2026-04-05",
+    "2026-04-10",
+    "2026-04-11",
+    "2026-04-12"
+  ];
+
+  const results = targets.map(dateStr => {
+    return {
+      date: dateStr,
+      type: calendarMap[dateStr] || "(未登録)",
+      label: getCalendarLabel(calendarMap[dateStr] || "")
+    };
+  });
+
+  Logger.log(JSON.stringify(results, null, 2));
+}
+
+function debugCurrentSpreadsheetAndCalendarSheet() {
+  const ss = SpreadsheetApp.openById(SS_ID);
+  const sheet = ss.getSheetByName("company_calendar");
+
+  if (!sheet) {
+    Logger.log("company_calendar シートが見つかりません");
+    return;
+  }
+
+  Logger.log("Spreadsheet Name: " + ss.getName());
+  Logger.log("Spreadsheet ID: " + ss.getId());
+  Logger.log("Sheet Name: " + sheet.getName());
+
+  const values = sheet.getRange(1, 1, 15, 3).getValues();
+  Logger.log(JSON.stringify(values, null, 2));
+}
+
+function debugTimeZones() {
+  const ss = SpreadsheetApp.openById(SS_ID);
+  Logger.log("Script TimeZone: " + Session.getScriptTimeZone());
+  Logger.log("Spreadsheet TimeZone: " + ss.getSpreadsheetTimeZone());
+}
+
 /* =========================
    手動確認用テスト関数
 ========================= */
@@ -984,60 +1180,38 @@ function testExportYearlyPaidLeaveReport() {
   return exportYearlyPaidLeaveReport(2026);
 }
 
-function debugApprovedDailyRowsForEmployee(employeeId, fiscalYear) {
-  const sheet = getSheet("leave_requests");
-  const headerInfo = requireHeaders(sheet, [
-    "request_id",
-    "employee_id",
-    "start_date",
-    "end_date",
-    "days",
-    "half_day",
-    "status"
-  ]);
-
-  const data = sheet.getDataRange().getValues();
-  const range = getFiscalYearRange(Number(fiscalYear));
-  const results = [];
-
-  if (data.length <= 1) {
-    Logger.log("データなし");
-    return;
-  }
-
-  data.slice(1).forEach(row => {
-    const rowObj = rowToObject(row, headerInfo.headers);
-    const rowEmployeeId = String(rowObj.employee_id || "").trim();
-    const status = norm(rowObj.status);
-
-    if (rowEmployeeId !== String(employeeId)) return;
-    if (status !== STATUS.APPROVED) return;
-
-    const dailyRows = expandLeaveRequestToDailyRows(
-      rowObj.start_date,
-      rowObj.end_date,
-      rowObj.days,
-      rowObj.half_day
-    );
-
-    dailyRows.forEach(item => {
-      if (!isDateInRange(item.date, range.start, range.end)) return;
-
-      results.push({
-        request_id: rowObj.request_id,
-        start_date: formatDateValue(rowObj.start_date),
-        end_date: formatDateValue(rowObj.end_date),
-        original_days: rowObj.days,
-        half_day: rowObj.half_day,
-        expanded_date: formatDateValue(item.date),
-        expanded_days: item.days
-      });
-    });
+function testHolidayRequestBlocked() {
+  return submitLeaveRequest({
+    employee_id: "T001",
+    start_date: "2026-04-05",
+    end_date: "2026-04-05",
+    half_day: false,
+    half_type: "",
+    reason: "holiday test",
+    reason_detail: ""
   });
-
-  Logger.log(JSON.stringify(results, null, 2));
 }
 
-function testDebugT001() {
-  debugApprovedDailyRowsForEmployee("T001", 2026);
+function testNoLeaveRequestBlocked() {
+  return submitLeaveRequest({
+    employee_id: "T001",
+    start_date: "2026-04-11",
+    end_date: "2026-04-11",
+    half_day: false,
+    half_type: "",
+    reason: "no leave test",
+    reason_detail: ""
+  });
+}
+
+function testWorkdayRequestAllowed() {
+  return submitLeaveRequest({
+    employee_id: "T001",
+    start_date: "2026-04-10",
+    end_date: "2026-04-10",
+    half_day: false,
+    half_type: "",
+    reason: "workday test",
+    reason_detail: ""
+  });
 }
