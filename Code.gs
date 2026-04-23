@@ -31,27 +31,40 @@ const OUTPUT_SHEET = {
    キャッシュキー
 ========================= */
 const CACHE_KEY = {
-  EMPLOYEE_MAP: "employee_map_v1",
-  COMPANY_CALENDAR: "company_calendar_v1",
-  EMPLOYEES_FOR_REQUEST_PREFIX: "employees_for_request_"
+  EMPLOYEE_MAP: "employee_map_v2",
+  COMPANY_CALENDAR: "company_calendar_v2",
+  EMPLOYEES_FOR_REQUEST_PREFIX: "employees_for_request_v2_"
 };
+
+/* =========================
+   実行中メモリキャッシュ
+========================= */
+let APP_SS_CACHE = null;
+let OUTPUT_SS_CACHE = null;
+let TZ_CACHE = null;
 
 /* =========================
    スプレッドシート取得
 ========================= */
 function getAppSpreadsheet() {
-  return SpreadsheetApp.openById(SS_ID);
+  if (APP_SS_CACHE) return APP_SS_CACHE;
+  APP_SS_CACHE = SpreadsheetApp.openById(SS_ID);
+  return APP_SS_CACHE;
 }
 
 function getOutputSpreadsheet() {
-  return SpreadsheetApp.openById(OUTPUT_SS_ID);
+  if (OUTPUT_SS_CACHE) return OUTPUT_SS_CACHE;
+  OUTPUT_SS_CACHE = SpreadsheetApp.openById(OUTPUT_SS_ID);
+  return OUTPUT_SS_CACHE;
 }
 
 /* =========================
    アプリで使うタイムゾーン
 ========================= */
 function getAppTimeZone() {
-  return getAppSpreadsheet().getSpreadsheetTimeZone();
+  if (TZ_CACHE) return TZ_CACHE;
+  TZ_CACHE = getAppSpreadsheet().getSpreadsheetTimeZone();
+  return TZ_CACHE;
 }
 
 /* =========================
@@ -376,16 +389,16 @@ function validateLeaveRequestDates(startDateValue, endDateValue, halfDayValue) {
 /* =========================
    日別展開
 ========================= */
-function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfDayValue) {
+function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfDayValue, calendarMap) {
   const result = [];
-  const calendarMap = getCompanyCalendarMap();
+  const map = calendarMap || getCompanyCalendarMap();
 
   const start = parseLocalDate(startDateValue);
   const end = parseLocalDate(endDateValue);
   const normalizedHalfDay = norm(halfDayValue);
 
   if (normalizedHalfDay) {
-    if (isLeaveAllowedDate(start, calendarMap)) {
+    if (isLeaveAllowedDate(start, map)) {
       result.push({
         date: new Date(start),
         days: 0.5
@@ -397,7 +410,7 @@ function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfD
   let cursor = new Date(start);
 
   while (cursor <= end) {
-    if (isLeaveAllowedDate(cursor, calendarMap)) {
+    if (isLeaveAllowedDate(cursor, map)) {
       result.push({
         date: new Date(cursor),
         days: 1
@@ -406,7 +419,7 @@ function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfD
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  if (result.length === 0 && Number(days || 0) > 0 && isLeaveAllowedDate(start, calendarMap)) {
+  if (result.length === 0 && Number(days || 0) > 0 && isLeaveAllowedDate(start, map)) {
     result.push({
       date: new Date(start),
       days: Number(days || 0)
@@ -492,6 +505,7 @@ function getApprovedUsedDaysByFiscalYear(fiscalYear) {
   const data = sheet.getDataRange().getValues();
   const result = {};
   const range = getFiscalYearRange(fiscalYear);
+  const calendarMap = getCompanyCalendarMap();
 
   if (data.length <= 1) return result;
 
@@ -507,7 +521,8 @@ function getApprovedUsedDaysByFiscalYear(fiscalYear) {
       rowObj.start_date,
       rowObj.end_date,
       rowObj.days,
-      rowObj.half_day
+      rowObj.half_day,
+      calendarMap
     );
 
     dailyRows.forEach(item => {
@@ -516,6 +531,66 @@ function getApprovedUsedDaysByFiscalYear(fiscalYear) {
       if (!result[employeeId]) {
         result[employeeId] = 0;
       }
+      result[employeeId] += Number(item.days || 0);
+    });
+  });
+
+  return result;
+}
+
+/* =========================
+   対象社員だけの承認済み使用日数集計
+========================= */
+function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) {
+  const targetIds = new Set(
+    (employeeIds || [])
+      .map(id => String(id || "").trim())
+      .filter(Boolean)
+  );
+
+  if (targetIds.size === 0) return {};
+
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "status"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+  const range = getFiscalYearRange(fiscalYear);
+  const calendarMap = getCompanyCalendarMap();
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const status = norm(rowObj.status);
+
+    if (!employeeId) return;
+    if (!targetIds.has(employeeId)) return;
+    if (status !== STATUS.APPROVED) return;
+
+    const dailyRows = expandLeaveRequestToDailyRows(
+      rowObj.start_date,
+      rowObj.end_date,
+      rowObj.days,
+      rowObj.half_day,
+      calendarMap
+    );
+
+    dailyRows.forEach(item => {
+      if (!isDateInRange(item.date, range.start, range.end)) return;
+
+      if (!result[employeeId]) {
+        result[employeeId] = 0;
+      }
+
       result[employeeId] += Number(item.days || 0);
     });
   });
@@ -532,6 +607,62 @@ function getEmployeeBalanceMapForFiscalYear(fiscalYear) {
 
   employees.forEach(emp => {
     const employeeId = emp.id;
+    const grantInfo = grantMap[employeeId] || {
+      employee_id: employeeId,
+      grant_days: 0,
+      carry_over_days: 0
+    };
+
+    const previousDays = Number(grantInfo.carry_over_days || 0);
+    const grantDays = Number(grantInfo.grant_days || 0);
+    const usedDays = Number(usedMap[employeeId] || 0);
+
+    const remainingFromPrevious = previousDays - usedDays;
+
+    let nextCarryOverDays = 0;
+    let expiredDays = 0;
+
+    if (remainingFromPrevious >= 0) {
+      expiredDays = remainingFromPrevious;
+      nextCarryOverDays = grantDays;
+    } else {
+      expiredDays = 0;
+      nextCarryOverDays = grantDays + remainingFromPrevious;
+    }
+
+    if (nextCarryOverDays < 0) {
+      nextCarryOverDays = 0;
+    }
+
+    const currentRemainingDays = previousDays + grantDays - usedDays;
+
+    result[employeeId] = {
+      current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays,
+      carry_over_days: previousDays,
+      grant_days: grantDays,
+      used_days: usedDays,
+      next_carry_over_days: nextCarryOverDays,
+      expired_days: expiredDays
+    };
+  });
+
+  return result;
+}
+
+/* =========================
+   対象社員だけの残日数計算
+========================= */
+function getEmployeeBalanceMapForEmployeeIdsForFiscalYear(fiscalYear, employeeIds) {
+  const ids = (employeeIds || [])
+    .map(id => String(id || "").trim())
+    .filter(Boolean);
+
+  const grantMap = getGrantMapByFiscalYear(fiscalYear);
+  const usedMap = getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, ids);
+
+  const result = {};
+
+  ids.forEach(employeeId => {
     const grantInfo = grantMap[employeeId] || {
       employee_id: employeeId,
       grant_days: 0,
@@ -773,7 +904,6 @@ function submitLeaveRequest(data) {
 
 /* =========================
    管理画面用：申請一覧取得
-   軽量化版
 ========================= */
 function getRequestsByStatus(status) {
   const sheet = getSheet("leave_requests");
@@ -1017,6 +1147,7 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth) {
 
   const leaveData = leaveSheet.getDataRange().getValues();
   const employeeMap = getEmployeeMap();
+  const calendarMap = getCompanyCalendarMap();
 
   const detailRows = [];
   const totalMap = {};
@@ -1035,7 +1166,8 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth) {
         rowObj.start_date,
         rowObj.end_date,
         rowObj.days,
-        rowObj.half_day
+        rowObj.half_day,
+        calendarMap
       );
 
       dailyRows.forEach(item => {
@@ -1199,39 +1331,45 @@ function getEmployeesForRequest() {
 
   if (data.length <= 1) return [];
 
-  const balanceMap = getEmployeeBalanceMapForFiscalYear(fiscalYear);
-
-  const result = data.slice(1)
-    .map(row => {
-      const rowObj = rowToObject(row, headerInfo.headers);
+  const employeeRows = data.slice(1)
+    .map(row => rowToObject(row, headerInfo.headers))
+    .filter(rowObj => {
       const employeeId = String(rowObj.employee_id || "").trim();
-      const balance = balanceMap[employeeId] || {
-        current_remaining_days: 0,
-        carry_over_days: 0,
-        grant_days: 0,
-        used_days: 0
-      };
+      const name = String(rowObj.name || "").trim();
+      return employeeId && name;
+    });
 
-      const usedDays = Number(balance.used_days || 0);
-      const fiveDayUsed = Math.min(usedDays, 5);
-      const fiveDayRemaining = Math.max(0, 5 - usedDays);
+  const employeeIds = employeeRows.map(rowObj => String(rowObj.employee_id || "").trim());
+  const balanceMap = getEmployeeBalanceMapForEmployeeIdsForFiscalYear(fiscalYear, employeeIds);
 
-      return {
-        employee_id: employeeId,
-        name: String(rowObj.name || "").trim(),
-        name_kana: String(rowObj.name_kana || "").trim(),
-        current_remaining_days: Number(balance.current_remaining_days || 0),
-        carry_over_days: Number(balance.carry_over_days || 0),
-        grant_days: Number(balance.grant_days || 0),
-        used_days: usedDays,
-        five_day_used: fiveDayUsed,
-        five_day_remaining: fiveDayRemaining,
-        five_day_completed: fiveDayRemaining === 0
-      };
-    })
-    .filter(emp => emp.employee_id && emp.name);
+  const result = employeeRows.map(rowObj => {
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const balance = balanceMap[employeeId] || {
+      current_remaining_days: 0,
+      carry_over_days: 0,
+      grant_days: 0,
+      used_days: 0
+    };
 
-  cache.put(cacheKey, JSON.stringify(result), 120);
+    const usedDays = Number(balance.used_days || 0);
+    const fiveDayUsed = Math.min(usedDays, 5);
+    const fiveDayRemaining = Math.max(0, 5 - usedDays);
+
+    return {
+      employee_id: employeeId,
+      name: String(rowObj.name || "").trim(),
+      name_kana: String(rowObj.name_kana || "").trim(),
+      current_remaining_days: Number(balance.current_remaining_days || 0),
+      carry_over_days: Number(balance.carry_over_days || 0),
+      grant_days: Number(balance.grant_days || 0),
+      used_days: usedDays,
+      five_day_used: fiveDayUsed,
+      five_day_remaining: fiveDayRemaining,
+      five_day_completed: fiveDayRemaining === 0
+    };
+  });
+
+  cache.put(cacheKey, JSON.stringify(result), 300);
   return result;
 }
 
