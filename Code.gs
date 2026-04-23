@@ -983,3 +983,61 @@ function testExportMonthlyPaidLeaveReport() {
 function testExportYearlyPaidLeaveReport() {
   return exportYearlyPaidLeaveReport(2026);
 }
+
+function debugApprovedDailyRowsForEmployee(employeeId, fiscalYear) {
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id",
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "status"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  const range = getFiscalYearRange(Number(fiscalYear));
+  const results = [];
+
+  if (data.length <= 1) {
+    Logger.log("データなし");
+    return;
+  }
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const rowEmployeeId = String(rowObj.employee_id || "").trim();
+    const status = norm(rowObj.status);
+
+    if (rowEmployeeId !== String(employeeId)) return;
+    if (status !== STATUS.APPROVED) return;
+
+    const dailyRows = expandLeaveRequestToDailyRows(
+      rowObj.start_date,
+      rowObj.end_date,
+      rowObj.days,
+      rowObj.half_day
+    );
+
+    dailyRows.forEach(item => {
+      if (!isDateInRange(item.date, range.start, range.end)) return;
+
+      results.push({
+        request_id: rowObj.request_id,
+        start_date: formatDateValue(rowObj.start_date),
+        end_date: formatDateValue(rowObj.end_date),
+        original_days: rowObj.days,
+        half_day: rowObj.half_day,
+        expanded_date: formatDateValue(item.date),
+        expanded_days: item.days
+      });
+    });
+  });
+
+  Logger.log(JSON.stringify(results, null, 2));
+}
+
+function testDebugT001() {
+  debugApprovedDailyRowsForEmployee("T001", 2026);
+}
