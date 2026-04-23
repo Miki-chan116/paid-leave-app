@@ -9,11 +9,6 @@
 <body>
   <div class="app-shell">
     <header class="app-header">
-      <div class="lang-switch">
-        <button id="langJaBtn" class="lang-btn active" type="button" onclick="setLanguage('ja')">日本語</button>
-        <button id="langEnBtn" class="lang-btn" type="button" onclick="setLanguage('en')">English</button>
-      </div>
-
       <h1 id="appTitle" class="app-title">有給申請</h1>
       <p id="appSubtitle" class="app-subtitle">名前を選んで申請してください</p>
     </header>
@@ -40,69 +35,62 @@
         <div class="group-header">
           <div>
             <div class="section-title" id="groupTitle">あ行</div>
-            <div id="employeeScreenSubtitle" class="section-subtitle">名前を押すと申請画面へ進みます</div>
+            <div class="section-subtitle">名前を押すと申請画面へ進みます</div>
           </div>
-          <div class="page-indicator" id="pageIndicator">1 / 1</div>
         </div>
 
         <div id="employeeSwipeArea" class="employee-grid"></div>
-
-        <div class="bottom-pager">
-          <button id="prevPageBtn" class="pager-btn" type="button" onclick="prevPage()">◀</button>
-          <div class="pager-center" id="pageIndicatorBottom">1 / 1</div>
-          <button id="nextPageBtn" class="pager-btn" type="button" onclick="nextPage()">▶</button>
-        </div>
       </div>
     </section>
 
-    <!-- 申請画面 -->
+    <!-- 個人申請画面 -->
     <section id="requestScreen" class="screen">
       <div class="screen-card">
         <div class="request-topbar">
           <button id="backBtn" class="back-btn" type="button" onclick="backToEmployeeList()">← 戻る</button>
 
           <div class="selected-employee-box">
-            <div id="selectedEmployeeLabel" class="selected-employee-label">選択中の社員</div>
-            <div id="selectedEmployeeName" class="selected-employee-name"></div>
+            <div class="selected-employee-label">選択中の社員</div>
 
-            <div class="employee-summary-row">
-              <div class="summary-chip summary-chip-blue">
-                <span id="summaryRemainingLabel">残日数</span>
-                <strong id="selectedRemainingDays">0日</strong>
+            <div class="selected-employee-header">
+              <div id="selectedEmployeeName" class="selected-employee-name"></div>
+
+              <div class="selected-employee-mini-info">
+                <div class="mini-info-line">
+                  <span class="mini-info-label">残</span>
+                  <span id="selectedRemainingDays" class="mini-info-value">0日</span>
+                </div>
+
+                <div class="mini-info-line">
+                  <span class="mini-info-label">付与</span>
+                  <span id="selectedGrantDays" class="mini-info-value">0日</span>
+                </div>
+
+                <div class="mini-five-wrap">
+                  <span class="mini-info-label">5日</span>
+                  <div class="mini-five-bar">
+                    <div id="fiveDayBarFill" class="mini-five-bar-fill"></div>
+                  </div>
+                  <span id="fiveDayCount" class="mini-five-count">0/5</span>
+                </div>
+
+                <div id="fiveDayMessage" class="mini-five-message">あと5日</div>
               </div>
-
-              <div class="summary-chip summary-chip-green">
-                <span id="summaryGrantLabel">付与日数</span>
-                <strong id="selectedGrantDays">0日</strong>
-              </div>
-            </div>
-
-            <div class="five-day-card">
-              <div class="five-day-top">
-                <span id="fiveDayTitle">5日取得義務</span>
-                <span id="fiveDayCount">0 / 5日</span>
-              </div>
-
-              <div class="five-day-bar">
-                <div id="fiveDayBarFill" class="five-day-bar-fill"></div>
-              </div>
-
-              <div id="fiveDayMessage" class="five-day-message">あと5日</div>
             </div>
           </div>
         </div>
 
         <div class="request-section">
-          <div id="requestSectionDate" class="request-section-title">1. 希望日を選択</div>
+          <div class="request-section-title">1. 希望日を選択</div>
 
           <div class="field single-date-field">
-            <label id="singleDateLabel" for="singleDate">希望日</label>
+            <label for="singleDate">希望日</label>
             <input type="date" id="singleDate" onchange="handleRequestTypeChange()">
           </div>
         </div>
 
         <div class="request-section">
-          <div id="requestSectionType" class="request-section-title">2. 申請区分を選択</div>
+          <div class="request-section-title">2. 申請区分を選択</div>
 
           <div class="request-type-grid">
             <button class="type-btn" id="typeOneDay" type="button" onclick="selectRequestType('one_day')">1日</button>
@@ -113,31 +101,31 @@
         </div>
 
         <div id="multiDayArea" class="request-section" style="display:none;">
-          <div id="multiDayTitle" class="request-section-title">複数日申請</div>
+          <div class="request-section-title">複数日申請</div>
 
           <div class="multi-day-grid">
             <div class="field">
-              <label id="rangeStartDateLabel" for="rangeStartDate">開始日</label>
+              <label for="rangeStartDate">開始日</label>
               <input type="date" id="rangeStartDate" onchange="handleRequestTypeChange()">
             </div>
 
             <div class="field">
-              <label id="rangeEndDateLabel" for="rangeEndDate">終了日</label>
+              <label for="rangeEndDate">終了日</label>
               <input type="date" id="rangeEndDate" onchange="handleRequestTypeChange()">
             </div>
           </div>
         </div>
 
         <div class="request-section">
-          <div id="requestSectionReason" class="request-section-title">3. 理由を選択</div>
+          <div class="request-section-title">3. 理由を選択</div>
 
           <div class="field">
-            <label id="reasonTypeLabel" for="reasonType">申請理由</label>
+            <label for="reasonType">申請理由</label>
             <select id="reasonType" onchange="handleReasonTypeChange()"></select>
           </div>
 
           <div class="field full-width" id="reasonDetailWrap" style="display:none;">
-            <label id="reasonDetailLabel" for="reasonDetail">理由詳細</label>
+            <label for="reasonDetail">理由詳細</label>
             <textarea id="reasonDetail" rows="3" placeholder="特記事項がある場合のみ入力してください"></textarea>
           </div>
         </div>

@@ -1,35 +1,131 @@
 <script>
 let employees = [];
 let selectedEmployee = null;
+let currentGroup = "a";
 
 /* 初期化 */
 function initPage() {
   google.script.run
     .withSuccessHandler(data => {
       employees = data || [];
+      currentGroup = getFirstAvailableGroup();
       render();
+      updateGroupTabs();
+      initReasonOptions();
     })
     .getEmployeesForRequest();
 }
 
 window.addEventListener("DOMContentLoaded", initPage);
 
+/* 理由プルダウン初期化 */
+function initReasonOptions() {
+  const reasonType = document.getElementById("reasonType");
+  if (!reasonType) return;
+
+  reasonType.innerHTML = `
+    <option value="">選択してください</option>
+    <option value="private">私用</option>
+    <option value="sick">体調不良</option>
+    <option value="other">その他</option>
+  `;
+}
+
+/* 五十音グループ判定 */
+function getKanaGroup(emp) {
+  const kana = (emp.name_kana || "").trim();
+  const k = kana.charAt(0);
+
+  if (!k) return "global";
+  if (/[A-Za-z]/.test(k)) return "global";
+
+  if ("あいうえおぁぃぅぇぉ".includes(k)) return "a";
+  if ("かきくけこがぎぐげご".includes(k)) return "k";
+  if ("さしすせそざじずぜぞ".includes(k)) return "s";
+  if ("たちつてとだぢづでど".includes(k)) return "t";
+  if ("なにぬねの".includes(k)) return "n";
+  if ("はひふへほばびぶべぼぱぴぷぺぽ".includes(k)) return "h";
+  if ("まみむめも".includes(k)) return "m";
+  if ("やゆよゃゅょ".includes(k)) return "y";
+  if ("らりるれろ".includes(k)) return "r";
+  if ("わをん".includes(k)) return "w";
+
+  return "global";
+}
+
+function getGroupOrder() {
+  return ["a", "k", "s", "t", "n", "h", "m", "y", "r", "w", "global"];
+}
+
+function getFirstAvailableGroup() {
+  const order = getGroupOrder();
+  const first = order.find(group => employees.some(emp => getKanaGroup(emp) === group));
+  return first || "a";
+}
+
+function changeGroup(group) {
+  currentGroup = group;
+  render();
+  updateGroupTabs();
+}
+
+function updateGroupTabs() {
+  getGroupOrder().forEach(group => {
+    const btn = document.querySelector(`[data-group="${group}"]`);
+    if (!btn) return;
+
+    btn.classList.toggle("active", group === currentGroup);
+
+    const hasMember = employees.some(emp => getKanaGroup(emp) === group);
+    btn.classList.toggle("no-member", !hasMember);
+  });
+}
+
 /* 描画 */
 function render() {
   const grid = document.getElementById("employeeSwipeArea");
+  const groupTitle = document.getElementById("groupTitle");
+  if (!grid) return;
+
   grid.innerHTML = "";
 
-  employees.forEach(emp => {
+  const filtered = employees.filter(emp => getKanaGroup(emp) === currentGroup);
+
+  const groupNames = {
+    a: "あ行",
+    k: "か行",
+    s: "さ行",
+    t: "た行",
+    n: "な行",
+    h: "は行",
+    m: "ま行",
+    y: "や行",
+    r: "ら行",
+    w: "わ行",
+    global: "外国人"
+  };
+
+  if (groupTitle) {
+    groupTitle.textContent = groupNames[currentGroup] || "あ行";
+  }
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="status-box">この行に該当する社員はいません。</div>`;
+    return;
+  }
+
+  filtered.forEach(emp => {
     const btn = document.createElement("button");
     btn.className = "employee-btn";
+    btn.type = "button";
 
-    const used = emp.five_day_used || 0;
+    const used = Number(emp.five_day_used || 0);
     const rate = Math.min((used / 5) * 100, 100);
 
     btn.innerHTML = `
       <div class="employee-left">
-        <div class="employee-name">${emp.name}</div>
-        <div class="employee-kana">${emp.name_kana}</div>
+        <div class="employee-name">${escapeHtml(emp.name)}</div>
+        <div class="employee-kana">${escapeHtml(emp.name_kana || "")}</div>
       </div>
 
       <div class="employee-right">
@@ -50,6 +146,16 @@ function render() {
   });
 }
 
+/* HTMLエスケープ */
+function escapeHtml(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 /* 社員選択 */
 function selectEmployee(emp) {
   selectedEmployee = emp;
@@ -58,8 +164,20 @@ function selectEmployee(emp) {
   document.getElementById("requestScreen").classList.add("active");
 
   document.getElementById("selectedEmployeeName").textContent = emp.name;
-  document.getElementById("selectedRemainingDays").textContent = emp.current_remaining_days + "日";
-  document.getElementById("selectedGrantDays").textContent = emp.grant_days + "日";
+
+  document.getElementById("selectedRemainingDays").textContent =
+    `${emp.current_remaining_days}日`;
+
+  document.getElementById("selectedGrantDays").textContent =
+    `${emp.grant_days}日`;
+
+  const used = Number(emp.five_day_used || 0);
+  const remain = Number(emp.five_day_remaining || 0);
+
+  document.getElementById("fiveDayCount").textContent = `${used}/5`;
+  document.getElementById("fiveDayBarFill").style.width = `${Math.min((used / 5) * 100, 100)}%`;
+  document.getElementById("fiveDayMessage").textContent =
+    emp.five_day_completed ? "達成済み" : `あと${remain}日`;
 }
 
 /* 戻る */
@@ -75,21 +193,78 @@ function handleReasonTypeChange() {
     type === "other" ? "block" : "none";
 }
 
+/* 申請区分 */
+function selectRequestType(type) {
+  const buttons = document.querySelectorAll(".type-btn");
+  buttons.forEach(btn => btn.classList.remove("active"));
+
+  currentRequestType = type;
+
+  const map = {
+    one_day: "typeOneDay",
+    half_am: "typeHalfAm",
+    half_pm: "typeHalfPm",
+    multi_day: "typeMultiDay"
+  };
+
+  const activeBtn = document.getElementById(map[type]);
+  if (activeBtn) activeBtn.classList.add("active");
+
+  const multiDayArea = document.getElementById("multiDayArea");
+  if (multiDayArea) {
+    multiDayArea.style.display = type === "multi_day" ? "block" : "none";
+  }
+}
+
+let currentRequestType = "";
+
+/* 日付変更時 */
+function handleRequestTypeChange() {
+  const box = document.getElementById("calendarStatus");
+  if (!box) return;
+  box.textContent = "日付を確認中です。";
+}
+
 /* 申請 */
 function submitRequest() {
-  const date = document.getElementById("singleDate").value;
-  const reason = document.getElementById("reasonType").value;
-  const detail = document.getElementById("reasonDetail").value;
-
   if (!selectedEmployee) {
     alert("社員を選択してください");
     return;
   }
 
-  if (!date) {
+  if (!currentRequestType) {
+    alert("申請区分を選択してください");
+    return;
+  }
+
+  let startDate = "";
+  let endDate = "";
+  let halfDay = false;
+  let halfType = "";
+
+  if (currentRequestType === "multi_day") {
+    startDate = document.getElementById("rangeStartDate").value;
+    endDate = document.getElementById("rangeEndDate").value;
+  } else {
+    startDate = document.getElementById("singleDate").value;
+    endDate = startDate;
+  }
+
+  if (!startDate || !endDate) {
     alert("日付を選択してください");
     return;
   }
+
+  if (currentRequestType === "half_am") {
+    halfDay = true;
+    halfType = "am";
+  } else if (currentRequestType === "half_pm") {
+    halfDay = true;
+    halfType = "pm";
+  }
+
+  const reason = document.getElementById("reasonType").value;
+  const detail = document.getElementById("reasonDetail").value;
 
   if (!reason) {
     alert("理由を選択してください");
@@ -98,11 +273,11 @@ function submitRequest() {
 
   const payload = {
     employee_id: selectedEmployee.employee_id,
-    start_date: date,
-    end_date: date,
+    start_date: startDate,
+    end_date: endDate,
     type: "paid_leave",
-    half_day: false,
-    half_type: "",
+    half_day: halfDay,
+    half_type: halfType,
     reason: reason,
     reason_detail: detail
   };

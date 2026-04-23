@@ -28,10 +28,30 @@ const OUTPUT_SHEET = {
 };
 
 /* =========================
+   キャッシュキー
+========================= */
+const CACHE_KEY = {
+  EMPLOYEE_MAP: "employee_map_v1",
+  COMPANY_CALENDAR: "company_calendar_v1",
+  EMPLOYEES_FOR_REQUEST_PREFIX: "employees_for_request_"
+};
+
+/* =========================
+   スプレッドシート取得
+========================= */
+function getAppSpreadsheet() {
+  return SpreadsheetApp.openById(SS_ID);
+}
+
+function getOutputSpreadsheet() {
+  return SpreadsheetApp.openById(OUTPUT_SS_ID);
+}
+
+/* =========================
    アプリで使うタイムゾーン
 ========================= */
 function getAppTimeZone() {
-  return SpreadsheetApp.openById(SS_ID).getSpreadsheetTimeZone();
+  return getAppSpreadsheet().getSpreadsheetTimeZone();
 }
 
 /* =========================
@@ -55,8 +75,7 @@ function include(filename) {
    シート取得
 ========================= */
 function getSheet(name) {
-  const ss = SpreadsheetApp.openById(SS_ID);
-  const sheet = ss.getSheetByName(name);
+  const sheet = getAppSpreadsheet().getSheetByName(name);
 
   if (!sheet) {
     throw new Error(name + " シートが見つかりません");
@@ -66,7 +85,7 @@ function getSheet(name) {
 }
 
 function getOutputSheet(name) {
-  const ss = SpreadsheetApp.openById(OUTPUT_SS_ID);
+  const ss = getOutputSpreadsheet();
   let sheet = ss.getSheetByName(name);
 
   if (!sheet) {
@@ -74,6 +93,18 @@ function getOutputSheet(name) {
   }
 
   return sheet;
+}
+
+/* =========================
+   キャッシュクリア
+========================= */
+function clearAppCache() {
+  const cache = CacheService.getScriptCache();
+  const currentFiscalYear = getCurrentFiscalYear();
+
+  cache.remove(CACHE_KEY.EMPLOYEE_MAP);
+  cache.remove(CACHE_KEY.COMPANY_CALENDAR);
+  cache.remove(CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + currentFiscalYear);
 }
 
 /* =========================
@@ -262,24 +293,31 @@ function isDateInRange(dateValue, start, end) {
    company_calendar 取得
 ========================= */
 function getCompanyCalendarMap() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(CACHE_KEY.COMPANY_CALENDAR);
+  if (cached) {
+    return JSON.parse(cached);
+  }
+
   const sheet = getSheet("company_calendar");
   const headerInfo = requireHeaders(sheet, ["date", "type"]);
   const data = sheet.getDataRange().getValues();
   const map = {};
 
-  if (data.length <= 1) return map;
+  if (data.length > 1) {
+    data.slice(1).forEach(row => {
+      const rowObj = rowToObject(row, headerInfo.headers);
+      const rawDate = rowObj.date;
+      const rawType = norm(rowObj.type);
 
-  data.slice(1).forEach(row => {
-    const rowObj = rowToObject(row, headerInfo.headers);
-    const rawDate = rowObj.date;
-    const rawType = norm(rowObj.type);
+      if (!rawDate) return;
 
-    if (!rawDate) return;
+      const key = toDateKey(rawDate);
+      map[key] = rawType;
+    });
+  }
 
-    const key = toDateKey(rawDate);
-    map[key] = rawType;
-  });
-
+  cache.put(CACHE_KEY.COMPANY_CALENDAR, JSON.stringify(map), 300);
   return map;
 }
 
@@ -584,6 +622,12 @@ function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
    社員名マップ
 ========================= */
 function getEmployeeMap() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(CACHE_KEY.EMPLOYEE_MAP);
+  if (cached) {
+    return JSON.parse(cached);
+  }
+
   const employees = getEmployees();
   const map = {};
 
@@ -591,6 +635,7 @@ function getEmployeeMap() {
     map[emp.id] = emp.name;
   });
 
+  cache.put(CACHE_KEY.EMPLOYEE_MAP, JSON.stringify(map), 300);
   return map;
 }
 
@@ -717,6 +762,8 @@ function submitLeaveRequest(data) {
     operator_name: "申請者",
     comment: "Leave request submitted"
   });
+
+  clearAppCache();
 
   return {
     ok: true,
@@ -858,6 +905,7 @@ function approveRequest(requestId) {
     comment: "Approved"
   });
 
+  clearAppCache();
   return { ok: true };
 }
 
@@ -908,6 +956,7 @@ function rejectRequest(requestId, reason) {
     comment: reason || ""
   });
 
+  clearAppCache();
   return { ok: true };
 }
 
@@ -1132,18 +1181,27 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
 
 /* =========================
    申請画面用社員一覧
+   速度改善のためキャッシュ対応
 ========================= */
 function getEmployeesForRequest() {
+  const fiscalYear = getCurrentFiscalYear();
+  const cache = CacheService.getScriptCache();
+  const cacheKey = CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + fiscalYear;
+  const cached = cache.get(cacheKey);
+
+  if (cached) {
+    return JSON.parse(cached);
+  }
+
   const sheet = getSheet("employees");
   const headerInfo = requireHeaders(sheet, ["employee_id", "name", "name_kana"]);
   const data = sheet.getDataRange().getValues();
 
   if (data.length <= 1) return [];
 
-  const fiscalYear = getCurrentFiscalYear();
   const balanceMap = getEmployeeBalanceMapForFiscalYear(fiscalYear);
 
-  return data.slice(1)
+  const result = data.slice(1)
     .map(row => {
       const rowObj = rowToObject(row, headerInfo.headers);
       const employeeId = String(rowObj.employee_id || "").trim();
@@ -1172,6 +1230,9 @@ function getEmployeesForRequest() {
       };
     })
     .filter(emp => emp.employee_id && emp.name);
+
+  cache.put(cacheKey, JSON.stringify(result), 120);
+  return result;
 }
 
 /* =========================
