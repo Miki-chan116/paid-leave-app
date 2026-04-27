@@ -275,16 +275,29 @@ function objectToRow(obj, headers) {
    期間計算
 ========================= */
 function getFiscalYearRange(fiscalYear) {
-  const start = new Date(fiscalYear, 3, 1);
-  const end = new Date(fiscalYear + 1, 2, 31);
+  return getFiscalYearRangeWithStart(fiscalYear, 4);
+}
+
+function getFiscalYearRangeWithStart(fiscalYear, startMonth) {
+  const fiscalStartMonth = Number(startMonth || 4);
+
+  const start = new Date(Number(fiscalYear), fiscalStartMonth - 1, 1);
+  const end = new Date(Number(fiscalYear) + 1, fiscalStartMonth - 1, 0);
+
   return { start, end };
 }
 
-function getFiscalYearFromDate(dateValue) {
+function getFiscalYearFromDateWithStart(dateValue, startMonth) {
   const date = parseLocalDate(dateValue);
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
-  return month >= 4 ? year : year - 1;
+  const fiscalStartMonth = Number(startMonth || 4);
+
+  return month >= fiscalStartMonth ? year : year - 1;
+}
+
+function getFiscalYearFromDate(dateValue) {
+  return getFiscalYearFromDateWithStart(dateValue, 4);
 }
 
 function getClosingMonthRange(targetYear, targetMonth) {
@@ -466,9 +479,18 @@ function getEmployees() {
     .map(row => {
       const rowObj = rowToObject(row, headerInfo.headers);
       return {
-        id: String(rowObj.employee_id || "").trim(),
-        name: String(rowObj.name || rowObj.employee_id || "").trim()
-      };
+       id: String(rowObj.employee_id || "").trim(),
+       name: String(rowObj.name || rowObj.employee_id || "").trim(),
+
+       company_code: String(rowObj.company_code || "").trim(),
+       company_name: String(rowObj.company_name || "").trim(),
+
+       fiscal_start_month: Number(rowObj.fiscal_start_month || 4),
+
+       leave_management_target: String(rowObj.leave_management_target || "").toUpperCase() === "TRUE",
+
+       employment_status: String(rowObj.employment_status || "").trim()
+       };
     })
     .filter(emp => emp.id);
 }
@@ -539,53 +561,11 @@ function getGrantMapByFiscalYear(fiscalYear) {
    承認済み取得日数
 ========================= */
 function getApprovedUsedDaysByFiscalYear(fiscalYear) {
-  const sheet = getSheet("leave_requests");
-  const headerInfo = requireHeaders(sheet, [
-    "employee_id",
-    "start_date",
-    "end_date",
-    "days",
-    "half_day",
-    "status"
-  ]);
+  const employees = getEmployees();
+  const employeeIds = employees.map(emp => emp.id);
 
-  const data = sheet.getDataRange().getValues();
-  const result = {};
-  const range = getFiscalYearRange(fiscalYear);
-  const calendarMap = getCompanyCalendarMap();
-
-  if (data.length <= 1) return result;
-
-  data.slice(1).forEach(row => {
-    const rowObj = rowToObject(row, headerInfo.headers);
-    const employeeId = String(rowObj.employee_id || "").trim();
-    const status = norm(rowObj.status);
-
-    if (!employeeId) return;
-    if (status !== STATUS.APPROVED) return;
-
-    const dailyRows = expandLeaveRequestToDailyRows(
-      rowObj.start_date,
-      rowObj.end_date,
-      rowObj.days,
-      rowObj.half_day,
-      calendarMap
-    );
-
-    dailyRows.forEach(item => {
-      if (!isDateInRange(item.date, range.start, range.end)) return;
-
-      if (!result[employeeId]) {
-        result[employeeId] = 0;
-      }
-
-      result[employeeId] += Number(item.days || 0);
-    });
-  });
-
-  return result;
+  return getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds);
 }
-
 function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) {
   const targetIds = new Set(
     (employeeIds || [])
@@ -607,7 +587,6 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
 
   const data = sheet.getDataRange().getValues();
   const result = {};
-  const range = getFiscalYearRange(fiscalYear);
   const calendarMap = getCompanyCalendarMap();
 
   if (data.length <= 1) return result;
@@ -620,6 +599,10 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
     if (!employeeId) return;
     if (!targetIds.has(employeeId)) return;
     if (status !== STATUS.APPROVED) return;
+
+    // 🔥ここが今回のキモ
+    const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId);
+    const range = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
 
     const dailyRows = expandLeaveRequestToDailyRows(
       rowObj.start_date,
@@ -848,7 +831,14 @@ function submitLeaveRequest(data) {
   rowObj.approver_name = "";
   rowObj.approved_at = "";
   rowObj.rejected_reason = "";
-  rowObj.year = getFiscalYearFromDate(start);
+
+  // 🔥ここが今回の修正ポイント
+  const employeeMap = getEmployeeDetailMap();
+  const employee = employeeMap[String(data.employee_id || "").trim()];
+  const fiscalStartMonth = employee ? Number(employee.fiscal_start_month || 4) : 4;
+
+  rowObj.year = getFiscalYearFromDateWithStart(start, fiscalStartMonth);
+
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
@@ -868,6 +858,29 @@ function submitLeaveRequest(data) {
     ok: true,
     request_id: rowObj.request_id
   };
+}
+/* =========================
+   社員詳細MAP
+========================= */
+function getEmployeeDetailMap() {
+  const employees = getEmployees();
+  const map = {};
+
+  employees.forEach(emp => {
+    map[emp.id] = emp;
+  });
+
+  return map;
+}
+
+/* =========================
+   社員ごとの年度開始月取得
+========================= */
+function getFiscalStartMonthByEmployeeId(employeeId) {
+  const employeeMap = getEmployeeDetailMap();
+  const employee = employeeMap[String(employeeId || "").trim()];
+
+  return employee ? Number(employee.fiscal_start_month || 4) : 4;
 }
 
 /* =========================
@@ -1389,12 +1402,21 @@ function getEmployeesForRequest() {
   if (data.length <= 1) return [];
 
   const employeeRows = data.slice(1)
-    .map(row => rowToObject(row, headerInfo.headers))
-    .filter(rowObj => {
-      const employeeId = String(rowObj.employee_id || "").trim();
-      const name = String(rowObj.name || "").trim();
-      return employeeId && name;
-    });
+  .map(row => rowToObject(row, headerInfo.headers))
+  .filter(rowObj => {
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const name = String(rowObj.name || "").trim();
+
+    const employmentStatus = String(rowObj.employment_status || "").trim().toLowerCase();
+    const leaveTarget = String(rowObj.leave_management_target || "").trim().toUpperCase() === "TRUE";
+
+    return (
+      employeeId &&
+      name &&
+      employmentStatus === "active" &&
+      leaveTarget === true
+    );
+  });
 
   const employeeIds = employeeRows.map(rowObj => String(rowObj.employee_id || "").trim());
   const balanceMap = getEmployeeBalanceMapForEmployeeIdsForFiscalYear(fiscalYear, employeeIds);
