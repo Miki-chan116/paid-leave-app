@@ -13,6 +13,46 @@
       <p class="subtitle">承認待ち・承認済み・否認・ログ・出力機能をここで管理できます。</p>
     </div>
 
+    <div id="currentRangeBox" class="current-range-box">
+      現在表示中：前月＋当月のデータ
+    </div>
+
+    <div class="search-card">
+      <div class="search-title">検索</div>
+
+      <div class="search-grid">
+        <div class="field">
+          <label for="searchKeyword">社員ID・氏名</label>
+          <input type="text" id="searchKeyword" placeholder="例：E001 / 青木">
+        </div>
+
+        <div class="field">
+          <label for="searchStatus">ステータス</label>
+          <select id="searchStatus">
+            <option value="all">すべて</option>
+            <option value="pending">承認待ち</option>
+            <option value="approved">承認済み</option>
+            <option value="rejected">否認</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="searchStartDate">開始日</label>
+          <input type="date" id="searchStartDate">
+        </div>
+
+        <div class="field">
+          <label for="searchEndDate">終了日</label>
+          <input type="date" id="searchEndDate">
+        </div>
+      </div>
+
+      <div class="search-actions">
+        <button class="btn btn-search" onclick="searchRequestList()">検索する</button>
+        <button class="btn btn-reset" onclick="resetSearch()">前月＋当月に戻す</button>
+      </div>
+    </div>
+
     <div class="toolbar">
       <div class="tool-card">
         <div class="tool-title">月間一覧出力</div>
