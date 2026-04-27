@@ -524,9 +524,9 @@ function getGrantMapByFiscalYear(fiscalYear) {
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
-    "grant_date",
     "grant_days",
-    "carry_over_days"
+    "carry_over_days",
+    "year"
   ]);
 
   const data = sheet.getDataRange().getValues();
@@ -537,12 +537,9 @@ function getGrantMapByFiscalYear(fiscalYear) {
   data.slice(1).forEach(row => {
     const rowObj = rowToObject(row, headerInfo.headers);
     const employeeId = String(rowObj.employee_id || "").trim();
+    const rowYear = Number(rowObj.year);
 
     if (!employeeId) return;
-
-    const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId);
-    const rowYear = getFiscalYearFromDateWithStart(rowObj.grant_date, fiscalStartMonth);
-
     if (rowYear !== Number(fiscalYear)) return;
 
     if (!result[employeeId]) {
@@ -879,9 +876,9 @@ function getEmployeeDetailMap() {
 /* =========================
    社員ごとの年度開始月取得
 ========================= */
-function getFiscalStartMonthByEmployeeId(employeeId, employeeMap) {
-  const map = employeeMap || getEmployeeDetailMap();
-  const employee = map[String(employeeId || "").trim()];
+function getFiscalStartMonthByEmployeeId(employeeId) {
+  const employeeMap = getEmployeeDetailMap();
+  const employee = employeeMap[String(employeeId || "").trim()];
 
   return employee ? Number(employee.fiscal_start_month || 4) : 4;
 }
@@ -1387,12 +1384,11 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
 
 /* =========================
    申請画面用社員一覧
-   社員ごとの年度開始月対応版
 ========================= */
 function getEmployeesForRequest() {
-  const today = new Date();
+  const fiscalYear = getCurrentFiscalYear();
   const cache = CacheService.getScriptCache();
-  const cacheKey = CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + toDateKey(today);
+  const cacheKey = CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + fiscalYear;
   const cached = cache.get(cacheKey);
 
   if (cached) {
@@ -1400,41 +1396,39 @@ function getEmployeesForRequest() {
   }
 
   const sheet = getSheet("employees");
-  const headerInfo = requireHeaders(sheet, [
-    "employee_id",
-    "name",
-    "name_kana",
-    "employment_status",
-    "leave_management_target",
-    "fiscal_start_month"
-  ]);
-
+  const headerInfo = requireHeaders(sheet, ["employee_id", "name", "name_kana"]);
   const data = sheet.getDataRange().getValues();
 
   if (data.length <= 1) return [];
 
   const employeeRows = data.slice(1)
-    .map(row => rowToObject(row, headerInfo.headers))
-    .filter(rowObj => {
-      const employeeId = String(rowObj.employee_id || "").trim();
-      const name = String(rowObj.name || "").trim();
-      const employmentStatus = String(rowObj.employment_status || "").trim().toLowerCase();
-      const leaveTarget = String(rowObj.leave_management_target || "").trim().toUpperCase() === "TRUE";
+  .map(row => rowToObject(row, headerInfo.headers))
+  .filter(rowObj => {
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const name = String(rowObj.name || "").trim();
 
-      return (
-        employeeId &&
-        name &&
-        employmentStatus === "active" &&
-        leaveTarget === true
-      );
-    });
+    const employmentStatus = String(rowObj.employment_status || "").trim().toLowerCase();
+    const leaveTarget = String(rowObj.leave_management_target || "").trim().toUpperCase() === "TRUE";
+
+    return (
+      employeeId &&
+      name &&
+      employmentStatus === "active" &&
+      leaveTarget === true
+    );
+  });
+
+  const employeeIds = employeeRows.map(rowObj => String(rowObj.employee_id || "").trim());
+  const balanceMap = getEmployeeBalanceMapForEmployeeIdsForFiscalYear(fiscalYear, employeeIds);
 
   const result = employeeRows.map(rowObj => {
     const employeeId = String(rowObj.employee_id || "").trim();
-    const fiscalStartMonth = Number(rowObj.fiscal_start_month || 4);
-    const fiscalYear = getFiscalYearFromDateWithStart(today, fiscalStartMonth);
-
-    const balance = calculateYearlyBalanceByEmployee(employeeId, fiscalYear);
+    const balance = balanceMap[employeeId] || {
+      current_remaining_days: 0,
+      carry_over_days: 0,
+      grant_days: 0,
+      used_days: 0
+    };
 
     const usedDays = Number(balance.used_days || 0);
     const fiveDayUsed = Math.min(usedDays, 5);
@@ -1444,10 +1438,6 @@ function getEmployeesForRequest() {
       employee_id: employeeId,
       name: String(rowObj.name || "").trim(),
       name_kana: String(rowObj.name_kana || "").trim(),
-
-      fiscal_year: fiscalYear,
-      fiscal_start_month: fiscalStartMonth,
-
       current_remaining_days: Number(balance.current_remaining_days || 0),
       carry_over_days: Number(balance.carry_over_days || 0),
       grant_days: Number(balance.grant_days || 0),
@@ -1463,6 +1453,23 @@ function getEmployeesForRequest() {
 }
 
 /* =========================
+   フロント用返却
+========================= */
+function getCalendarRules() {
+  return getCompanyCalendarMap();
+}
+
+function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
+  validateLeaveRequestDates(
+    startDate,
+    endDate,
+    halfType || (halfDay ? "half" : "")
+  );
+
+  return { ok: true };
+}
+
+/* =========================
    申請者用：年度内の有給申請履歴取得
 ========================= */
 function getEmployeeLeaveHistoryForRequest(employeeId) {
@@ -1470,9 +1477,8 @@ function getEmployeeLeaveHistoryForRequest(employeeId) {
     throw new Error("employeeId がありません");
   }
 
-  const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId);
-  const fiscalYear = getFiscalYearFromDateWithStart(new Date(), fiscalStartMonth);
-  const range = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
+  const fiscalYear = getCurrentFiscalYear();
+  const range = getFiscalYearRange(fiscalYear);
 
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
@@ -1535,21 +1541,3 @@ function getEmployeeLeaveHistoryForRequest(employeeId) {
       return a.date_label < b.date_label ? 1 : -1;
     });
 }
-
-/* =========================
-   フロント用返却
-========================= */
-function getCalendarRules() {
-  return getCompanyCalendarMap();
-}
-
-function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
-  validateLeaveRequestDates(
-    startDate,
-    endDate,
-    halfType || (halfDay ? "half" : "")
-  );
-
-  return { ok: true };
-}
-
