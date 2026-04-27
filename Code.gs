@@ -303,6 +303,29 @@ function isDateInRange(dateValue, start, end) {
 }
 
 /* =========================
+   admin初期表示用：前月＋当月の期間
+========================= */
+function getAdminRecentRange() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+  return { start, end };
+}
+
+function isRequestInDateRange(rowObj, start, end) {
+  if (!rowObj.start_date || !rowObj.end_date) return false;
+
+  const requestStart = parseLocalDate(rowObj.start_date);
+  const requestEnd = parseLocalDate(rowObj.end_date);
+
+  const from = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const to = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  return requestStart <= to && requestEnd >= from;
+}
+
+/* =========================
    company_calendar 取得
 ========================= */
 function getCompanyCalendarMap() {
@@ -450,10 +473,31 @@ function getEmployees() {
     .filter(emp => emp.id);
 }
 
+function getEmployeeMap() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(CACHE_KEY.EMPLOYEE_MAP);
+  if (cached) {
+    return JSON.parse(cached);
+  }
+
+  const employees = getEmployees();
+  const map = {};
+
+  employees.forEach(emp => {
+    map[emp.id] = emp.name;
+  });
+
+  cache.put(CACHE_KEY.EMPLOYEE_MAP, JSON.stringify(map), 300);
+  return map;
+}
+
 function getCurrentFiscalYear() {
   return getFiscalYearFromDate(new Date());
 }
 
+/* =========================
+   付与情報
+========================= */
 function getGrantMapByFiscalYear(fiscalYear) {
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
@@ -491,6 +535,9 @@ function getGrantMapByFiscalYear(fiscalYear) {
   return result;
 }
 
+/* =========================
+   承認済み取得日数
+========================= */
 function getApprovedUsedDaysByFiscalYear(fiscalYear) {
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
@@ -531,6 +578,7 @@ function getApprovedUsedDaysByFiscalYear(fiscalYear) {
       if (!result[employeeId]) {
         result[employeeId] = 0;
       }
+
       result[employeeId] += Number(item.days || 0);
     });
   });
@@ -538,9 +586,6 @@ function getApprovedUsedDaysByFiscalYear(fiscalYear) {
   return result;
 }
 
-/* =========================
-   対象社員だけの承認済み使用日数集計
-========================= */
 function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) {
   const targetIds = new Set(
     (employeeIds || [])
@@ -598,128 +643,15 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
   return result;
 }
 
-function getEmployeeBalanceMapForFiscalYear(fiscalYear) {
-  const grantMap = getGrantMapByFiscalYear(fiscalYear);
-  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
-  const employees = getEmployees();
-
-  const result = {};
-
-  employees.forEach(emp => {
-    const employeeId = emp.id;
-    const grantInfo = grantMap[employeeId] || {
-      employee_id: employeeId,
-      grant_days: 0,
-      carry_over_days: 0
-    };
-
-    const previousDays = Number(grantInfo.carry_over_days || 0);
-    const grantDays = Number(grantInfo.grant_days || 0);
-    const usedDays = Number(usedMap[employeeId] || 0);
-
-    const remainingFromPrevious = previousDays - usedDays;
-
-    let nextCarryOverDays = 0;
-    let expiredDays = 0;
-
-    if (remainingFromPrevious >= 0) {
-      expiredDays = remainingFromPrevious;
-      nextCarryOverDays = grantDays;
-    } else {
-      expiredDays = 0;
-      nextCarryOverDays = grantDays + remainingFromPrevious;
-    }
-
-    if (nextCarryOverDays < 0) {
-      nextCarryOverDays = 0;
-    }
-
-    const currentRemainingDays = previousDays + grantDays - usedDays;
-
-    result[employeeId] = {
-      current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays,
-      carry_over_days: previousDays,
-      grant_days: grantDays,
-      used_days: usedDays,
-      next_carry_over_days: nextCarryOverDays,
-      expired_days: expiredDays
-    };
-  });
-
-  return result;
-}
-
 /* =========================
-   対象社員だけの残日数計算
+   残日数計算
 ========================= */
-function getEmployeeBalanceMapForEmployeeIdsForFiscalYear(fiscalYear, employeeIds) {
-  const ids = (employeeIds || [])
-    .map(id => String(id || "").trim())
-    .filter(Boolean);
-
-  const grantMap = getGrantMapByFiscalYear(fiscalYear);
-  const usedMap = getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, ids);
-
-  const result = {};
-
-  ids.forEach(employeeId => {
-    const grantInfo = grantMap[employeeId] || {
-      employee_id: employeeId,
-      grant_days: 0,
-      carry_over_days: 0
-    };
-
-    const previousDays = Number(grantInfo.carry_over_days || 0);
-    const grantDays = Number(grantInfo.grant_days || 0);
-    const usedDays = Number(usedMap[employeeId] || 0);
-
-    const remainingFromPrevious = previousDays - usedDays;
-
-    let nextCarryOverDays = 0;
-    let expiredDays = 0;
-
-    if (remainingFromPrevious >= 0) {
-      expiredDays = remainingFromPrevious;
-      nextCarryOverDays = grantDays;
-    } else {
-      expiredDays = 0;
-      nextCarryOverDays = grantDays + remainingFromPrevious;
-    }
-
-    if (nextCarryOverDays < 0) {
-      nextCarryOverDays = 0;
-    }
-
-    const currentRemainingDays = previousDays + grantDays - usedDays;
-
-    result[employeeId] = {
-      current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays,
-      carry_over_days: previousDays,
-      grant_days: grantDays,
-      used_days: usedDays,
-      next_carry_over_days: nextCarryOverDays,
-      expired_days: expiredDays
-    };
-  });
-
-  return result;
-}
-
-function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
-  const grantMap = getGrantMapByFiscalYear(fiscalYear);
-  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
-
-  const grantInfo = grantMap[employeeId] || {
-    employee_id: employeeId,
-    grant_days: 0,
-    carry_over_days: 0
-  };
-
+function buildBalance(employeeId, grantInfo, usedDays) {
   const previousDays = Number(grantInfo.carry_over_days || 0);
   const grantDays = Number(grantInfo.grant_days || 0);
-  const usedDays = Number(usedMap[employeeId] || 0);
+  const used = Number(usedDays || 0);
 
-  const remainingFromPrevious = previousDays - usedDays;
+  const remainingFromPrevious = previousDays - used;
 
   let nextCarryOverDays = 0;
   let expiredDays = 0;
@@ -736,38 +668,72 @@ function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
     nextCarryOverDays = 0;
   }
 
-  const currentRemainingDays = previousDays + grantDays - usedDays;
+  const currentRemainingDays = previousDays + grantDays - used;
 
   return {
     employee_id: employeeId,
+    current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays,
     carry_over_days: previousDays,
     grant_days: grantDays,
-    used_days: usedDays,
+    used_days: used,
     next_carry_over_days: nextCarryOverDays,
-    expired_days: expiredDays,
-    current_remaining_days: currentRemainingDays < 0 ? 0 : currentRemainingDays
+    expired_days: expiredDays
   };
 }
 
-/* =========================
-   社員名マップ
-========================= */
-function getEmployeeMap() {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get(CACHE_KEY.EMPLOYEE_MAP);
-  if (cached) {
-    return JSON.parse(cached);
-  }
-
+function getEmployeeBalanceMapForFiscalYear(fiscalYear) {
+  const grantMap = getGrantMapByFiscalYear(fiscalYear);
+  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
   const employees = getEmployees();
-  const map = {};
+  const result = {};
 
   employees.forEach(emp => {
-    map[emp.id] = emp.name;
+    const employeeId = emp.id;
+    const grantInfo = grantMap[employeeId] || {
+      employee_id: employeeId,
+      grant_days: 0,
+      carry_over_days: 0
+    };
+
+    result[employeeId] = buildBalance(employeeId, grantInfo, usedMap[employeeId] || 0);
   });
 
-  cache.put(CACHE_KEY.EMPLOYEE_MAP, JSON.stringify(map), 300);
-  return map;
+  return result;
+}
+
+function getEmployeeBalanceMapForEmployeeIdsForFiscalYear(fiscalYear, employeeIds) {
+  const ids = (employeeIds || [])
+    .map(id => String(id || "").trim())
+    .filter(Boolean);
+
+  const grantMap = getGrantMapByFiscalYear(fiscalYear);
+  const usedMap = getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, ids);
+  const result = {};
+
+  ids.forEach(employeeId => {
+    const grantInfo = grantMap[employeeId] || {
+      employee_id: employeeId,
+      grant_days: 0,
+      carry_over_days: 0
+    };
+
+    result[employeeId] = buildBalance(employeeId, grantInfo, usedMap[employeeId] || 0);
+  });
+
+  return result;
+}
+
+function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
+  const grantMap = getGrantMapByFiscalYear(fiscalYear);
+  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
+
+  const grantInfo = grantMap[employeeId] || {
+    employee_id: employeeId,
+    grant_days: 0,
+    carry_over_days: 0
+  };
+
+  return buildBalance(employeeId, grantInfo, usedMap[employeeId] || 0);
 }
 
 /* =========================
@@ -806,6 +772,7 @@ function appendUsageLog(logData) {
   ]);
 
   const rowObj = createEmptyRowObject(headerInfo.headers);
+
   rowObj.log_id = Utilities.getUuid();
   rowObj.request_id = logData.request_id || "";
   rowObj.action_type = logData.action_type || "";
@@ -865,6 +832,7 @@ function submitLeaveRequest(data) {
   const now = new Date();
 
   const rowObj = createEmptyRowObject(headerInfo.headers);
+
   rowObj.request_id = Utilities.getUuid();
   rowObj.employee_id = data.employee_id || "";
   rowObj.request_date = now;
@@ -903,9 +871,25 @@ function submitLeaveRequest(data) {
 }
 
 /* =========================
-   管理画面用：申請一覧取得
+   管理画面用：初期表示
+   前月＋当月のみ
 ========================= */
 function getRequestsByStatus(status) {
+  const range = getAdminRecentRange();
+
+  return searchRequests({
+    status: status,
+    start_date: formatDateValue(range.start),
+    end_date: formatDateValue(range.end)
+  });
+}
+
+/* =========================
+   管理画面用：申請検索
+========================= */
+function searchRequests(filters) {
+  filters = filters || {};
+
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
@@ -915,6 +899,7 @@ function getRequestsByStatus(status) {
     "days",
     "half_day",
     "reason",
+    "reason_detail",
     "status"
   ]);
 
@@ -922,7 +907,11 @@ function getRequestsByStatus(status) {
   if (data.length <= 1) return [];
 
   const employeeMap = getEmployeeMap();
-  const target = norm(status);
+  const targetStatus = norm(filters.status || "");
+  const keyword = norm(filters.employeeKeyword || "");
+
+  const startFilter = filters.start_date ? parseLocalDate(filters.start_date) : null;
+  const endFilter = filters.end_date ? parseLocalDate(filters.end_date) : null;
 
   const fiscalYears = [...new Set(
     data.slice(1)
@@ -939,13 +928,33 @@ function getRequestsByStatus(status) {
     balanceMapByYear[year] = getEmployeeBalanceMapForFiscalYear(year);
   });
 
-  const result = data.slice(1)
+  return data.slice(1)
     .map(row => {
       const rowObj = rowToObject(row, headerInfo.headers);
       const rowStatus = norm(rowObj.status);
       const employeeId = String(rowObj.employee_id || "").trim();
+      const employeeName = String(employeeMap[employeeId] || employeeId || "Unknown");
 
-      if (!rowObj.start_date) return null;
+      if (!rowObj.start_date || !rowObj.end_date) return null;
+
+      if (targetStatus && targetStatus !== "all" && rowStatus !== targetStatus) {
+        return null;
+      }
+
+      if (keyword) {
+        const targetText = norm(employeeId + employeeName);
+        if (!targetText.includes(keyword)) return null;
+      }
+
+      if (startFilter && endFilter) {
+        if (!isRequestInDateRange(rowObj, startFilter, endFilter)) return null;
+      } else if (startFilter) {
+        const requestEnd = parseLocalDate(rowObj.end_date);
+        if (requestEnd < startFilter) return null;
+      } else if (endFilter) {
+        const requestStart = parseLocalDate(rowObj.start_date);
+        if (requestStart > endFilter) return null;
+      }
 
       const fiscalYear = getFiscalYearFromDate(rowObj.start_date);
       const balanceMap = balanceMapByYear[fiscalYear] || {};
@@ -959,7 +968,7 @@ function getRequestsByStatus(status) {
       return {
         request_id: String(rowObj.request_id || ""),
         employee_id: employeeId,
-        employee_name: String(employeeMap[employeeId] || employeeId || "Unknown"),
+        employee_name: employeeName,
         start_date: formatDateValue(rowObj.start_date),
         end_date: formatDateValue(rowObj.end_date),
         date_label:
@@ -972,6 +981,7 @@ function getRequestsByStatus(status) {
         days: rowObj.days || 0,
         half_day: String(rowObj.half_day || ""),
         reason: String(rowObj.reason || ""),
+        reason_detail: String(rowObj.reason_detail || ""),
         status: rowStatus,
         current_remaining_days: balance.current_remaining_days,
         grant_days: balance.grant_days,
@@ -979,9 +989,11 @@ function getRequestsByStatus(status) {
         used_days: balance.used_days
       };
     })
-    .filter(item => item && item.status === target);
-
-  return result;
+    .filter(item => item)
+    .sort((a, b) => {
+      if (a.start_date !== b.start_date) return a.start_date < b.start_date ? 1 : -1;
+      return a.employee_id > b.employee_id ? 1 : -1;
+    });
 }
 
 /* =========================
@@ -1036,6 +1048,7 @@ function approveRequest(requestId) {
   });
 
   clearAppCache();
+
   return { ok: true };
 }
 
@@ -1087,13 +1100,29 @@ function rejectRequest(requestId, reason) {
   });
 
   clearAppCache();
+
   return { ok: true };
 }
 
 /* =========================
    ログ取得
+   初期表示は前月＋当月のみ
 ========================= */
 function getUsageLogs() {
+  const range = getAdminRecentRange();
+
+  return searchUsageLogs({
+    start_date: formatDateValue(range.start),
+    end_date: formatDateValue(range.end)
+  });
+}
+
+/* =========================
+   ログ検索
+========================= */
+function searchUsageLogs(filters) {
+  filters = filters || {};
+
   const sheet = getSheet("usage_log");
   const headerInfo = requireHeaders(sheet, [
     "log_id",
@@ -1108,9 +1137,35 @@ function getUsageLogs() {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
 
+  const keyword = norm(filters.keyword || "");
+  const actionType = norm(filters.action_type || "");
+
+  const startFilter = filters.start_date ? parseLocalDate(filters.start_date) : null;
+  const endFilter = filters.end_date ? parseLocalDate(filters.end_date) : null;
+
   return data.slice(1)
     .map(row => {
       const rowObj = rowToObject(row, headerInfo.headers);
+      const actionDate = rowObj.action_date ? parseLocalDate(rowObj.action_date) : null;
+
+      if (!actionDate) return null;
+
+      if (startFilter && actionDate < startFilter) return null;
+      if (endFilter && actionDate > endFilter) return null;
+
+      if (actionType && norm(rowObj.action_type) !== actionType) return null;
+
+      if (keyword) {
+        const targetText = norm(
+          String(rowObj.request_id || "") +
+          String(rowObj.operator_id || "") +
+          String(rowObj.operator_name || "") +
+          String(rowObj.comment || "")
+        );
+
+        if (!targetText.includes(keyword)) return null;
+      }
+
       return {
         log_id: rowObj.log_id,
         request_id: rowObj.request_id,
@@ -1121,6 +1176,7 @@ function getUsageLogs() {
         comment: rowObj.comment
       };
     })
+    .filter(item => item)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
@@ -1162,6 +1218,7 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth) {
       if (status !== STATUS.APPROVED) return;
 
       const employeeName = employeeMap[employeeId] || employeeId;
+
       const dailyRows = expandLeaveRequestToDailyRows(
         rowObj.start_date,
         rowObj.end_date,
@@ -1259,6 +1316,7 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
   const reportRows = employees
     .map(emp => {
       const balance = calculateYearlyBalanceByEmployee(emp.id, Number(fiscalYear));
+
       return [
         emp.id,
         emp.name,
@@ -1313,7 +1371,6 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
 
 /* =========================
    申請画面用社員一覧
-   速度改善のためキャッシュ対応
 ========================= */
 function getEmployeesForRequest() {
   const fiscalYear = getCurrentFiscalYear();
