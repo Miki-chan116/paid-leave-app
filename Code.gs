@@ -1446,3 +1446,76 @@ function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
 
   return { ok: true };
 }
+
+/* =========================
+   申請者用：年度内の有給申請履歴取得
+========================= */
+function getEmployeeLeaveHistoryForRequest(employeeId) {
+  if (!employeeId) {
+    throw new Error("employeeId がありません");
+  }
+
+  const fiscalYear = getCurrentFiscalYear();
+  const range = getFiscalYearRange(fiscalYear);
+
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id",
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "reason",
+    "reason_detail",
+    "status"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+
+  return data.slice(1)
+    .map(row => {
+      const rowObj = rowToObject(row, headerInfo.headers);
+      const rowEmployeeId = String(rowObj.employee_id || "").trim();
+
+      if (rowEmployeeId !== String(employeeId).trim()) return null;
+      if (!rowObj.start_date || !rowObj.end_date) return null;
+
+      const start = parseLocalDate(rowObj.start_date);
+      const end = parseLocalDate(rowObj.end_date);
+
+      if (end < range.start || start > range.end) return null;
+
+      const halfDay = String(rowObj.half_day || "").trim();
+      let leaveTypeLabel = "1日休";
+
+      if (halfDay === "am") leaveTypeLabel = "半休 AM";
+      if (halfDay === "pm") leaveTypeLabel = "半休 PM";
+
+      const status = norm(rowObj.status);
+      let statusLabel = status;
+
+      if (status === STATUS.PENDING) statusLabel = "承認待ち";
+      if (status === STATUS.APPROVED) statusLabel = "承認済み";
+      if (status === STATUS.REJECTED) statusLabel = "否認";
+
+      const startText = formatDateValue(start);
+      const endText = formatDateValue(end);
+
+      return {
+        request_id: String(rowObj.request_id || ""),
+        date_label: startText === endText ? startText : startText + " 〜 " + endText,
+        days: Number(rowObj.days || 0),
+        leave_type_label: leaveTypeLabel,
+        reason: String(rowObj.reason || ""),
+        reason_detail: String(rowObj.reason_detail || ""),
+        status: status,
+        status_label: statusLabel
+      };
+    })
+    .filter(item => item)
+    .sort((a, b) => {
+      return a.date_label < b.date_label ? 1 : -1;
+    });
+}

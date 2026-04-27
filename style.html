@@ -1,19 +1,22 @@
 <style>
   :root {
-    --bg-main: #f6f3ee;
-    --bg-sub: #e7e0d4;
-    --card-bg: #ffffff;
-    --primary: #3f6f48;
-    --primary-dark: #294831;
-    --accent-blue: #1f5aa6;
-    --accent-red: #bf3636;
-    --accent-orange: #d27b14;
-    --text-main: #1e1e1e;
-    --text-sub: #575757;
-    --border: #d8cfbf;
-    --shadow: 0 6px 18px rgba(0, 0, 0, 0.10);
-    --radius: 18px;
-  }
+  --bg-main: #f3f9fb;
+  --bg-sub: #dceff5;
+  --card-bg: #ffffff;
+
+  --primary: #4f9fba;
+  --primary-dark: #2f6f86;
+  --accent-blue: #3f8fc5;
+  --accent-red: #d94f78;
+  --accent-orange: #e59a45;
+
+  --text-main: #263238;
+  --text-sub: #60727a;
+  --border: #d2e4ea;
+
+  --shadow: 0 4px 14px rgba(47, 111, 134, 0.10);
+  --radius: 18px;
+}
 
   * {
     box-sizing: border-box;
@@ -559,4 +562,109 @@
       width: auto;
     }
   }
+
+  /* =========================
+   今年度の申請履歴リスト
+========================= */
+.history-section {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #f8fcfe;
+  border: 1px solid var(--border);
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.history-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--primary-dark);
+}
+
+.history-subtitle {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.6fr 0.8fr;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e3f1f6;
+  font-size: 14px;
+}
+
+.history-date {
+  font-weight: bold;
+  color: var(--primary-dark);
+}
+
+.history-type,
+.history-days {
+  color: var(--text-main);
+  font-weight: bold;
+}
+
+.history-status {
+  text-align: center;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.history-status.approved {
+  background: var(--primary);
+}
+
+.history-status.pending {
+  background: var(--accent-blue);
+}
+
+.history-status.rejected {
+  background: var(--accent-red);
+}
+
+.history-empty {
+  padding: 12px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px dashed var(--border);
+  color: var(--text-sub);
+  font-size: 14px;
+}
+
+.history-error {
+  color: var(--accent-red);
+  font-weight: bold;
+}
+
+@media (max-width: 900px) {
+  .history-row {
+    grid-template-columns: 1fr 0.8fr;
+    font-size: 13px;
+  }
+
+  .history-status {
+    text-align: left;
+  }
+}
 </style>

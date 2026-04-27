@@ -2,8 +2,11 @@
 let employees = [];
 let selectedEmployee = null;
 let currentGroup = "a";
+let currentRequestType = "";
 
-/* 初期化 */
+/* =========================
+   初期化
+========================= */
 function initPage() {
   google.script.run
     .withSuccessHandler(data => {
@@ -13,12 +16,18 @@ function initPage() {
       updateGroupTabs();
       initReasonOptions();
     })
+    .withFailureHandler(err => {
+      console.error(err);
+      alert("社員一覧の取得でエラーが発生しました");
+    })
     .getEmployeesForRequest();
 }
 
 window.addEventListener("DOMContentLoaded", initPage);
 
-/* 理由プルダウン初期化 */
+/* =========================
+   理由プルダウン初期化
+========================= */
 function initReasonOptions() {
   const reasonType = document.getElementById("reasonType");
   if (!reasonType) return;
@@ -31,7 +40,9 @@ function initReasonOptions() {
   `;
 }
 
-/* 五十音グループ判定 */
+/* =========================
+   五十音グループ判定
+========================= */
 function getKanaGroup(emp) {
   const kana = (emp.name_kana || "").trim();
   const k = kana.charAt(0);
@@ -81,7 +92,9 @@ function updateGroupTabs() {
   });
 }
 
-/* 描画 */
+/* =========================
+   社員カード描画
+========================= */
 function render() {
   const grid = document.getElementById("employeeSwipeArea");
   const groupTitle = document.getElementById("groupTitle");
@@ -129,8 +142,8 @@ function render() {
       </div>
 
       <div class="employee-right">
-        <div class="employee-days">残 ${emp.current_remaining_days}日</div>
-        <div class="employee-days-sub">付与 ${emp.grant_days}日</div>
+        <div class="employee-days">残 ${escapeHtml(emp.current_remaining_days)}日</div>
+        <div class="employee-days-sub">付与 ${escapeHtml(emp.grant_days)}日</div>
 
         <div class="employee-five">
           <div class="five-mini-bar">
@@ -146,7 +159,9 @@ function render() {
   });
 }
 
-/* HTMLエスケープ */
+/* =========================
+   HTMLエスケープ
+========================= */
 function escapeHtml(str) {
   return String(str == null ? "" : str)
     .replace(/&/g, "&amp;")
@@ -156,7 +171,9 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
-/* 社員選択 */
+/* =========================
+   社員選択
+========================= */
 function selectEmployee(emp) {
   selectedEmployee = emp;
 
@@ -178,22 +195,33 @@ function selectEmployee(emp) {
   document.getElementById("fiveDayBarFill").style.width = `${Math.min((used / 5) * 100, 100)}%`;
   document.getElementById("fiveDayMessage").textContent =
     emp.five_day_completed ? "達成済み" : `あと${remain}日`;
+
+  loadEmployeeLeaveHistory(emp.employee_id);
 }
 
-/* 戻る */
+/* =========================
+   戻る
+========================= */
 function backToEmployeeList() {
   document.getElementById("requestScreen").classList.remove("active");
   document.getElementById("employeeScreen").classList.add("active");
 }
 
-/* 理由切替 */
+/* =========================
+   理由切替
+========================= */
 function handleReasonTypeChange() {
   const type = document.getElementById("reasonType").value;
-  document.getElementById("reasonDetailWrap").style.display =
-    type === "other" ? "block" : "none";
+  const wrap = document.getElementById("reasonDetailWrap");
+
+  if (!wrap) return;
+
+  wrap.style.display = type === "other" ? "block" : "none";
 }
 
-/* 申請区分 */
+/* =========================
+   申請区分
+========================= */
 function selectRequestType(type) {
   const buttons = document.querySelectorAll(".type-btn");
   buttons.forEach(btn => btn.classList.remove("active"));
@@ -214,18 +242,24 @@ function selectRequestType(type) {
   if (multiDayArea) {
     multiDayArea.style.display = type === "multi_day" ? "block" : "none";
   }
+
+  handleRequestTypeChange();
 }
 
-let currentRequestType = "";
-
-/* 日付変更時 */
+/* =========================
+   日付変更時
+========================= */
 function handleRequestTypeChange() {
   const box = document.getElementById("calendarStatus");
   if (!box) return;
-  box.textContent = "日付を確認中です。";
+
+  box.classList.remove("ok", "error");
+  box.textContent = "日付と申請区分を選択してください。";
 }
 
-/* 申請 */
+/* =========================
+   申請
+========================= */
 function submitRequest() {
   if (!selectedEmployee) {
     alert("社員を選択してください");
@@ -282,15 +316,75 @@ function submitRequest() {
     reason_detail: detail
   };
 
+  const submitBtn = document.getElementById("submitBtn");
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "申請中...";
+  }
+
   google.script.run
     .withSuccessHandler(() => {
       alert("申請しました");
-      location.reload();
+      loadEmployeeLeaveHistory(selectedEmployee.employee_id);
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "申請する";
+      }
     })
     .withFailureHandler(err => {
       console.error(err);
       alert("エラーが発生しました");
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "申請する";
+      }
     })
     .submitLeaveRequest(payload);
+}
+
+/* =========================
+   年度内の申請履歴表示
+========================= */
+function loadEmployeeLeaveHistory(employeeId) {
+  const list = document.getElementById("leaveHistoryList");
+  if (!list) return;
+
+  list.innerHTML = `<div class="history-empty">履歴を読み込み中です...</div>`;
+
+  google.script.run
+    .withSuccessHandler(renderEmployeeLeaveHistory)
+    .withFailureHandler(err => {
+      console.error(err);
+      list.innerHTML = `<div class="history-empty history-error">履歴の取得でエラーが発生しました。</div>`;
+    })
+    .getEmployeeLeaveHistoryForRequest(employeeId);
+}
+
+function renderEmployeeLeaveHistory(data) {
+  const list = document.getElementById("leaveHistoryList");
+  if (!list) return;
+
+  list.innerHTML = "";
+
+  if (!Array.isArray(data) || data.length === 0) {
+    list.innerHTML = `<div class="history-empty">今年度の申請履歴はありません。</div>`;
+    return;
+  }
+
+  data.forEach(item => {
+    const row = document.createElement("div");
+    row.className = "history-row";
+
+    row.innerHTML = `
+      <div class="history-date">${escapeHtml(item.date_label)}</div>
+      <div class="history-type">${escapeHtml(item.leave_type_label)}</div>
+      <div class="history-days">${escapeHtml(item.days)}日</div>
+      <div class="history-status ${escapeHtml(item.status)}">${escapeHtml(item.status_label)}</div>
+    `;
+
+    list.appendChild(row);
+  });
 }
 </script>
