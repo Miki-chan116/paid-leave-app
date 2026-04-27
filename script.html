@@ -135,10 +135,15 @@ function render() {
     const used = Number(emp.five_day_used || 0);
     const rate = Math.min((used / 5) * 100, 100);
 
+    const fiscalYearText = emp.fiscal_year
+      ? `${emp.fiscal_year}年度（${emp.fiscal_start_month || 4}月開始）`
+      : "";
+
     btn.innerHTML = `
       <div class="employee-left">
         <div class="employee-name">${escapeHtml(emp.name)}</div>
         <div class="employee-kana">${escapeHtml(emp.name_kana || "")}</div>
+        <div class="employee-fiscal-year">${escapeHtml(fiscalYearText)}</div>
       </div>
 
       <div class="employee-right">
@@ -182,6 +187,13 @@ function selectEmployee(emp) {
 
   document.getElementById("selectedEmployeeName").textContent = emp.name;
 
+  const fiscalYearEl = document.getElementById("selectedFiscalYear");
+  if (fiscalYearEl) {
+    fiscalYearEl.textContent = emp.fiscal_year
+      ? `${emp.fiscal_year}年度（${emp.fiscal_start_month || 4}月開始）`
+      : "";
+  }
+
   document.getElementById("selectedRemainingDays").textContent =
     `${emp.current_remaining_days}日`;
 
@@ -192,7 +204,9 @@ function selectEmployee(emp) {
   const remain = Number(emp.five_day_remaining || 0);
 
   document.getElementById("fiveDayCount").textContent = `${used}/5`;
-  document.getElementById("fiveDayBarFill").style.width = `${Math.min((used / 5) * 100, 100)}%`;
+  document.getElementById("fiveDayBarFill").style.width =
+    `${Math.min((used / 5) * 100, 100)}%`;
+
   document.getElementById("fiveDayMessage").textContent =
     emp.five_day_completed ? "達成済み" : `あと${remain}日`;
 
@@ -325,7 +339,23 @@ function submitRequest() {
   google.script.run
     .withSuccessHandler(() => {
       alert("申請しました");
+
       loadEmployeeLeaveHistory(selectedEmployee.employee_id);
+
+      google.script.run
+        .withSuccessHandler(data => {
+          employees = data || [];
+          const updated = employees.find(emp => emp.employee_id === selectedEmployee.employee_id);
+
+          if (updated) {
+            selectedEmployee = updated;
+            selectEmployee(updated);
+          }
+
+          render();
+          updateGroupTabs();
+        })
+        .getEmployeesForRequest();
 
       if (submitBtn) {
         submitBtn.disabled = false;
