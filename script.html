@@ -44,11 +44,14 @@ function initReasonOptions() {
    五十音グループ判定
 ========================= */
 function getKanaGroup(emp) {
-  const kana = (emp.name_kana || "").trim();
+  const type = String(emp.employment_type || "").trim().toLowerCase();
+
+  if (type === "trainee") return "trainee";
+
+  const kana = String(emp.name_kana || "").trim();
   const k = kana.charAt(0);
 
-  if (!k) return "global";
-  if (/[A-Za-z]/.test(k)) return "global";
+  if (!k) return "w";
 
   if ("あいうえおぁぃぅぇぉ".includes(k)) return "a";
   if ("かきくけこがぎぐげご".includes(k)) return "k";
@@ -61,12 +64,13 @@ function getKanaGroup(emp) {
   if ("らりるれろ".includes(k)) return "r";
   if ("わをん".includes(k)) return "w";
 
-  return "global";
+  return "w";
 }
 
 function getGroupOrder() {
-  return ["a", "k", "s", "t", "n", "h", "m", "y", "r", "w", "global"];
+  return ["a", "k", "s", "t", "n", "h", "m", "y", "r", "w", "trainee"];
 }
+
 
 function getFirstAvailableGroup() {
   const order = getGroupOrder();
@@ -115,7 +119,7 @@ function render() {
     y: "や行",
     r: "ら行",
     w: "わ行",
-    global: "外国人"
+    trainee: "研修生"
   };
 
   if (groupTitle) {

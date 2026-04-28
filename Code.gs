@@ -1390,9 +1390,9 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
    社員ごとの年度開始月対応版
 ========================= */
 function getEmployeesForRequest() {
-  const today = new Date();
+  const fiscalYear = getCurrentFiscalYear();
   const cache = CacheService.getScriptCache();
-  const cacheKey = CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + toDateKey(today);
+  const cacheKey = CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + fiscalYear;
   const cached = cache.get(cacheKey);
 
   if (cached) {
@@ -1404,13 +1404,13 @@ function getEmployeesForRequest() {
     "employee_id",
     "name",
     "name_kana",
+    "employment_type",
     "employment_status",
     "leave_management_target",
     "fiscal_start_month"
   ]);
 
   const data = sheet.getDataRange().getValues();
-
   if (data.length <= 1) return [];
 
   const employeeRows = data.slice(1)
@@ -1429,12 +1429,25 @@ function getEmployeesForRequest() {
       );
     });
 
+  const employeeIds = employeeRows.map(rowObj =>
+    String(rowObj.employee_id || "").trim()
+  );
+
+  const balanceMap = getEmployeeBalanceMapForEmployeeIdsForFiscalYear(
+    fiscalYear,
+    employeeIds
+  );
+
   const result = employeeRows.map(rowObj => {
     const employeeId = String(rowObj.employee_id || "").trim();
     const fiscalStartMonth = Number(rowObj.fiscal_start_month || 4);
-    const fiscalYear = getFiscalYearFromDateWithStart(today, fiscalStartMonth);
 
-    const balance = calculateYearlyBalanceByEmployee(employeeId, fiscalYear);
+    const balance = balanceMap[employeeId] || {
+      current_remaining_days: 0,
+      carry_over_days: 0,
+      grant_days: 0,
+      used_days: 0
+    };
 
     const usedDays = Number(balance.used_days || 0);
     const fiveDayUsed = Math.min(usedDays, 5);
@@ -1444,6 +1457,7 @@ function getEmployeesForRequest() {
       employee_id: employeeId,
       name: String(rowObj.name || "").trim(),
       name_kana: String(rowObj.name_kana || "").trim(),
+      employment_type: String(rowObj.employment_type || "").trim(),
 
       fiscal_year: fiscalYear,
       fiscal_start_month: fiscalStartMonth,
@@ -1463,80 +1477,6 @@ function getEmployeesForRequest() {
 }
 
 /* =========================
-   申請者用：年度内の有給申請履歴取得
-========================= */
-function getEmployeeLeaveHistoryForRequest(employeeId) {
-  if (!employeeId) {
-    throw new Error("employeeId がありません");
-  }
-
-  const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId);
-  const fiscalYear = getFiscalYearFromDateWithStart(new Date(), fiscalStartMonth);
-  const range = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
-
-  const sheet = getSheet("leave_requests");
-  const headerInfo = requireHeaders(sheet, [
-    "request_id",
-    "employee_id",
-    "start_date",
-    "end_date",
-    "days",
-    "half_day",
-    "reason",
-    "reason_detail",
-    "status"
-  ]);
-
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return [];
-
-  return data.slice(1)
-    .map(row => {
-      const rowObj = rowToObject(row, headerInfo.headers);
-      const rowEmployeeId = String(rowObj.employee_id || "").trim();
-
-      if (rowEmployeeId !== String(employeeId).trim()) return null;
-      if (!rowObj.start_date || !rowObj.end_date) return null;
-
-      const start = parseLocalDate(rowObj.start_date);
-      const end = parseLocalDate(rowObj.end_date);
-
-      if (end < range.start || start > range.end) return null;
-
-      const halfDay = String(rowObj.half_day || "").trim();
-      let leaveTypeLabel = "1日休";
-
-      if (halfDay === "am") leaveTypeLabel = "半休 AM";
-      if (halfDay === "pm") leaveTypeLabel = "半休 PM";
-
-      const status = norm(rowObj.status);
-      let statusLabel = status;
-
-      if (status === STATUS.PENDING) statusLabel = "承認待ち";
-      if (status === STATUS.APPROVED) statusLabel = "承認済み";
-      if (status === STATUS.REJECTED) statusLabel = "否認";
-
-      const startText = formatDateValue(start);
-      const endText = formatDateValue(end);
-
-      return {
-        request_id: String(rowObj.request_id || ""),
-        date_label: startText === endText ? startText : startText + " 〜 " + endText,
-        days: Number(rowObj.days || 0),
-        leave_type_label: leaveTypeLabel,
-        reason: String(rowObj.reason || ""),
-        reason_detail: String(rowObj.reason_detail || ""),
-        status: status,
-        status_label: statusLabel
-      };
-    })
-    .filter(item => item)
-    .sort((a, b) => {
-      return a.date_label < b.date_label ? 1 : -1;
-    });
-}
-
-/* =========================
    フロント用返却
 ========================= */
 function getCalendarRules() {
@@ -1553,3 +1493,262 @@ function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
   return { ok: true };
 }
 
+/* =========================
+   社員マスター整備
+   employee_id / display_employee_id / display_order 自動整備
+========================= */
+function maintainEmployeeMaster() {
+  const sheet = getSheet("employees");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "display_employee_id",
+    "company_code",
+    "name",
+    "name_kana",
+    "employment_status",
+    "display_order"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { ok: true, message: "社員データがありません" };
+
+  const headers = headerInfo.headers;
+  let rows = data.slice(1);
+
+  const employeeIdIndex = headerInfo.map.employee_id;
+  const displayIdIndex = headerInfo.map.display_employee_id;
+  const companyCodeIndex = headerInfo.map.company_code;
+  const kanaIndex = headerInfo.map.name_kana;
+  const statusIndex = headerInfo.map.employment_status;
+  const orderIndex = headerInfo.map.display_order;
+
+  const usedEmployeeIds = new Set();
+  const usedDisplayIds = {
+    W: new Set(),
+    P: new Set()
+  };
+
+  rows.forEach(row => {
+    const employeeId = String(row[employeeIdIndex] || "").trim();
+    const displayId = String(row[displayIdIndex] || "").trim();
+
+    if (employeeId) usedEmployeeIds.add(employeeId);
+
+    if (displayId.startsWith("W")) usedDisplayIds.W.add(displayId);
+    if (displayId.startsWith("P")) usedDisplayIds.P.add(displayId);
+  });
+
+  let nextEmployeeNumber = getNextIdNumber_(usedEmployeeIds, "EMP");
+  let nextWNumber = getNextIdNumber_(usedDisplayIds.W, "W");
+  let nextPNumber = getNextIdNumber_(usedDisplayIds.P, "P");
+
+  rows = rows.map(row => {
+    const newRow = row.slice();
+
+    if (!String(newRow[employeeIdIndex] || "").trim()) {
+      newRow[employeeIdIndex] = "EMP" + String(nextEmployeeNumber).padStart(4, "0");
+      nextEmployeeNumber++;
+    }
+
+    if (!String(newRow[displayIdIndex] || "").trim()) {
+      const companyCode = normalizeCompanyCode_(newRow[companyCodeIndex]);
+
+      if (companyCode === "PARTNER") {
+        newRow[displayIdIndex] = "P" + String(nextPNumber).padStart(4, "0");
+        nextPNumber++;
+      } else {
+        newRow[displayIdIndex] = "W" + String(nextWNumber).padStart(4, "0");
+        nextWNumber++;
+      }
+    }
+
+    return newRow;
+  });
+
+  rows.sort((a, b) => {
+    const statusA = getEmploymentStatusOrder_(a[statusIndex]);
+    const statusB = getEmploymentStatusOrder_(b[statusIndex]);
+
+    if (statusA !== statusB) return statusA - statusB;
+
+    const companyA = getCompanyOrder_(a[companyCodeIndex]);
+    const companyB = getCompanyOrder_(b[companyCodeIndex]);
+
+    if (companyA !== companyB) return companyA - companyB;
+
+    const kanaA = String(a[kanaIndex] || "");
+    const kanaB = String(b[kanaIndex] || "");
+
+    return kanaA.localeCompare(kanaB, "ja");
+  });
+
+  rows.forEach((row, index) => {
+    row[orderIndex] = index + 1;
+  });
+
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+
+  clearAppCache();
+
+  return {
+    ok: true,
+    message: "社員マスターを整備しました",
+    count: rows.length
+  };
+}
+
+/* =========================
+   IDの次番号取得
+========================= */
+function getNextIdNumber_(usedIds, prefix) {
+  let max = 0;
+
+  usedIds.forEach(id => {
+    const text = String(id || "").trim();
+    if (!text.startsWith(prefix)) return;
+
+    const numberPart = text.replace(prefix, "");
+    const num = Number(numberPart);
+
+    if (!isNaN(num) && num > max) {
+      max = num;
+    }
+  });
+
+  return max + 1;
+}
+
+/* =========================
+   company_code 正規化
+========================= */
+function normalizeCompanyCode_(companyCode) {
+  const value = String(companyCode || "").trim().toUpperCase();
+
+  if (value === "PARTONER") return "PARTNER";
+  if (value === "PARTNER") return "PARTNER";
+
+  return "MAIN";
+}
+
+/* =========================
+   company_code 並び順
+========================= */
+function getCompanyOrder_(companyCode) {
+  const value = normalizeCompanyCode_(companyCode);
+
+  if (value === "MAIN") return 1;
+  if (value === "PARTNER") return 2;
+
+  return 9;
+}
+
+/* =========================
+   在職状況の並び順
+========================= */
+function getEmploymentStatusOrder_(status) {
+  const value = String(status || "").trim().toLowerCase();
+
+  if (value === "active") return 1;
+  if (value === "leave") return 2;
+  if (value === "retired") return 3;
+
+  return 9;
+}
+
+/* =========================
+   社員追加
+========================= */
+function addEmployeeFromAdmin(data) {
+  if (!data || typeof data !== "object") {
+    throw new Error("社員データがありません");
+  }
+
+  const sheet = getSheet("employees");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "display_employee_id",
+    "name",
+    "name_kana",
+    "company_code",
+    "company_name",
+    "department",
+    "employment_type",
+    "employment_status",
+    "hire_date",
+    "leave_date",
+    "work_days_per_week",
+    "fiscal_start_month",
+    "leave_management_target",
+    "display_order",
+    "notes",
+    "created_at",
+    "updated_at"
+  ]);
+
+  if (!data.name) throw new Error("氏名を入力してください");
+  if (!data.name_kana) throw new Error("ふりがなを入力してください");
+  if (!data.company_code) throw new Error("会社区分を選択してください");
+
+  const now = new Date();
+  const rowObj = createEmptyRowObject(headerInfo.headers);
+
+  rowObj.employee_id = "";
+  rowObj.display_employee_id = "";
+
+  rowObj.name = String(data.name || "").trim();
+  rowObj.name_kana = String(data.name_kana || "").trim();
+
+  rowObj.company_code = String(data.company_code || "").trim().toUpperCase();
+  rowObj.company_name = String(data.company_name || "").trim();
+
+  rowObj.department = String(data.department || "").trim();
+  rowObj.employment_type = String(data.employment_type || "").trim();
+  rowObj.employment_status = String(data.employment_status || "active").trim();
+
+  rowObj.hire_date = data.hire_date ? parseLocalDate(data.hire_date) : "";
+  rowObj.leave_date = data.leave_date ? parseLocalDate(data.leave_date) : "";
+
+  rowObj.work_days_per_week = data.work_days_per_week
+    ? Number(data.work_days_per_week)
+    : "";
+
+  rowObj.fiscal_start_month = data.fiscal_start_month
+    ? Number(data.fiscal_start_month)
+    : 4;
+
+  rowObj.leave_management_target =
+    String(data.leave_management_target || "").toUpperCase() === "TRUE";
+
+  rowObj.display_order = "";
+  rowObj.notes = String(data.notes || "").trim();
+
+  rowObj.created_at = now;
+  rowObj.updated_at = now;
+
+  sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+
+  // ID採番・表示順整理
+  maintainEmployeeMaster();
+
+  return {
+    ok: true,
+    message: "社員を追加しました"
+  };
+}
+
+function debugEmployeesForRequest() {
+  const data = getEmployeesForRequest();
+
+  Logger.log("件数: " + data.length);
+
+  data.forEach(emp => {
+    Logger.log(
+      emp.name +
+      " / type=" + emp.employment_type +
+      " / kana=" + emp.name_kana +
+      " / target=" + emp.leave_management_target
+    );
+  });
+
+  return data;
+}

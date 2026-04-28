@@ -1,0 +1,109 @@
+<script>
+function handleCompanyCodeChange() {
+  const companyCode = document.getElementById("companyCode").value;
+  const employmentType = document.getElementById("employmentType");
+  const leaveManagementTarget = document.getElementById("leaveManagementTarget");
+
+  if (companyCode === "PARTNER") {
+    employmentType.value = "partner";
+    leaveManagementTarget.value = "FALSE";
+  }
+
+  if (companyCode === "MAIN") {
+    if (employmentType.value === "partner") {
+      employmentType.value = "regular";
+    }
+  }
+}
+
+function submitEmployee() {
+  const statusBox = document.getElementById("employeeAdminStatus");
+  const btn = document.getElementById("addEmployeeBtn");
+
+  const payload = {
+    name: getValue("name"),
+    name_kana: getValue("nameKana"),
+    company_code: getValue("companyCode"),
+    company_name: getValue("companyName"),
+    department: getValue("department"),
+    employment_type: getValue("employmentType"),
+    employment_status: getValue("employmentStatus"),
+    hire_date: getValue("hireDate"),
+    leave_date: getValue("leaveDate"),
+    work_days_per_week: getValue("workDaysPerWeek"),
+    fiscal_start_month: getValue("fiscalStartMonth"),
+    leave_management_target: getValue("leaveManagementTarget"),
+    notes: getValue("notes")
+  };
+
+  if (!payload.name) {
+    showStatus("氏名を入力してください。", "error");
+    return;
+  }
+
+  if (!payload.name_kana) {
+    showStatus("ふりがなを入力してください。", "error");
+    return;
+  }
+
+  if (!payload.company_code) {
+    showStatus("会社区分を選択してください。", "error");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "追加中...";
+  showStatus("社員情報を追加しています...", "");
+
+  google.script.run
+    .withSuccessHandler(res => {
+      showStatus("社員を追加しました。ID採番と並び替えも完了しています。", "ok");
+      clearForm();
+
+      btn.disabled = false;
+      btn.textContent = "社員を追加する";
+    })
+    .withFailureHandler(err => {
+      console.error(err);
+      showStatus("エラーが発生しました。\n" + (err.message || err), "error");
+
+      btn.disabled = false;
+      btn.textContent = "社員を追加する";
+    })
+    .addEmployeeFromAdmin(payload);
+}
+
+function getValue(id) {
+  const el = document.getElementById(id);
+  return el ? String(el.value || "").trim() : "";
+}
+
+function showStatus(message, type) {
+  const box = document.getElementById("employeeAdminStatus");
+  if (!box) return;
+
+  box.classList.remove("ok", "error");
+
+  if (type) {
+    box.classList.add(type);
+  }
+
+  box.textContent = message;
+}
+
+function clearForm() {
+  document.getElementById("name").value = "";
+  document.getElementById("nameKana").value = "";
+  document.getElementById("companyCode").value = "MAIN";
+  document.getElementById("companyName").value = "";
+  document.getElementById("department").value = "";
+  document.getElementById("employmentType").value = "";
+  document.getElementById("employmentStatus").value = "active";
+  document.getElementById("hireDate").value = "";
+  document.getElementById("leaveDate").value = "";
+  document.getElementById("workDaysPerWeek").value = "";
+  document.getElementById("fiscalStartMonth").value = "4";
+  document.getElementById("leaveManagementTarget").value = "TRUE";
+  document.getElementById("notes").value = "";
+}
+</script>

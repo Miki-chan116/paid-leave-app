@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <?!= include('style'); ?>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <h1 class="app-title">社員マスター管理</h1>
+      <p class="app-subtitle">社員情報を追加します</p>
+    </header>
+
+    <section class="screen active">
+      <div class="screen-card">
+        <div class="group-header">
+          <div>
+            <div class="section-title">社員追加</div>
+            <div class="section-subtitle">
+              employee_id・display_employee_id・display_order は自動で設定されます
+            </div>
+          </div>
+        </div>
+
+        <div class="employee-form-grid">
+          <div class="field">
+            <label for="name">氏名 *</label>
+            <input type="text" id="name" placeholder="例：山田 太郎">
+          </div>
+
+          <div class="field">
+            <label for="nameKana">ふりがな *</label>
+            <input type="text" id="nameKana" placeholder="例：やまだ たろう">
+          </div>
+
+          <div class="field">
+            <label for="companyCode">会社区分 *</label>
+            <select id="companyCode" onchange="handleCompanyCodeChange()">
+              <option value="MAIN">MAIN（正社員・自社）</option>
+              <option value="PARTNER">PARTNER（協力企業）</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="companyName">会社名</label>
+            <input type="text" id="companyName" placeholder="例：株式会社〇〇">
+          </div>
+
+          <div class="field">
+            <label for="department">部署</label>
+            <input type="text" id="department" placeholder="例：工事部">
+          </div>
+
+          <div class="field">
+            <label for="employmentType">雇用区分</label>
+            <select id="employmentType">
+              <option value="">選択してください</option>
+              <option value="regular">正社員</option>
+              <option value="partner">協力企業</option>
+              <option value="part_time">パート</option>
+              <option value="trainee">研修生</option>
+              <option value="executive">役員</option>
+              <option value="other">その他</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="employmentStatus">在職状況</label>
+            <select id="employmentStatus">
+              <option value="active">active（在職）</option>
+              <option value="leave">leave（休職）</option>
+              <option value="retired">retired（退職）</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="hireDate">入社日</label>
+            <input type="date" id="hireDate">
+          </div>
+
+          <div class="field">
+            <label for="leaveDate">退職日</label>
+            <input type="date" id="leaveDate">
+          </div>
+
+          <div class="field">
+            <label for="workDaysPerWeek">週所定労働日数</label>
+            <input type="number" id="workDaysPerWeek" min="0" max="7" step="0.5" placeholder="例：5">
+          </div>
+
+          <div class="field">
+            <label for="fiscalStartMonth">有給年度開始月</label>
+            <select id="fiscalStartMonth">
+              <option value="4">4月開始</option>
+              <option value="7">7月開始</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="leaveManagementTarget">有給管理対象</label>
+            <select id="leaveManagementTarget">
+              <option value="TRUE">TRUE（対象）</option>
+              <option value="FALSE">FALSE（対象外）</option>
+            </select>
+          </div>
+
+          <div class="field full-width">
+            <label for="notes">備考</label>
+            <textarea id="notes" rows="3" placeholder="メモがあれば入力してください"></textarea>
+          </div>
+        </div>
+
+        <div id="employeeAdminStatus" class="status-box">
+          必要項目を入力して「社員を追加する」を押してください。
+        </div>
+
+        <div class="submit-area">
+          <button id="addEmployeeBtn" class="submit-btn" type="button" onclick="submitEmployee()">
+            社員を追加する
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <?!= include('employee-admin-script'); ?>
+</body>
+</html>
