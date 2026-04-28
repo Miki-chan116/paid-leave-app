@@ -531,6 +531,7 @@ function getGrantMapByFiscalYear(fiscalYear) {
 
   const data = sheet.getDataRange().getValues();
   const result = {};
+  const employeeDetailMap = getEmployeeDetailMap();
 
   if (data.length <= 1) return result;
 
@@ -539,8 +540,9 @@ function getGrantMapByFiscalYear(fiscalYear) {
     const employeeId = String(rowObj.employee_id || "").trim();
 
     if (!employeeId) return;
+    if (!rowObj.grant_date) return;
 
-    const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId);
+    const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId, employeeDetailMap);
     const rowYear = getFiscalYearFromDateWithStart(rowObj.grant_date, fiscalStartMonth);
 
     if (rowYear !== Number(fiscalYear)) return;
@@ -591,6 +593,7 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
   const data = sheet.getDataRange().getValues();
   const result = {};
   const calendarMap = getCompanyCalendarMap();
+  const employeeDetailMap = getEmployeeDetailMap();
 
   if (data.length <= 1) return result;
 
@@ -602,9 +605,9 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
     if (!employeeId) return;
     if (!targetIds.has(employeeId)) return;
     if (status !== STATUS.APPROVED) return;
+    if (!rowObj.start_date || !rowObj.end_date) return;
 
-    // 🔥ここが今回のキモ
-    const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId);
+    const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId, employeeDetailMap);
     const range = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
 
     const dailyRows = expandLeaveRequestToDailyRows(
@@ -1734,21 +1737,4 @@ function addEmployeeFromAdmin(data) {
     ok: true,
     message: "社員を追加しました"
   };
-}
-
-function debugEmployeesForRequest() {
-  const data = getEmployeesForRequest();
-
-  Logger.log("件数: " + data.length);
-
-  data.forEach(emp => {
-    Logger.log(
-      emp.name +
-      " / type=" + emp.employment_type +
-      " / kana=" + emp.name_kana +
-      " / target=" + emp.leave_management_target
-    );
-  });
-
-  return data;
 }
