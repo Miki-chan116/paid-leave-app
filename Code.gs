@@ -1738,3 +1738,187 @@ function addEmployeeFromAdmin(data) {
     message: "社員を追加しました"
   };
 }
+
+/* =========================
+   社員一覧取得（管理画面用）
+========================= */
+function getEmployeesForAdmin() {
+  const sheet = getSheet("employees");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "display_employee_id",
+    "name",
+    "name_kana",
+    "company_code",
+    "company_name",
+    "department",
+    "employment_type",
+    "employment_status",
+    "hire_date",
+    "leave_date",
+    "work_days_per_week",
+    "fiscal_start_month",
+    "leave_management_target",
+    "display_order",
+    "notes"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+
+  return data.slice(1)
+    .map(row => {
+      const obj = rowToObject(row, headerInfo.headers);
+
+      return {
+        employee_id: String(obj.employee_id || "").trim(),
+        display_employee_id: String(obj.display_employee_id || "").trim(),
+        name: String(obj.name || "").trim(),
+        name_kana: String(obj.name_kana || "").trim(),
+        company_code: String(obj.company_code || "").trim(),
+        company_name: String(obj.company_name || "").trim(),
+        department: String(obj.department || "").trim(),
+        employment_type: String(obj.employment_type || "").trim(),
+        employment_status: String(obj.employment_status || "").trim(),
+        hire_date: formatDateValue(obj.hire_date),
+        leave_date: formatDateValue(obj.leave_date),
+        work_days_per_week: obj.work_days_per_week || "",
+        fiscal_start_month: obj.fiscal_start_month || "",
+        leave_management_target:
+          String(obj.leave_management_target || "").toUpperCase() === "TRUE",
+        display_order: obj.display_order || "",
+        notes: String(obj.notes || "")
+      };
+    })
+    .filter(emp => emp.employee_id)
+    .sort((a, b) => Number(a.display_order || 9999) - Number(b.display_order || 9999));
+}
+
+/* =========================
+   社員情報更新
+========================= */
+function updateEmployeeFromAdmin(data) {
+  if (!data || typeof data !== "object") {
+    throw new Error("社員データがありません");
+  }
+
+  if (!data.employee_id) {
+    throw new Error("employee_id がありません");
+  }
+
+  const sheet = getSheet("employees");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "name",
+    "name_kana",
+    "company_code",
+    "company_name",
+    "department",
+    "employment_type",
+    "employment_status",
+    "hire_date",
+    "leave_date",
+    "work_days_per_week",
+    "fiscal_start_month",
+    "leave_management_target",
+    "notes",
+    "updated_at"
+  ]);
+
+  const dataRange = sheet.getDataRange().getValues();
+
+  const rowIndex = dataRange.findIndex((row, index) => {
+    if (index === 0) return false;
+    const rowObj = rowToObject(row, headerInfo.headers);
+    return String(rowObj.employee_id || "").trim() === String(data.employee_id || "").trim();
+  });
+
+  if (rowIndex === -1) {
+    throw new Error("対象社員が見つかりません");
+  }
+
+  const sheetRow = rowIndex + 1;
+
+  sheet.getRange(sheetRow, headerInfo.map.name + 1).setValue(String(data.name || "").trim());
+  sheet.getRange(sheetRow, headerInfo.map.name_kana + 1).setValue(String(data.name_kana || "").trim());
+  sheet.getRange(sheetRow, headerInfo.map.company_code + 1).setValue(String(data.company_code || "").trim().toUpperCase());
+  sheet.getRange(sheetRow, headerInfo.map.company_name + 1).setValue(String(data.company_name || "").trim());
+  sheet.getRange(sheetRow, headerInfo.map.department + 1).setValue(String(data.department || "").trim());
+  sheet.getRange(sheetRow, headerInfo.map.employment_type + 1).setValue(String(data.employment_type || "").trim());
+  sheet.getRange(sheetRow, headerInfo.map.employment_status + 1).setValue(String(data.employment_status || "").trim());
+
+  sheet.getRange(sheetRow, headerInfo.map.hire_date + 1)
+    .setValue(data.hire_date ? parseLocalDate(data.hire_date) : "");
+
+  sheet.getRange(sheetRow, headerInfo.map.leave_date + 1)
+    .setValue(data.leave_date ? parseLocalDate(data.leave_date) : "");
+
+  sheet.getRange(sheetRow, headerInfo.map.work_days_per_week + 1)
+    .setValue(data.work_days_per_week ? Number(data.work_days_per_week) : "");
+
+  sheet.getRange(sheetRow, headerInfo.map.fiscal_start_month + 1)
+    .setValue(data.fiscal_start_month ? Number(data.fiscal_start_month) : 4);
+
+  sheet.getRange(sheetRow, headerInfo.map.leave_management_target + 1)
+    .setValue(String(data.leave_management_target || "").toUpperCase() === "TRUE");
+
+  sheet.getRange(sheetRow, headerInfo.map.notes + 1).setValue(String(data.notes || "").trim());
+  sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(new Date());
+
+  maintainEmployeeMaster();
+  clearAppCache();
+
+  return {
+    ok: true,
+    message: "社員情報を更新しました"
+  };
+}
+
+/* =========================
+   退職処理
+========================= */
+function retireEmployeeFromAdmin(employeeId, leaveDate) {
+  if (!employeeId) {
+    throw new Error("employeeId がありません");
+  }
+
+  if (!leaveDate) {
+    throw new Error("退職日を入力してください");
+  }
+
+  const sheet = getSheet("employees");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "employment_status",
+    "leave_date",
+    "leave_management_target",
+    "updated_at"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+
+  const rowIndex = data.findIndex((row, index) => {
+    if (index === 0) return false;
+    const rowObj = rowToObject(row, headerInfo.headers);
+    return String(rowObj.employee_id || "").trim() === String(employeeId || "").trim();
+  });
+
+  if (rowIndex === -1) {
+    throw new Error("対象社員が見つかりません");
+  }
+
+  const sheetRow = rowIndex + 1;
+
+  sheet.getRange(sheetRow, headerInfo.map.employment_status + 1).setValue("retired");
+  sheet.getRange(sheetRow, headerInfo.map.leave_date + 1).setValue(parseLocalDate(leaveDate));
+  sheet.getRange(sheetRow, headerInfo.map.leave_management_target + 1).setValue(false);
+  sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(new Date());
+
+  maintainEmployeeMaster();
+  clearAppCache();
+
+  return {
+    ok: true,
+    message: "退職処理を完了しました"
+  };
+}

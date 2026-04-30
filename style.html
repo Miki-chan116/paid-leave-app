@@ -704,6 +704,67 @@
   font-size: 18px;
 }
 
+.admin-action-btn {
+  border: none;
+  border-radius: 14px;
+  padding: 12px 20px;
+  min-width: 92px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  background: #6fb7d6;
+  color: #fff;
+  box-shadow: var(--shadow);
+}
+
+.admin-action-btn.edit-btn {
+  background: #6fb7d6;
+}
+
+.admin-action-btn.retire-btn {
+  background: #d94f78;
+}
+
+.admin-action-btn:hover {
+  opacity: 0.9;
+}
+
+.admin-employee-row {
+  border-bottom: 1px solid var(--border);
+  padding: 18px 4px;
+}
+
+.admin-employee-row + .admin-employee-row {
+  border-top: 1px solid rgba(210, 228, 234, 0.75);
+}
+
+.admin-employee-name {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--primary-dark);
+  letter-spacing: 0.02em;
+}
+
+.admin-employee-meta {
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--text-main);
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.admin-employee-sub {
+  display: none;
+}
+
+.admin-action-btn {
+  background: #6fb7d6;
+}
+
+.admin-action-btn.retire-btn {
+  background: var(--accent-red);
+}
+
 @media (max-width: 900px) {
   .employee-form-grid {
     grid-template-columns: 1fr;
