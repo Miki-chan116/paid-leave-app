@@ -1,5 +1,7 @@
 <script>
 let adminEmployees = [];
+let editingEmployeeId = "";
+let retiringEmployeeId = "";
 
 /* =========================
    初期表示
@@ -136,14 +138,12 @@ function renderEmployeeList(data) {
     });
 
     row.querySelector(".retire-btn").addEventListener("click", () => {
-      retireEmployee(emp.employee_id);
+      openRetireModal(emp);
     });
 
     list.appendChild(row);
   });
 }
-
-let editingEmployeeId = "";
 
 /* =========================
    編集モーダルを開く
@@ -231,167 +231,67 @@ function submitEditEmployee() {
     .updateEmployeeFromAdmin(payload);
 }
 
-function showEditStatus(message, type) {
-  const box = document.getElementById("editEmployeeStatus");
-  if (!box) return;
-
-  box.classList.remove("ok", "error");
-  if (type) box.classList.add(type);
-
-  box.textContent = message;
-}
-
-function toInputDate(value) {
-  if (!value) return "";
-
-  const str = String(value).trim();
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-  if (/^\d{4}\/\d{2}\/\d{2}$/.test(str)) return str.replace(/\//g, "-");
-
-  return "";
-}
-
 /* =========================
-   退職
-========================= */
-let retiringEmployeeId = "";
-
-/* =========================
-   退職モーダル開く
+   退職モーダルを開く
 ========================= */
 function openRetireModal(emp) {
-  retiringEmployeeId = emp.employee_id;
+  retiringEmployeeId = emp.employee_id || "";
 
-  document.getElementById("retireEmployeeSubTitle").textContent =
-    emp.name + "（" + emp.employee_id + "）";
+  const subTitle = document.getElementById("retireEmployeeSubTitle");
+  if (subTitle) {
+    subTitle.textContent = `${emp.name || ""}（${emp.display_employee_id || emp.employee_id || ""}）`;
+  }
 
-  document.getElementById("retireDate").value = "";
+  setValue("retireDate", "");
 
-  document.getElementById("retireEmployeeModal").style.display = "flex";
+  showRetireStatus("退職日を入力してください。", "");
+
+  const modal = document.getElementById("retireEmployeeModal");
+  if (modal) modal.style.display = "flex";
 }
 
 /* =========================
-   閉じる
+   退職モーダルを閉じる
 ========================= */
 function closeRetireModal() {
   retiringEmployeeId = "";
-  document.getElementById("retireEmployeeModal").style.display = "none";
+
+  const modal = document.getElementById("retireEmployeeModal");
+  if (modal) modal.style.display = "none";
 }
 
 /* =========================
    退職実行
 ========================= */
 function submitRetire() {
-  const date = document.getElementById("retireDate").value;
+  const leaveDate = getValue("retireDate");
 
-  if (!date) {
-    showRetireStatus("退職日を入力してください", "error");
+  if (!retiringEmployeeId) {
+    showRetireStatus("退職対象がありません。", "error");
     return;
   }
 
-  showRetireStatus("処理中...", "");
+  if (!leaveDate) {
+    showRetireStatus("退職日を入力してください。", "error");
+    return;
+  }
+
+  showRetireStatus("退職処理を実行しています...", "");
 
   google.script.run
     .withSuccessHandler(() => {
-      showRetireStatus("退職処理完了", "ok");
-
+      showRetireStatus("退職処理を完了しました。", "ok");
       loadEmployees();
 
       setTimeout(() => {
         closeRetireModal();
       }, 500);
-    })
-    .withFailureHandler(err => {
-      showRetireStatus(err.message || "エラー", "error");
-    })
-    .retireEmployeeFromAdmin(retiringEmployeeId, date);
-}
-
-function showRetireStatus(msg, type) {
-  const box = document.getElementById("retireStatus");
-
-  box.textContent = msg;
-  box.classList.remove("ok", "error");
-
-  if (type) box.classList.add(type);
-}
-  if (!leaveDate) return;
-
-  if (!confirm("退職処理しますか？\n有給申請画面には表示されなくなります。")) return;
-
-  google.script.run
-    .withSuccessHandler(() => {
-      alert("退職しました");
-      loadEmployees();
     })
     .withFailureHandler(err => {
       console.error(err);
-      alert("退職処理でエラーが発生しました。\n" + (err.message || err));
+      showRetireStatus("退職処理でエラーが発生しました。\n" + (err.message || err), "error");
     })
-    .retireEmployeeFromAdmin(employeeId, leaveDate);
-}
-
-let retiringEmployeeId = "";
-
-/* =========================
-   退職モーダル開く
-========================= */
-function openRetireModal(emp) {
-  retiringEmployeeId = emp.employee_id;
-
-  document.getElementById("retireEmployeeSubTitle").textContent =
-    emp.name + "（" + emp.employee_id + "）";
-
-  document.getElementById("retireDate").value = "";
-
-  document.getElementById("retireEmployeeModal").style.display = "flex";
-}
-
-/* =========================
-   閉じる
-========================= */
-function closeRetireModal() {
-  retiringEmployeeId = "";
-  document.getElementById("retireEmployeeModal").style.display = "none";
-}
-
-/* =========================
-   退職実行
-========================= */
-function submitRetire() {
-  const date = document.getElementById("retireDate").value;
-
-  if (!date) {
-    showRetireStatus("退職日を入力してください", "error");
-    return;
-  }
-
-  showRetireStatus("処理中...", "");
-
-  google.script.run
-    .withSuccessHandler(() => {
-      showRetireStatus("退職処理完了", "ok");
-
-      loadEmployees();
-
-      setTimeout(() => {
-        closeRetireModal();
-      }, 500);
-    })
-    .withFailureHandler(err => {
-      showRetireStatus(err.message || "エラー", "error");
-    })
-    .retireEmployeeFromAdmin(retiringEmployeeId, date);
-}
-
-function showRetireStatus(msg, type) {
-  const box = document.getElementById("retireStatus");
-
-  box.textContent = msg;
-  box.classList.remove("ok", "error");
-
-  if (type) box.classList.add(type);
+    .retireEmployeeFromAdmin(retiringEmployeeId, leaveDate);
 }
 
 /* =========================
@@ -556,6 +456,26 @@ function showStatus(message, type) {
   box.textContent = message || "検索条件を入力すると、ここに結果が表示されます。";
 }
 
+function showEditStatus(message, type) {
+  const box = document.getElementById("editEmployeeStatus");
+  if (!box) return;
+
+  box.classList.remove("ok", "error");
+  if (type) box.classList.add(type);
+
+  box.textContent = message;
+}
+
+function showRetireStatus(message, type) {
+  const box = document.getElementById("retireStatus");
+  if (!box) return;
+
+  box.classList.remove("ok", "error");
+  if (type) box.classList.add(type);
+
+  box.textContent = message;
+}
+
 function clearForm() {
   setValue("name", "");
   setValue("nameKana", "");
@@ -570,6 +490,17 @@ function clearForm() {
   setValue("fiscalStartMonth", "4");
   setValue("leaveManagementTarget", "TRUE");
   setValue("notes", "");
+}
+
+function toInputDate(value) {
+  if (!value) return "";
+
+  const str = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(str)) return str.replace(/\//g, "-");
+
+  return "";
 }
 
 function escapeHtml(str) {

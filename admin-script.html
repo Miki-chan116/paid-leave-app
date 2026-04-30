@@ -303,35 +303,37 @@ function loadLogs() {
 }
 
 function renderLogs(data) {
-  const container = document.getElementById("logView");
-  container.innerHTML = "";
+  const logView = document.getElementById("logView");
+  const requestView = document.getElementById("requestView");
+
+  if (!logView) return;
+
+  if (requestView) requestView.style.display = "none";
+  logView.style.display = "block";
 
   if (!Array.isArray(data) || data.length === 0) {
-    container.innerHTML = `<div class="message">ログはありません。</div>`;
+    logView.innerHTML = `<div class="empty-message">ログはありません。</div>`;
     return;
   }
 
-  const list = document.createElement("div");
-  list.className = "log-list";
-
-  data.forEach(log => {
-    const div = document.createElement("div");
-    div.className = "log-card";
-
-    div.innerHTML = `
-      <div class="log-title">${escapeHtml(log.type || "log")}</div>
-      <div class="log-meta">
-        Request ID: ${escapeHtml(log.request_id || "")}<br>
-        User: ${escapeHtml(log.user_name || "")}<br>
-        Date: ${escapeHtml(log.date || "")}<br>
-        Comment: ${escapeHtml(log.comment || "")}
+  logView.innerHTML = data.map(log => `
+    <div class="log-card ${escapeHtml(log.type_class || "")}">
+      <div class="log-card-header">
+        <span class="log-badge">${escapeHtml(log.type_label || log.type || "")}</span>
+        <span class="log-date">${escapeHtml(log.date || "")}</span>
       </div>
-    `;
 
-    list.appendChild(div);
-  });
+      <div class="log-main">
+        ${escapeHtml(log.comment || "")}
+      </div>
 
-  container.appendChild(list);
+      <div class="log-sub">
+        対象ID：${escapeHtml(log.request_id || "-")}
+        ${log.employee_name ? " ／ 氏名：" + escapeHtml(log.employee_name) : ""}
+        ／ 操作者：${escapeHtml(log.user_name || log.user_id || "-")}
+      </div>
+    </div>
+  `).join("");
 }
 
 /* 出力 */

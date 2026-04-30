@@ -1172,6 +1172,8 @@ function searchUsageLogs(filters) {
   const startFilter = filters.start_date ? parseLocalDate(filters.start_date) : null;
   const endFilter = filters.end_date ? parseLocalDate(filters.end_date) : null;
 
+  const employeeMap = getEmployeeMap();
+
   return data.slice(1)
     .map(row => {
       const rowObj = rowToObject(row, headerInfo.headers);
@@ -1182,14 +1184,21 @@ function searchUsageLogs(filters) {
       if (startFilter && actionDate < startFilter) return null;
       if (endFilter && actionDate > endFilter) return null;
 
-      if (actionType && norm(rowObj.action_type) !== actionType) return null;
+      const rowActionType = String(rowObj.action_type || "");
+      if (actionType && norm(rowActionType) !== actionType) return null;
+
+      const requestId = String(rowObj.request_id || "");
+      const employeeName = employeeMap[requestId] || "";
 
       if (keyword) {
         const targetText = norm(
-          String(rowObj.request_id || "") +
+          requestId +
+          employeeName +
           String(rowObj.operator_id || "") +
           String(rowObj.operator_name || "") +
-          String(rowObj.comment || "")
+          String(rowObj.comment || "") +
+          rowActionType +
+          getLogActionLabel(rowActionType)
         );
 
         if (!targetText.includes(keyword)) return null;
@@ -1197,8 +1206,11 @@ function searchUsageLogs(filters) {
 
       return {
         log_id: rowObj.log_id,
-        request_id: rowObj.request_id,
-        type: rowObj.action_type,
+        request_id: requestId,
+        employee_name: employeeName,
+        type: rowActionType,
+        type_label: getLogActionLabel(rowActionType),
+        type_class: getLogActionClass(rowActionType),
         user_id: rowObj.operator_id,
         user_name: rowObj.operator_name,
         date: formatDateValue(rowObj.action_date),
@@ -1206,7 +1218,11 @@ function searchUsageLogs(filters) {
       };
     })
     .filter(item => item)
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+    .sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateB - dateA;
+    });
 }
 
 /* =========================
@@ -1753,6 +1769,36 @@ function runMaintainEmployeeMasterFromAdmin() {
   return result;
 
 }
+function getLogActionLabel(actionType) {
+  const type = String(actionType || "");
+
+  const labels = {
+    submit: "申請",
+    approve: "承認",
+    reject: "否認",
+    employee_add: "社員追加",
+    employee_update: "社員編集",
+    employee_retire: "退職処理",
+    employee_maintain: "ID採番・並び順整理"
+  };
+
+  return labels[type] || type;
+}
+
+function getLogActionClass(actionType) {
+  const type = String(actionType || "");
+
+  if (type === "approve") return "log-approve";
+  if (type === "reject") return "log-reject";
+  if (type === "submit") return "log-submit";
+  if (type === "employee_add") return "log-employee-add";
+  if (type === "employee_update") return "log-employee-update";
+  if (type === "employee_retire") return "log-employee-retire";
+  if (type === "employee_maintain") return "log-employee-maintain";
+
+  return "log-default";
+}
+
 
 /* =========================
    IDの次番号取得
@@ -1851,47 +1897,32 @@ function addEmployeeFromAdmin(data) {
 
   rowObj.employee_id = "";
   rowObj.display_employee_id = "";
-
   rowObj.name = String(data.name || "").trim();
   rowObj.name_kana = String(data.name_kana || "").trim();
-
   rowObj.company_code = String(data.company_code || "").trim().toUpperCase();
   rowObj.company_name = String(data.company_name || "").trim();
-
   rowObj.department = String(data.department || "").trim();
   rowObj.employment_type = String(data.employment_type || "").trim();
   rowObj.employment_status = String(data.employment_status || "active").trim();
-
   rowObj.hire_date = data.hire_date ? parseLocalDate(data.hire_date) : "";
   rowObj.leave_date = data.leave_date ? parseLocalDate(data.leave_date) : "";
-
-  rowObj.work_days_per_week = data.work_days_per_week
-    ? Number(data.work_days_per_week)
-    : "";
-
-  rowObj.fiscal_start_month = data.fiscal_start_month
-    ? Number(data.fiscal_start_month)
-    : 4;
-
-  rowObj.leave_management_target =
-    String(data.leave_management_target || "").toUpperCase() === "TRUE";
-
+  rowObj.work_days_per_week = data.work_days_per_week ? Number(data.work_days_per_week) : "";
+  rowObj.fiscal_start_month = data.fiscal_start_month ? Number(data.fiscal_start_month) : 4;
+  rowObj.leave_management_target = String(data.leave_management_target || "").toUpperCase() === "TRUE";
   rowObj.display_order = "";
   rowObj.notes = String(data.notes || "").trim();
-
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
   sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
 
-  // ID採番・表示順整理
   maintainEmployeeMaster();
 
   appendEmployeeMasterLog(
-  "employee_add",
-  "",
-  "社員を追加しました: " + rowObj.name
-);
+    "employee_add",
+    "",
+    "社員を追加しました: " + rowObj.name
+  );
 
   return {
     ok: true,
@@ -1954,6 +1985,59 @@ function getEmployeesForAdmin() {
     .sort((a, b) => Number(a.display_order || 9999) - Number(b.display_order || 9999));
 }
 
+function buildEmployeeUpdateDiffComment(beforeObj, afterData) {
+  const fields = [
+    { key: "name", label: "氏名" },
+    { key: "name_kana", label: "ふりがな" },
+    { key: "company_code", label: "会社区分" },
+    { key: "company_name", label: "会社名" },
+    { key: "department", label: "部署" },
+    { key: "employment_type", label: "雇用区分" },
+    { key: "employment_status", label: "在職状況" },
+    { key: "hire_date", label: "入社日", type: "date" },
+    { key: "leave_date", label: "退職日", type: "date" },
+    { key: "work_days_per_week", label: "週所定労働日数" },
+    { key: "fiscal_start_month", label: "有給年度開始月" },
+    { key: "leave_management_target", label: "有給管理対象", type: "boolean" },
+    { key: "notes", label: "備考" }
+  ];
+
+  const diffs = [];
+
+  fields.forEach(field => {
+    const beforeValue = normalizeEmployeeLogValue(beforeObj[field.key], field.type);
+    const afterValue = normalizeEmployeeLogValue(afterData[field.key], field.type);
+
+    if (beforeValue !== afterValue) {
+      diffs.push(
+        field.label + "「" + beforeValue + "」→「" + afterValue + "」"
+      );
+    }
+  });
+
+  const name = String(afterData.name || beforeObj.name || "").trim();
+
+  if (diffs.length === 0) {
+    return "社員情報を更新しました: " + name + "（変更差分なし）";
+  }
+
+  return "社員情報を更新しました: " + name + " / 変更: " + diffs.join("、");
+}
+
+function normalizeEmployeeLogValue(value, type) {
+  if (type === "date") {
+    if (!value) return "";
+    return formatDateValue(value).replace(/\//g, "-");
+  }
+
+  if (type === "boolean") {
+    const text = String(value || "").trim().toUpperCase();
+    return text === "TRUE" || value === true ? "対象" : "対象外";
+  }
+
+  return String(value == null ? "" : value).trim();
+}
+
 /* =========================
    社員情報更新
 ========================= */
@@ -1998,6 +2082,7 @@ function updateEmployeeFromAdmin(data) {
   }
 
   const sheetRow = rowIndex + 1;
+  const beforeObj = rowToObject(dataRange[rowIndex], headerInfo.headers);
 
   sheet.getRange(sheetRow, headerInfo.map.name + 1).setValue(String(data.name || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.name_kana + 1).setValue(String(data.name_kana || "").trim());
@@ -2028,11 +2113,13 @@ function updateEmployeeFromAdmin(data) {
   maintainEmployeeMaster();
   clearAppCache();
 
+  const diffComment = buildEmployeeUpdateDiffComment(beforeObj, data);
+
   appendEmployeeMasterLog(
-  "employee_update",
-  data.employee_id,
-  "社員情報を更新しました: " + data.name
-);
+    "employee_update",
+    data.employee_id,
+    diffComment
+  );
 
   return {
     ok: true,
@@ -2084,10 +2171,10 @@ function retireEmployeeFromAdmin(employeeId, leaveDate) {
   clearAppCache();
 
   appendEmployeeMasterLog(
-  "employee_retire",
-  employeeId,
-  "退職処理を実行しました。退職日: " + leaveDate
-);
+    "employee_retire",
+    employeeId,
+    "退職処理を実行しました。退職日: " + leaveDate
+  );
 
   return {
     ok: true,

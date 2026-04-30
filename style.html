@@ -1140,4 +1140,78 @@
     text-align: left;
   }
 }
+
+/* =========================
+   ログ画面
+========================= */
+.log-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-left: 8px solid #9bb8c7;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+
+.log-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.log-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 900;
+  background: #eaf6fb;
+  color: var(--primary-dark);
+}
+
+.log-date {
+  font-size: 13px;
+  color: var(--text-sub);
+  font-weight: bold;
+}
+
+.log-main {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.log-sub {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.log-submit {
+  border-left-color: #6fb7d6;
+}
+
+.log-approve {
+  border-left-color: #72c7a0;
+}
+
+.log-reject,
+.log-employee-retire {
+  border-left-color: var(--accent-red);
+}
+
+.log-employee-add {
+  border-left-color: #72c7a0;
+}
+
+.log-employee-update,
+.log-employee-maintain {
+  border-left-color: #6fb7d6;
+}
+
 </style>
