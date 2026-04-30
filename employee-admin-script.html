@@ -255,9 +255,67 @@ function toInputDate(value) {
 /* =========================
    退職
 ========================= */
-function retireEmployee(employeeId) {
-  const leaveDate = prompt("退職日を入力してください（例：2026-04-30）");
+let retiringEmployeeId = "";
 
+/* =========================
+   退職モーダル開く
+========================= */
+function openRetireModal(emp) {
+  retiringEmployeeId = emp.employee_id;
+
+  document.getElementById("retireEmployeeSubTitle").textContent =
+    emp.name + "（" + emp.employee_id + "）";
+
+  document.getElementById("retireDate").value = "";
+
+  document.getElementById("retireEmployeeModal").style.display = "flex";
+}
+
+/* =========================
+   閉じる
+========================= */
+function closeRetireModal() {
+  retiringEmployeeId = "";
+  document.getElementById("retireEmployeeModal").style.display = "none";
+}
+
+/* =========================
+   退職実行
+========================= */
+function submitRetire() {
+  const date = document.getElementById("retireDate").value;
+
+  if (!date) {
+    showRetireStatus("退職日を入力してください", "error");
+    return;
+  }
+
+  showRetireStatus("処理中...", "");
+
+  google.script.run
+    .withSuccessHandler(() => {
+      showRetireStatus("退職処理完了", "ok");
+
+      loadEmployees();
+
+      setTimeout(() => {
+        closeRetireModal();
+      }, 500);
+    })
+    .withFailureHandler(err => {
+      showRetireStatus(err.message || "エラー", "error");
+    })
+    .retireEmployeeFromAdmin(retiringEmployeeId, date);
+}
+
+function showRetireStatus(msg, type) {
+  const box = document.getElementById("retireStatus");
+
+  box.textContent = msg;
+  box.classList.remove("ok", "error");
+
+  if (type) box.classList.add(type);
+}
   if (!leaveDate) return;
 
   if (!confirm("退職処理しますか？\n有給申請画面には表示されなくなります。")) return;
@@ -272,6 +330,68 @@ function retireEmployee(employeeId) {
       alert("退職処理でエラーが発生しました。\n" + (err.message || err));
     })
     .retireEmployeeFromAdmin(employeeId, leaveDate);
+}
+
+let retiringEmployeeId = "";
+
+/* =========================
+   退職モーダル開く
+========================= */
+function openRetireModal(emp) {
+  retiringEmployeeId = emp.employee_id;
+
+  document.getElementById("retireEmployeeSubTitle").textContent =
+    emp.name + "（" + emp.employee_id + "）";
+
+  document.getElementById("retireDate").value = "";
+
+  document.getElementById("retireEmployeeModal").style.display = "flex";
+}
+
+/* =========================
+   閉じる
+========================= */
+function closeRetireModal() {
+  retiringEmployeeId = "";
+  document.getElementById("retireEmployeeModal").style.display = "none";
+}
+
+/* =========================
+   退職実行
+========================= */
+function submitRetire() {
+  const date = document.getElementById("retireDate").value;
+
+  if (!date) {
+    showRetireStatus("退職日を入力してください", "error");
+    return;
+  }
+
+  showRetireStatus("処理中...", "");
+
+  google.script.run
+    .withSuccessHandler(() => {
+      showRetireStatus("退職処理完了", "ok");
+
+      loadEmployees();
+
+      setTimeout(() => {
+        closeRetireModal();
+      }, 500);
+    })
+    .withFailureHandler(err => {
+      showRetireStatus(err.message || "エラー", "error");
+    })
+    .retireEmployeeFromAdmin(retiringEmployeeId, date);
+}
+
+function showRetireStatus(msg, type) {
+  const box = document.getElementById("retireStatus");
+
+  box.textContent = msg;
+  box.classList.remove("ok", "error");
+
+  if (type) box.classList.add(type);
 }
 
 /* =========================

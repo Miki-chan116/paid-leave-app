@@ -383,4 +383,199 @@ function exportYearlyReport() {
     })
     .exportYearlyPaidLeaveReport(fiscalYear);
 }
+
+let monthlyPreviewData = null;
+
+/* =========================
+   月間一覧プレビュー
+========================= */
+function previewMonthlyReport() {
+  const year = document.getElementById("monthlyYear").value;
+  const month = document.getElementById("monthlyMonth").value;
+  const company = document.getElementById("monthlyCompany").value;
+
+  const filters = buildMonthlyPreviewFilters(year, month, company);
+
+  showExportMessage("月間一覧を作成しています...", "");
+
+  google.script.run
+    .withSuccessHandler(data => {
+      monthlyPreviewData = data;
+      renderMonthlyPreview(data);
+      showExportMessage("月間一覧を表示しました。", "ok");
+    })
+    .withFailureHandler(err => {
+      console.error(err);
+      showExportMessage("月間一覧の取得でエラーが発生しました。\n" + (err.message || err), "error");
+    })
+    .getMonthlyPaidLeaveReportPreview(filters);
+}
+
+function buildMonthlyPreviewFilters(year, month, company) {
+  const filters = {
+    target_year: year,
+    target_month: month,
+    company_code: "",
+    company_name: ""
+  };
+
+  if (company === "MAIN") {
+    filters.company_code = "MAIN";
+  }
+
+  if (company === "PARTNER") {
+    filters.company_code = "PARTNER";
+  }
+
+  if (company === "TOMOHISA") {
+    filters.company_code = "PARTNER";
+    filters.company_name = "（有）友尚建設";
+  }
+
+  return filters;
+}
+
+function renderMonthlyPreview(data) {
+  const area = document.getElementById("monthlyPreviewArea");
+  const summary = document.getElementById("monthlyPreviewSummary");
+  const table = document.getElementById("monthlyPreviewTable");
+
+  if (!area || !summary || !table) return;
+
+  area.style.display = "block";
+
+  const companyLabel = getMonthlyCompanyLabel(data.company_code, data.company_name);
+
+  summary.textContent =
+    `対象期間：${data.period_start} 〜 ${data.period_end} ／ ${companyLabel} ／ 明細 ${data.detail_count}件`;
+
+  if (!data.detail_rows || data.detail_rows.length === 0) {
+    table.innerHTML = `<div class="history-empty">該当データはありません。</div>`;
+    return;
+  }
+
+  const detailHtml = data.detail_rows.map(row => `
+    <tr>
+      <td>${escapeHtml(row.display_employee_id || row.employee_id)}</td>
+      <td>${escapeHtml(row.employee_name)}</td>
+      <td>${escapeHtml(row.company_name || row.company_code)}</td>
+      <td>${escapeHtml(row.date)}</td>
+      <td style="text-align:right;">${escapeHtml(row.days)}</td>
+    </tr>
+  `).join("");
+
+  const totalHtml = data.total_rows.map(row => `
+    <tr>
+      <td>${escapeHtml(row.display_employee_id || row.employee_id)}</td>
+      <td>${escapeHtml(row.employee_name)}</td>
+      <td>${escapeHtml(row.company_name || row.company_code)}</td>
+      <td style="text-align:right;">${escapeHtml(row.total_days)}</td>
+    </tr>
+  `).join("");
+
+  table.innerHTML = `
+    <div style="overflow-x:auto;">
+      <h3>取得明細</h3>
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th>表示ID</th>
+            <th>氏名</th>
+            <th>会社</th>
+            <th>取得日</th>
+            <th>日数</th>
+          </tr>
+        </thead>
+        <tbody>${detailHtml}</tbody>
+      </table>
+
+      <h3 style="margin-top:24px;">社員別合計</h3>
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th>表示ID</th>
+            <th>氏名</th>
+            <th>会社</th>
+            <th>合計日数</th>
+          </tr>
+        </thead>
+        <tbody>${totalHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function getMonthlyCompanyLabel(companyCode, companyName) {
+  if (companyName) return companyName;
+  if (companyCode === "MAIN") return "MAIN（自社）";
+  if (companyCode === "PARTNER") return "PARTNER（協力会社）";
+  return "すべて";
+}
+
+/* =========================
+   CSVダウンロード
+========================= */
+function downloadMonthlyReportCsv() {
+  if (!monthlyPreviewData || !monthlyPreviewData.detail_rows) {
+    alert("先に「画面で確認する」を押してください。");
+    return;
+  }
+
+  const rows = [];
+
+  rows.push(["月間有給取得一覧"]);
+  rows.push([`対象期間`, `${monthlyPreviewData.period_start}〜${monthlyPreviewData.period_end}`]);
+  rows.push([`会社`, getMonthlyCompanyLabel(monthlyPreviewData.company_code, monthlyPreviewData.company_name)]);
+  rows.push([]);
+  rows.push(["表示ID", "社員ID", "氏名", "会社コード", "会社名", "取得日", "取得日数"]);
+
+  monthlyPreviewData.detail_rows.forEach(row => {
+    rows.push([
+      row.display_employee_id || "",
+      row.employee_id || "",
+      row.employee_name || "",
+      row.company_code || "",
+      row.company_name || "",
+      row.date || "",
+      row.days || 0
+    ]);
+  });
+
+  rows.push([]);
+  rows.push(["社員別合計"]);
+  rows.push(["表示ID", "社員ID", "氏名", "会社コード", "会社名", "合計取得日数"]);
+
+  monthlyPreviewData.total_rows.forEach(row => {
+    rows.push([
+      row.display_employee_id || "",
+      row.employee_id || "",
+      row.employee_name || "",
+      row.company_code || "",
+      row.company_name || "",
+      row.total_days || 0
+    ]);
+  });
+
+  const csv = rows.map(row =>
+    row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")
+  ).join("\n");
+
+  const bom = "\uFEFF";
+  const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
+
+  const companyPart = getMonthlyCompanyLabel(
+    monthlyPreviewData.company_code,
+    monthlyPreviewData.company_name
+  ).replace(/[\\/:*?"<>|]/g, "");
+
+  const filename =
+    `月間有給取得一覧_${monthlyPreviewData.target_year}_${monthlyPreviewData.target_month}_${companyPart}.csv`;
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+
+  URL.revokeObjectURL(link.href);
+}
 </script>

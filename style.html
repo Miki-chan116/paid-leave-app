@@ -1070,6 +1070,33 @@
   box-shadow: var(--shadow);
 }
 
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.preview-table th,
+.preview-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  font-size: 14px;
+  text-align: left;
+}
+
+.preview-table th {
+  background: #eaf6fb;
+  color: var(--primary-dark);
+  font-weight: 900;
+}
+
+.preview-table tr:last-child td {
+  border-bottom: none;
+}
+
 @media (max-width: 900px) {
   .menu-grid {
     grid-template-columns: 1fr;

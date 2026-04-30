@@ -75,22 +75,36 @@
     <div class="toolbar">
 
       <div class="tool-card">
-        <div class="tool-title">月間一覧出力</div>
+  <div class="tool-title">月間一覧確認・CSV出力</div>
 
-        <div class="field">
-          <label for="monthlyYear">対象年</label>
-          <input type="number" id="monthlyYear" placeholder="例: 2026">
-        </div>
+  <div class="field">
+    <label for="monthlyYear">対象年</label>
+    <input type="number" id="monthlyYear" placeholder="例: 2026">
+  </div>
 
-        <div class="field">
-          <label for="monthlyMonth">対象月</label>
-          <input type="number" id="monthlyMonth" min="1" max="12" placeholder="例: 5">
-        </div>
+  <div class="field">
+    <label for="monthlyMonth">対象月</label>
+    <input type="number" id="monthlyMonth" min="1" max="12" placeholder="例: 5">
+  </div>
 
-        <button class="btn btn-export-monthly" onclick="exportMonthlyReport()">
-          月間一覧を出力
-        </button>
-      </div>
+  <div class="field">
+    <label for="monthlyCompany">会社</label>
+    <select id="monthlyCompany">
+      <option value="ALL">すべて</option>
+      <option value="MAIN">MAIN（自社）</option>
+      <option value="PARTNER">PARTNER（協力会社）</option>
+      <option value="TOMOHISA">（有）友尚建設</option>
+    </select>
+  </div>
+
+  <button class="btn btn-export-monthly" onclick="previewMonthlyReport()">
+    画面で確認する
+  </button>
+
+  <button class="btn btn-reset" onclick="downloadMonthlyReportCsv()">
+    CSVダウンロード
+  </button>
+</div>
 
       <div class="tool-card">
         <div class="tool-title">年間一覧出力</div>
@@ -108,6 +122,12 @@
     </div>
 
     <div id="exportMessage" style="margin-bottom:20px;"></div>
+
+    <div id="monthlyPreviewArea" class="search-card" style="display:none; margin-bottom:20px;">
+  <div class="search-title">月間一覧プレビュー</div>
+  <div id="monthlyPreviewSummary" class="subtitle" style="margin-top:0;"></div>
+  <div id="monthlyPreviewTable"></div>
+</div>
 
     <!-- ================= タブ ================= -->
     <div class="tabs">
