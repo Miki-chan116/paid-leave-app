@@ -143,11 +143,113 @@ function renderEmployeeList(data) {
   });
 }
 
+let editingEmployeeId = "";
+
 /* =========================
-   編集：仮処理
+   編集モーダルを開く
 ========================= */
 function openEditEmployeeModal(emp) {
-  alert("編集モーダルは既存の実装に接続してください。\n対象: " + emp.name);
+  editingEmployeeId = emp.employee_id || "";
+
+  setValue("editName", emp.name);
+  setValue("editNameKana", emp.name_kana);
+  setValue("editCompanyCode", emp.company_code || "MAIN");
+  setValue("editCompanyName", emp.company_name);
+  setValue("editDepartment", emp.department);
+  setValue("editEmploymentType", emp.employment_type);
+  setValue("editEmploymentStatus", emp.employment_status || "active");
+  setValue("editHireDate", toInputDate(emp.hire_date));
+  setValue("editLeaveDate", toInputDate(emp.leave_date));
+  setValue("editWorkDaysPerWeek", emp.work_days_per_week);
+  setValue("editFiscalStartMonth", emp.fiscal_start_month || "4");
+  setValue("editLeaveManagementTarget", emp.leave_management_target === true ? "TRUE" : "FALSE");
+  setValue("editNotes", emp.notes);
+
+  const subTitle = document.getElementById("editEmployeeSubTitle");
+  if (subTitle) {
+    subTitle.textContent = `${emp.display_employee_id || ""} ／ ${emp.employee_id || ""}`;
+  }
+
+  showEditStatus("内容を確認して保存してください。", "");
+
+  const modal = document.getElementById("editEmployeeModal");
+  if (modal) modal.style.display = "flex";
+}
+
+/* =========================
+   編集モーダルを閉じる
+========================= */
+function closeEditEmployeeModal() {
+  editingEmployeeId = "";
+
+  const modal = document.getElementById("editEmployeeModal");
+  if (modal) modal.style.display = "none";
+}
+
+/* =========================
+   編集保存
+========================= */
+function submitEditEmployee() {
+  const payload = {
+    employee_id: editingEmployeeId,
+    name: getValue("editName"),
+    name_kana: getValue("editNameKana"),
+    company_code: getValue("editCompanyCode"),
+    company_name: getValue("editCompanyName"),
+    department: getValue("editDepartment"),
+    employment_type: getValue("editEmploymentType"),
+    employment_status: getValue("editEmploymentStatus"),
+    hire_date: getValue("editHireDate"),
+    leave_date: getValue("editLeaveDate"),
+    work_days_per_week: getValue("editWorkDaysPerWeek"),
+    fiscal_start_month: getValue("editFiscalStartMonth"),
+    leave_management_target: getValue("editLeaveManagementTarget"),
+    notes: getValue("editNotes")
+  };
+
+  const error = validateEmployeePayload(payload);
+  if (error) {
+    showEditStatus(error, "error");
+    return;
+  }
+
+  showEditStatus("社員情報を更新しています...", "");
+
+  google.script.run
+    .withSuccessHandler(() => {
+      showEditStatus("社員情報を更新しました。", "ok");
+      loadEmployees();
+
+      setTimeout(() => {
+        closeEditEmployeeModal();
+      }, 500);
+    })
+    .withFailureHandler(err => {
+      console.error(err);
+      showEditStatus("更新でエラーが発生しました。\n" + (err.message || err), "error");
+    })
+    .updateEmployeeFromAdmin(payload);
+}
+
+function showEditStatus(message, type) {
+  const box = document.getElementById("editEmployeeStatus");
+  if (!box) return;
+
+  box.classList.remove("ok", "error");
+  if (type) box.classList.add(type);
+
+  box.textContent = message;
+}
+
+function toInputDate(value) {
+  if (!value) return "";
+
+  const str = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(str)) return str.replace(/\//g, "-");
+
+  return "";
 }
 
 /* =========================

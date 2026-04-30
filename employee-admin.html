@@ -185,6 +185,117 @@
     </section>
   </div>
 
+  <!-- 社員編集モーダル -->
+<div id="editEmployeeModal" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">社員情報を編集</div>
+        <div id="editEmployeeSubTitle" class="modal-subtitle"></div>
+      </div>
+
+      <button type="button" class="modal-close-btn" onclick="closeEditEmployeeModal()">×</button>
+    </div>
+
+    <div class="employee-form-grid">
+      <div class="field">
+        <label for="editName">氏名 *</label>
+        <input type="text" id="editName">
+      </div>
+
+      <div class="field">
+        <label for="editNameKana">ふりがな *</label>
+        <input type="text" id="editNameKana">
+      </div>
+
+      <div class="field">
+        <label for="editCompanyCode">会社区分 *</label>
+        <select id="editCompanyCode">
+          <option value="MAIN">MAIN（正社員・自社）</option>
+          <option value="PARTNER">PARTNER（協力企業）</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="editCompanyName">会社名</label>
+        <input type="text" id="editCompanyName">
+      </div>
+
+      <div class="field">
+        <label for="editDepartment">部署</label>
+        <input type="text" id="editDepartment">
+      </div>
+
+      <div class="field">
+        <label for="editEmploymentType">雇用区分</label>
+        <select id="editEmploymentType">
+          <option value="">選択してください</option>
+          <option value="regular">正社員</option>
+          <option value="partner">協力企業</option>
+          <option value="part_time">パート</option>
+          <option value="trainee">研修生</option>
+          <option value="executive">役員</option>
+          <option value="other">その他</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="editEmploymentStatus">在職状況</label>
+        <select id="editEmploymentStatus">
+          <option value="active">在職</option>
+          <option value="leave">休職</option>
+          <option value="retired">退職</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="editHireDate">入社日</label>
+        <input type="date" id="editHireDate">
+      </div>
+
+      <div class="field">
+        <label for="editLeaveDate">退職日</label>
+        <input type="date" id="editLeaveDate">
+      </div>
+
+      <div class="field">
+        <label for="editWorkDaysPerWeek">週所定労働日数</label>
+        <input type="number" id="editWorkDaysPerWeek" min="0" max="7" step="0.5">
+      </div>
+
+      <div class="field">
+        <label for="editFiscalStartMonth">有給年度開始月</label>
+        <select id="editFiscalStartMonth">
+          <option value="4">4月開始</option>
+          <option value="7">7月開始</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="editLeaveManagementTarget">有給管理対象</label>
+        <select id="editLeaveManagementTarget">
+          <option value="TRUE">対象</option>
+          <option value="FALSE">対象外</option>
+        </select>
+      </div>
+
+      <div class="field full-width">
+        <label for="editNotes">備考</label>
+        <textarea id="editNotes" rows="3"></textarea>
+      </div>
+    </div>
+
+    <div id="editEmployeeStatus" class="status-box">
+      内容を確認して保存してください。
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="admin-action-btn" onclick="submitEditEmployee()">保存する</button>
+      <button type="button" class="admin-action-btn modal-cancel-btn" onclick="closeEditEmployeeModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
   <?!= include('employee-admin-script'); ?>
 </body>
 </html>
