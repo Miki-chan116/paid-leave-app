@@ -5,9 +5,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <?!= include('admin-style'); ?>
+  <?!= include('style'); ?>
 </head>
+
 <body>
+  <?!= include('nav'); ?>
+
   <div class="page">
+
     <div class="header">
       <h1 class="title">有給申請 管理画面</h1>
       <p class="subtitle">承認待ち・承認済み・否認・ログ・出力機能をここで管理できます。</p>
@@ -17,6 +22,7 @@
       現在表示中：前月＋当月のデータ
     </div>
 
+    <!-- ================= 検索 ================= -->
     <div class="search-card">
       <div class="search-title">検索</div>
 
@@ -53,7 +59,21 @@
       </div>
     </div>
 
+    <!-- ================= 社員マスター整備 ================= -->
+    <div class="search-card" style="margin-top:20px;">
+      <div class="search-title">社員マスター管理</div>
+      <p class="subtitle" style="margin-top:0;">
+        社員ID・表示ID・表示順を自動で整えます。
+      </p>
+
+      <button class="btn btn-search" onclick="runMaintain()">
+        🔧 ID採番・並び順整理
+      </button>
+    </div>
+
+    <!-- ================= 出力 ================= -->
     <div class="toolbar">
+
       <div class="tool-card">
         <div class="tool-title">月間一覧出力</div>
 
@@ -67,7 +87,9 @@
           <input type="number" id="monthlyMonth" min="1" max="12" placeholder="例: 5">
         </div>
 
-        <button class="btn btn-export-monthly" onclick="exportMonthlyReport()">月間一覧を出力</button>
+        <button class="btn btn-export-monthly" onclick="exportMonthlyReport()">
+          月間一覧を出力
+        </button>
       </div>
 
       <div class="tool-card">
@@ -78,12 +100,16 @@
           <input type="number" id="yearlyFiscalYear" placeholder="例: 2026">
         </div>
 
-        <button class="btn btn-export-yearly" onclick="exportYearlyReport()">年間一覧を出力</button>
+        <button class="btn btn-export-yearly" onclick="exportYearlyReport()">
+          年間一覧を出力
+        </button>
       </div>
+
     </div>
 
     <div id="exportMessage" style="margin-bottom:20px;"></div>
 
+    <!-- ================= タブ ================= -->
     <div class="tabs">
       <button id="tab-pending" class="tab-btn" onclick="loadRequests('pending')">承認待ち</button>
       <button id="tab-approved" class="tab-btn" onclick="loadRequests('approved')">承認済み</button>
@@ -91,12 +117,15 @@
       <button id="tab-logs" class="tab-btn" onclick="loadLogs()">ログ</button>
     </div>
 
+    <!-- ================= コンテンツ ================= -->
     <div class="panel">
       <div id="requestView" class="card-container"></div>
       <div id="logView" style="display:none;"></div>
     </div>
+
   </div>
 
   <?!= include('admin-script'); ?>
+
 </body>
 </html>

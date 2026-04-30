@@ -765,6 +765,338 @@
   background: var(--accent-red);
 }
 
+/* =========================
+   モーダル共通UI
+========================= */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(38, 50, 56, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-card {
+  width: min(980px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  box-shadow: 0 18px 50px rgba(47, 111, 134, 0.28);
+  padding: 22px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--primary-dark);
+}
+
+.modal-subtitle {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--text-sub);
+  font-weight: 700;
+}
+
+.modal-close-btn {
+  border: none;
+  border-radius: 999px;
+  width: 42px;
+  height: 42px;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: bold;
+  color: #ffffff;
+  background: var(--accent-blue);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.modal-cancel-btn {
+  background: #9bb8c7;
+}
+
+/* =========================
+   社員管理：検索・操作UI
+========================= */
+.admin-employee-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-employee-row.retired {
+  opacity: 0.55;
+}
+
+.admin-employee-name-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--primary-dark);
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-employee-name-link:hover {
+  text-decoration: underline;
+}
+
+.admin-action-btn {
+  border: none;
+  border-radius: 14px;
+  padding: 12px 20px;
+  min-width: 100px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  background: #6fb7d6;
+  color: #fff;
+  box-shadow: var(--shadow);
+}
+
+.admin-action-btn.edit-btn {
+  background: #6fb7d6;
+}
+
+.admin-action-btn.retire-btn {
+  background: var(--accent-red);
+}
+
+.admin-action-btn.modal-cancel-btn {
+  background: #9bb8c7;
+}
+
+.admin-action-btn:hover {
+  opacity: 0.9;
+}
+
+/* =========================
+   モーダル共通UI
+========================= */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(38, 50, 56, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-card {
+  width: min(980px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  box-shadow: 0 18px 50px rgba(47, 111, 134, 0.28);
+  padding: 22px;
+}
+
+.retire-modal-card {
+  width: min(560px, 94vw);
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--primary-dark);
+}
+
+.modal-subtitle {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--text-sub);
+  font-weight: 700;
+}
+
+.modal-close-btn {
+  border: none;
+  border-radius: 999px;
+  width: 42px;
+  height: 42px;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: bold;
+  color: #ffffff;
+  background: var(--accent-blue);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+@media (max-width: 900px) {
+  .admin-employee-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-employee-actions {
+    justify-content: flex-start;
+  }
+
+  .modal-overlay {
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: 94vh;
+    padding: 16px;
+  }
+
+  .modal-title {
+    font-size: 24px;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
+}
+
+/* =========================
+   トップメニュー
+========================= */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.menu-card {
+  display: block;
+  text-decoration: none;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 26px 20px;
+  box-shadow: var(--shadow);
+  color: var(--text-main);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.menu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(47, 111, 134, 0.18);
+}
+
+.menu-icon {
+  font-size: 42px;
+  margin-bottom: 12px;
+}
+
+.menu-title {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--primary-dark);
+  margin-bottom: 8px;
+}
+
+.menu-desc {
+  font-size: 15px;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+
+.top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: rgba(243, 249, 251, 0.95);
+  border-bottom: 1px solid var(--border);
+}
+
+.top-nav a {
+  text-decoration: none;
+  background: #ffffff;
+  color: var(--primary-dark);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: bold;
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 900px) {
+  .menu-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .modal-overlay {
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: 94vh;
+    padding: 16px;
+  }
+
+  .modal-title {
+    font-size: 24px;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
+}
+
 @media (max-width: 900px) {
   .employee-form-grid {
     grid-template-columns: 1fr;

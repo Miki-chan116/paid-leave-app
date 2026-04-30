@@ -7,22 +7,21 @@
   <?!= include('style'); ?>
 </head>
 <body>
+  <?!= include('nav'); ?>
+
   <div class="app-shell">
     <header class="app-header">
       <h1 class="app-title">社員マスター管理</h1>
-      <p class="app-subtitle">社員情報の検索・編集・退職処理・追加を行います</p>
+      <p class="app-subtitle">社員情報の検索・追加・編集・退職処理を行います</p>
     </header>
 
     <section class="screen active">
       <div class="screen-card">
 
-        <!-- 社員検索 -->
         <div class="group-header">
           <div>
             <div class="section-title">社員検索</div>
-            <div class="section-subtitle">
-              氏名・ふりがな・社員番号で検索できます
-            </div>
+            <div class="section-subtitle">氏名・ふりがな・社員番号・会社名で検索できます</div>
           </div>
         </div>
 
@@ -32,21 +31,41 @@
             <input
               type="text"
               id="employeeSearchKeyword"
-              placeholder="例：山田 / やまだ / W0001 / EMP0001"
+              placeholder="例：山田 / やまだ / W0001 / 友尚"
               oninput="handleEmployeeSearchInput()"
             >
+          </div>
+
+          <div class="field">
+            <label for="filterEmploymentStatus">在職状況</label>
+            <select id="filterEmploymentStatus" onchange="handleEmployeeSearchInput()">
+              <option value="">すべて</option>
+              <option value="active">在職</option>
+              <option value="leave">休職</option>
+              <option value="retired">退職</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="filterEmploymentType">雇用区分</label>
+            <select id="filterEmploymentType" onchange="handleEmployeeSearchInput()">
+              <option value="">すべて</option>
+              <option value="regular">正社員</option>
+              <option value="partner">協力企業</option>
+              <option value="part_time">パート</option>
+              <option value="trainee">研修生</option>
+              <option value="executive">役員</option>
+              <option value="other">その他</option>
+            </select>
           </div>
         </div>
 
         <div id="employeeAdminStatus" class="status-box">
-          検索結果一覧
+          検索条件を入力すると、ここに結果が表示されます。
         </div>
 
-        <div id="employeeList" class="history-list">
-          <div class="employee-search-placeholder">検索すると社員が表示されます。</div>
-        </div>
+        <div id="employeeList" class="history-list"></div>
 
-        <!-- 社員追加トグル -->
         <div class="submit-area" style="margin-top:24px;">
           <button
             id="toggleAddEmployeeBtn"
@@ -54,11 +73,10 @@
             type="button"
             onclick="toggleAddEmployeeForm()"
           >
-            ＋ 社員を追加
+            ＋ 新しい社員を追加する
           </button>
         </div>
 
-        <!-- 社員追加フォーム -->
         <div id="addEmployeeFormArea" style="display:none; margin-top:24px;">
           <div class="group-header">
             <div>
@@ -114,9 +132,9 @@
             <div class="field">
               <label for="employmentStatus">在職状況</label>
               <select id="employmentStatus">
-                <option value="active">active（在職）</option>
-                <option value="leave">leave（休職）</option>
-                <option value="retired">retired（退職）</option>
+                <option value="active">在職</option>
+                <option value="leave">休職</option>
+                <option value="retired">退職</option>
               </select>
             </div>
 
@@ -146,8 +164,8 @@
             <div class="field">
               <label for="leaveManagementTarget">有給管理対象</label>
               <select id="leaveManagementTarget">
-                <option value="TRUE">TRUE（対象）</option>
-                <option value="FALSE">FALSE（対象外）</option>
+                <option value="TRUE">対象</option>
+                <option value="FALSE">対象外</option>
               </select>
             </div>
 
@@ -163,7 +181,6 @@
             </button>
           </div>
         </div>
-
       </div>
     </section>
   </div>

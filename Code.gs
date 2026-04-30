@@ -71,10 +71,10 @@ function getAppTimeZone() {
    画面表示
 ========================= */
 function doGet(e) {
-  const page = e && e.parameter && e.parameter.page ? e.parameter.page : "index";
+  const page = e && e.parameter && e.parameter.page ? e.parameter.page : "menu";
 
   return HtmlService.createTemplateFromFile(page).evaluate()
-    .setTitle(page === "admin" ? "Paid Leave Admin" : "Paid Leave App");
+    .setTitle("有給管理システム");
 }
 
 /* =========================
@@ -771,6 +771,16 @@ function appendUsageLog(logData) {
   rowObj.comment = logData.comment || "";
 
   sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+}
+
+function appendEmployeeMasterLog(actionType, employeeId, comment) {
+  appendUsageLog({
+    request_id: employeeId || "",
+    action_type: actionType || "",
+    operator_id: "admin",
+    operator_name: "管理者",
+    comment: comment || ""
+  });
 }
 
 /* =========================
@@ -1601,6 +1611,30 @@ function maintainEmployeeMaster() {
 }
 
 /* =========================
+
+   管理画面用：ID採番・並び順整理
+
+========================= */
+
+function runMaintainEmployeeMasterFromAdmin() {
+
+  const result = maintainEmployeeMaster();
+
+  appendEmployeeMasterLog(
+
+    "employee_maintain",
+
+    "",
+
+    "ID採番・表示順整理を実行しました。対象件数: " + result.count
+
+  );
+
+  return result;
+
+}
+
+/* =========================
    IDの次番号取得
 ========================= */
 function getNextIdNumber_(usedIds, prefix) {
@@ -1732,6 +1766,12 @@ function addEmployeeFromAdmin(data) {
 
   // ID採番・表示順整理
   maintainEmployeeMaster();
+
+  appendEmployeeMasterLog(
+  "employee_add",
+  "",
+  "社員を追加しました: " + rowObj.name
+);
 
   return {
     ok: true,
@@ -1868,6 +1908,12 @@ function updateEmployeeFromAdmin(data) {
   maintainEmployeeMaster();
   clearAppCache();
 
+  appendEmployeeMasterLog(
+  "employee_update",
+  data.employee_id,
+  "社員情報を更新しました: " + data.name
+);
+
   return {
     ok: true,
     message: "社員情報を更新しました"
@@ -1916,6 +1962,12 @@ function retireEmployeeFromAdmin(employeeId, leaveDate) {
 
   maintainEmployeeMaster();
   clearAppCache();
+
+  appendEmployeeMasterLog(
+  "employee_retire",
+  employeeId,
+  "退職処理を実行しました。退職日: " + leaveDate
+);
 
   return {
     ok: true,

@@ -1,6 +1,5 @@
 <script>
 let adminEmployees = [];
-let editingEmployeeId = "";
 
 /* =========================
    初期表示
@@ -10,22 +9,23 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 /* =========================
-   社員一覧取得（初期は表示しない）
+   社員取得
 ========================= */
 function loadEmployees() {
-  const list = document.getElementById("employeeList");
-
-  if (list) {
-    list.innerHTML = "";
-  }
-
   google.script.run
     .withSuccessHandler(data => {
-      adminEmployees = data || "";
+      adminEmployees = data || [];
 
-      const keyword = getValue("employeeSearchKeyword");
-      if (keyword) {
+      if (
+        getValue("employeeSearchKeyword") ||
+        getValue("filterEmploymentStatus") ||
+        getValue("filterEmploymentType")
+      ) {
         handleEmployeeSearchInput();
+      } else {
+        const list = document.getElementById("employeeList");
+        if (list) list.innerHTML = "";
+        showStatus("検索条件を入力すると、ここに結果が表示されます。", "");
       }
     })
     .withFailureHandler(err => {
@@ -36,16 +36,19 @@ function loadEmployees() {
 }
 
 /* =========================
-   検索
+   検索・フィルター
 ========================= */
 function handleEmployeeSearchInput() {
   const keyword = getValue("employeeSearchKeyword").toLowerCase();
+  const statusFilter = getValue("filterEmploymentStatus");
+  const typeFilter = getValue("filterEmploymentType");
   const list = document.getElementById("employeeList");
 
   if (!list) return;
 
-  if (!keyword) {
+  if (!keyword && !statusFilter && !typeFilter) {
     list.innerHTML = "";
+    showStatus("検索条件を入力すると、ここに結果が表示されます。", "");
     return;
   }
 
@@ -61,14 +64,25 @@ function handleEmployeeSearchInput() {
       emp.employment_status
     ].join(" ").toLowerCase();
 
-    return target.includes(keyword);
+    const keywordMatch = !keyword || target.includes(keyword);
+    const statusMatch = !statusFilter || emp.employment_status === statusFilter;
+    const typeMatch = !typeFilter || emp.employment_type === typeFilter;
+
+    return keywordMatch && statusMatch && typeMatch;
   });
 
   renderEmployeeList(filtered);
+
+  showStatus(
+    filtered.length > 0
+      ? `検索結果一覧（${filtered.length}件）`
+      : "該当する社員はいません。",
+    filtered.length > 0 ? "ok" : ""
+  );
 }
 
 /* =========================
-   表示
+   一覧表示
 ========================= */
 function renderEmployeeList(data) {
   const list = document.getElementById("employeeList");
@@ -85,10 +99,16 @@ function renderEmployeeList(data) {
     const row = document.createElement("div");
     row.className = "admin-employee-row";
 
+    if (emp.employment_status === "retired") {
+      row.classList.add("retired");
+    }
+
     row.innerHTML = `
       <div class="admin-employee-main">
         <div class="admin-employee-name-line">
-          <span class="admin-employee-name">${escapeHtml(emp.name)}</span>
+          <button type="button" class="admin-employee-name-link">
+            ${escapeHtml(emp.name)}
+          </button>
         </div>
 
         <div class="admin-employee-meta">
@@ -102,13 +122,17 @@ function renderEmployeeList(data) {
       </div>
 
       <div class="admin-employee-actions">
-        <button type="button" class="admin-action-btn edit-btn">編集</button>
-        <button type="button" class="admin-action-btn retire-btn">退職</button>
+        <button type="button" class="admin-action-btn edit-btn">✏️ 編集</button>
+        <button type="button" class="admin-action-btn retire-btn">⚠️ 退職</button>
       </div>
     `;
 
+    row.querySelector(".admin-employee-name-link").addEventListener("click", () => {
+      openEditEmployeeModal(emp);
+    });
+
     row.querySelector(".edit-btn").addEventListener("click", () => {
-      startEditEmployee(emp);
+      openEditEmployeeModal(emp);
     });
 
     row.querySelector(".retire-btn").addEventListener("click", () => {
@@ -120,192 +144,17 @@ function renderEmployeeList(data) {
 }
 
 /* =========================
-   編集開始
+   編集：仮処理
 ========================= */
-function startEditEmployee(emp) {
-  editingEmployeeId = emp.employee_id || "";
-
-  openAddEmployeeForm();
-
-  setValue("name", emp.name);
-  setValue("nameKana", emp.name_kana);
-  setValue("companyCode", emp.company_code || "MAIN");
-  setValue("companyName", emp.company_name);
-  setValue("department", emp.department);
-  setValue("employmentType", emp.employment_type);
-  setValue("employmentStatus", emp.employment_status || "active");
-  setValue("hireDate", toInputDate(emp.hire_date));
-  setValue("leaveDate", toInputDate(emp.leave_date));
-  setValue("workDaysPerWeek", emp.work_days_per_week);
-  setValue("fiscalStartMonth", emp.fiscal_start_month || "4");
-  setValue(
-    "leaveManagementTarget",
-    emp.leave_management_target === true ? "TRUE" : "FALSE"
-  );
-  setValue("notes", emp.notes);
-
-  const btn = document.getElementById("addEmployeeBtn");
-  if (btn) {
-    btn.textContent = "社員情報を更新する";
-  }
-
-  showStatus("編集モードです。内容を修正して「社員情報を更新する」を押してください。", "ok");
-
-  const area = document.getElementById("addEmployeeFormArea");
-  if (area) {
-    area.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-}
-
-/* =========================
-   追加フォーム開閉
-========================= */
-function toggleAddEmployeeForm() {
-  const area = document.getElementById("addEmployeeFormArea");
-  const btn = document.getElementById("toggleAddEmployeeBtn");
-
-  if (!area || !btn) return;
-
-  const isOpen = area.style.display !== "none";
-
-  if (isOpen) {
-    area.style.display = "none";
-    btn.textContent = "＋ 新しい社員を追加する";
-    resetEditMode();
-  } else {
-    openAddEmployeeForm();
-  }
-}
-
-function openAddEmployeeForm() {
-  const area = document.getElementById("addEmployeeFormArea");
-  const btn = document.getElementById("toggleAddEmployeeBtn");
-
-  if (area) {
-    area.style.display = "block";
-  }
-
-  if (btn) {
-    btn.textContent = "− フォームを閉じる";
-  }
-}
-
-/* =========================
-   社員追加・更新
-========================= */
-function submitEmployee() {
-  const btn = document.getElementById("addEmployeeBtn");
-
-  const payload = {
-    employee_id: editingEmployeeId,
-    name: getValue("name"),
-    name_kana: getValue("nameKana"),
-    company_code: getValue("companyCode"),
-    company_name: getValue("companyName"),
-    department: getValue("department"),
-    employment_type: getValue("employmentType"),
-    employment_status: getValue("employmentStatus"),
-    hire_date: getValue("hireDate"),
-    leave_date: getValue("leaveDate"),
-    work_days_per_week: getValue("workDaysPerWeek"),
-    fiscal_start_month: getValue("fiscalStartMonth"),
-    leave_management_target: getValue("leaveManagementTarget"),
-    notes: getValue("notes")
-  };
-
-  if (!payload.name) {
-    showStatus("氏名を入力してください。", "error");
-    return;
-  }
-
-  if (!payload.name_kana) {
-    showStatus("ふりがなを入力してください。", "error");
-    return;
-  }
-
-  if (!payload.company_code) {
-    showStatus("会社区分を選択してください。", "error");
-    return;
-  }
-
-  if (!payload.employment_type) {
-    showStatus("雇用区分を選択してください。", "error");
-    return;
-  }
-
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = editingEmployeeId ? "更新中..." : "追加中...";
-  }
-
-  showStatus(editingEmployeeId ? "社員情報を更新しています..." : "社員情報を追加しています...", "");
-
-  if (editingEmployeeId) {
-    updateEmployee(payload);
-  } else {
-    addEmployee(payload);
-  }
-}
-
-function addEmployee(payload) {
-  google.script.run
-    .withSuccessHandler(() => {
-      showStatus("社員を追加しました。ID採番と並び替えも完了しています。", "ok");
-      clearForm();
-      resetEditMode();
-      loadEmployees();
-
-      const btn = document.getElementById("addEmployeeBtn");
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "社員を追加する";
-      }
-    })
-    .withFailureHandler(err => {
-      console.error(err);
-      showStatus("エラーが発生しました。\n" + (err.message || err), "error");
-
-      const btn = document.getElementById("addEmployeeBtn");
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "社員を追加する";
-      }
-    })
-    .addEmployeeFromAdmin(payload);
-}
-
-function updateEmployee(payload) {
-  google.script.run
-    .withSuccessHandler(() => {
-      showStatus("社員情報を更新しました。", "ok");
-      clearForm();
-      resetEditMode();
-      loadEmployees();
-
-      const btn = document.getElementById("addEmployeeBtn");
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "社員を追加する";
-      }
-    })
-    .withFailureHandler(err => {
-      console.error(err);
-      showStatus("更新でエラーが発生しました。\n" + (err.message || err), "error");
-
-      const btn = document.getElementById("addEmployeeBtn");
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "社員情報を更新する";
-      }
-    })
-    .updateEmployeeFromAdmin(payload);
+function openEditEmployeeModal(emp) {
+  alert("編集モーダルは既存の実装に接続してください。\n対象: " + emp.name);
 }
 
 /* =========================
    退職
 ========================= */
 function retireEmployee(employeeId) {
-  const leaveDate = prompt("退職日を入力（例: 2026-04-30）");
+  const leaveDate = prompt("退職日を入力してください（例：2026-04-30）");
 
   if (!leaveDate) return;
 
@@ -324,6 +173,106 @@ function retireEmployee(employeeId) {
 }
 
 /* =========================
+   社員追加フォーム開閉
+========================= */
+function toggleAddEmployeeForm() {
+  const area = document.getElementById("addEmployeeFormArea");
+  const btn = document.getElementById("toggleAddEmployeeBtn");
+
+  if (!area || !btn) return;
+
+  const isOpen = area.style.display !== "none";
+
+  if (isOpen) {
+    area.style.display = "none";
+    btn.textContent = "＋ 新しい社員を追加する";
+    clearForm();
+  } else {
+    area.style.display = "block";
+    btn.textContent = "− 追加フォームを閉じる";
+  }
+}
+
+/* =========================
+   社員追加
+========================= */
+function submitEmployee() {
+  const btn = document.getElementById("addEmployeeBtn");
+
+  const payload = {
+    name: getValue("name"),
+    name_kana: getValue("nameKana"),
+    company_code: getValue("companyCode"),
+    company_name: getValue("companyName"),
+    department: getValue("department"),
+    employment_type: getValue("employmentType"),
+    employment_status: getValue("employmentStatus"),
+    hire_date: getValue("hireDate"),
+    leave_date: getValue("leaveDate"),
+    work_days_per_week: getValue("workDaysPerWeek"),
+    fiscal_start_month: getValue("fiscalStartMonth"),
+    leave_management_target: getValue("leaveManagementTarget"),
+    notes: getValue("notes")
+  };
+
+  const error = validateEmployeePayload(payload);
+  if (error) {
+    showStatus(error, "error");
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "追加中...";
+  }
+
+  showStatus("社員情報を追加しています...", "");
+
+  google.script.run
+    .withSuccessHandler(() => {
+      showStatus("社員を追加しました。", "ok");
+      clearForm();
+      loadEmployees();
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "社員を追加する";
+      }
+    })
+    .withFailureHandler(err => {
+      console.error(err);
+      showStatus("追加でエラーが発生しました。\n" + (err.message || err), "error");
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "社員を追加する";
+      }
+    })
+    .addEmployeeFromAdmin(payload);
+}
+
+/* =========================
+   バリデーション
+========================= */
+function validateEmployeePayload(payload) {
+  if (!payload.name) return "氏名を入力してください。";
+  if (!payload.name_kana) return "ふりがなを入力してください。";
+  if (!payload.company_code) return "会社区分を選択してください。";
+  if (!payload.employment_type) return "雇用区分を選択してください。";
+  if (!payload.employment_status) return "在職状況を選択してください。";
+
+  if (payload.employment_status === "retired" && !payload.leave_date) {
+    return "退職の場合は退職日を入力してください。";
+  }
+
+  if (payload.employment_status === "active" && payload.leave_date) {
+    return "在職中の場合は退職日を空欄にしてください。";
+  }
+
+  return "";
+}
+
+/* =========================
    会社選択連動
 ========================= */
 function handleCompanyCodeChange() {
@@ -336,15 +285,13 @@ function handleCompanyCodeChange() {
     leaveManagementTarget.value = "FALSE";
   }
 
-  if (companyCode === "MAIN") {
-    if (employmentType.value === "partner") {
-      employmentType.value = "regular";
-    }
+  if (companyCode === "MAIN" && employmentType.value === "partner") {
+    employmentType.value = "regular";
   }
 }
 
 /* =========================
-   雇用区分変換
+   ラベル変換
 ========================= */
 function getEmploymentTypeLabel(type) {
   if (type === "regular") return "正社員";
@@ -356,9 +303,6 @@ function getEmploymentTypeLabel(type) {
   return type || "";
 }
 
-/* =========================
-   在職状況変換
-========================= */
 function getEmploymentStatusLabel(status) {
   if (status === "active") return "在職";
   if (status === "leave") return "休職";
@@ -385,12 +329,9 @@ function showStatus(message, type) {
   if (!box) return;
 
   box.classList.remove("ok", "error");
+  if (type) box.classList.add(type);
 
-  if (type) {
-    box.classList.add(type);
-  }
-
-  box.textContent = message || "検索結果一覧";
+  box.textContent = message || "検索条件を入力すると、ここに結果が表示されます。";
 }
 
 function clearForm() {
@@ -407,32 +348,6 @@ function clearForm() {
   setValue("fiscalStartMonth", "4");
   setValue("leaveManagementTarget", "TRUE");
   setValue("notes", "");
-}
-
-function resetEditMode() {
-  editingEmployeeId = "";
-
-  const btn = document.getElementById("addEmployeeBtn");
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = "社員を追加する";
-  }
-}
-
-function toInputDate(value) {
-  if (!value) return "";
-
-  const str = String(value).trim();
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    return str;
-  }
-
-  if (/^\d{4}\/\d{2}\/\d{2}$/.test(str)) {
-    return str.replace(/\//g, "-");
-  }
-
-  return "";
 }
 
 function escapeHtml(str) {
