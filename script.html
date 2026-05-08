@@ -366,15 +366,29 @@ function submitRequest() {
         submitBtn.textContent = "申請する";
       }
     })
+    
     .withFailureHandler(err => {
-      console.error(err);
-      alert("エラーが発生しました");
+       console.error("submitLeaveRequest error:", err);
 
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "申請する";
-      }
-    })
+       let message = "エラーが発生しました";
+
+     if (err) {
+      if (err.message) {
+       message = err.message;
+        } else if (typeof err === "string") {
+         message = err;
+           } else {
+         message = String(err);
+       }
+  }
+
+  alert(message);
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "申請する";
+  }
+})
     .submitLeaveRequest(payload);
 }
 
