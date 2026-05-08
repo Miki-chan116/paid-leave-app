@@ -4,6 +4,12 @@ let selectedEmployee = null;
 let currentGroup = "a";
 let currentRequestType = "";
 
+let calendarDisplayDate = new Date();
+let companyCalendarMap = {};
+
+let selectedStartDateKey = "";
+let selectedEndDateKey = "";
+
 /* =========================
    初期化
 ========================= */
@@ -15,6 +21,7 @@ function initPage() {
       render();
       updateGroupTabs();
       initReasonOptions();
+      loadCompanyCalendarForRequest();
     })
     .withFailureHandler(err => {
       console.error(err);
@@ -24,6 +31,28 @@ function initPage() {
 }
 
 window.addEventListener("DOMContentLoaded", initPage);
+
+/* =========================
+   会社カレンダー取得
+========================= */
+function loadCompanyCalendarForRequest() {
+  google.script.run
+    .withSuccessHandler(data => {
+      console.log("companyCalendarMap:", data);
+
+      companyCalendarMap = data || {};
+
+      renderRequestCalendar();
+    })
+    .withFailureHandler(err => {
+      console.error("company_calendar取得エラー:", err);
+
+      companyCalendarMap = {};
+
+      renderRequestCalendar();
+    })
+    .getCompanyCalendarMapForRequest();
+}
 
 /* =========================
    理由プルダウン初期化
@@ -70,7 +99,6 @@ function getKanaGroup(emp) {
 function getGroupOrder() {
   return ["a", "k", "s", "t", "n", "h", "m", "y", "r", "w", "trainee"];
 }
-
 
 function getFirstAvailableGroup() {
   const order = getGroupOrder();
@@ -214,6 +242,12 @@ function selectEmployee(emp) {
   document.getElementById("fiveDayMessage").textContent =
     emp.five_day_completed ? "達成済み" : `あと${remain}日`;
 
+  resetSelectedDates();
+
+  calendarDisplayDate = new Date();
+  renderRequestCalendar();
+  updateCalendarStatus();
+
   loadEmployeeLeaveHistory(emp.employee_id);
 }
 
@@ -261,18 +295,253 @@ function selectRequestType(type) {
     multiDayArea.style.display = type === "multi_day" ? "block" : "none";
   }
 
+  resetSelectedDates();
+  updateHiddenDateInputs();
+  updateCalendarStatus();
+  renderRequestCalendar();
+}
+
+/* =========================
+   日付リセット
+========================= */
+function resetSelectedDates() {
+  selectedStartDateKey = "";
+  selectedEndDateKey = "";
+  updateHiddenDateInputs();
+}
+
+/* =========================
+   input連携
+========================= */
+function updateHiddenDateInputs() {
+  const singleDate = document.getElementById("singleDate");
+  const rangeStartDate = document.getElementById("rangeStartDate");
+  const rangeEndDate = document.getElementById("rangeEndDate");
+
+  if (singleDate) {
+    singleDate.value = currentRequestType === "multi_day" ? "" : selectedStartDateKey;
+  }
+
+  if (rangeStartDate) {
+    rangeStartDate.value = currentRequestType === "multi_day" ? selectedStartDateKey : "";
+  }
+
+  if (rangeEndDate) {
+    rangeEndDate.value = currentRequestType === "multi_day" ? selectedEndDateKey : "";
+  }
+}
+
+function handleRequestTypeChange() {
+  const singleDate = document.getElementById("singleDate");
+  const rangeStartDate = document.getElementById("rangeStartDate");
+  const rangeEndDate = document.getElementById("rangeEndDate");
+
+  if (currentRequestType === "multi_day") {
+    selectedStartDateKey = rangeStartDate ? rangeStartDate.value : "";
+    selectedEndDateKey = rangeEndDate ? rangeEndDate.value : "";
+  } else {
+    selectedStartDateKey = singleDate ? singleDate.value : "";
+    selectedEndDateKey = selectedStartDateKey;
+  }
+
+  if (selectedStartDateKey) {
+    calendarDisplayDate = new Date(selectedStartDateKey + "T00:00:00");
+  }
+
+  updateCalendarStatus();
+  renderRequestCalendar();
+}
+
+function syncCalendarFromInput() {
   handleRequestTypeChange();
 }
 
 /* =========================
-   日付変更時
+   カレンダー操作
 ========================= */
-function handleRequestTypeChange() {
+function toDateKeyLocal(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatDateLabel(dateKey) {
+  if (!dateKey) return "";
+  const [y, m, d] = dateKey.split("-");
+  return `${y}/${m}/${d}`;
+}
+
+function moveCalendarMonth(diff) {
+  calendarDisplayDate.setMonth(calendarDisplayDate.getMonth() + diff);
+  renderRequestCalendar();
+}
+
+function selectCalendarDate(dateKey) {
+  if (!currentRequestType) {
+    alert("先に申請区分を選択してください");
+    return;
+  }
+
+  const type = getCalendarDayTypeByKey(dateKey);
+
+  if (type !== "workday") {
+    alert("この日は有給申請できません");
+    return;
+  }
+
+  if (currentRequestType === "multi_day") {
+    selectMultiDayDate(dateKey);
+  } else {
+    selectedStartDateKey = dateKey;
+    selectedEndDateKey = dateKey;
+  }
+
+  updateHiddenDateInputs();
+  updateCalendarStatus();
+  renderRequestCalendar();
+}
+
+function selectMultiDayDate(dateKey) {
+  if (!selectedStartDateKey || selectedEndDateKey) {
+    selectedStartDateKey = dateKey;
+    selectedEndDateKey = "";
+    return;
+  }
+
+  if (dateKey < selectedStartDateKey) {
+    selectedEndDateKey = selectedStartDateKey;
+    selectedStartDateKey = dateKey;
+    return;
+  }
+
+  selectedEndDateKey = dateKey;
+}
+
+function getCalendarDayTypeByKey(dateKey) {
+  const calendarItem = companyCalendarMap[dateKey];
+
+  if (calendarItem && calendarItem.type) {
+    return String(calendarItem.type).trim();
+  }
+
+  return "holiday";
+}
+
+function getCalendarDayType(date) {
+  const dateKey = toDateKeyLocal(date);
+  return getCalendarDayTypeByKey(dateKey);
+}
+
+function getCalendarDayLabel(type) {
+  if (type === "holiday") return "休日";
+  if (type === "no_leave") return "有給NG";
+  return "営業日";
+}
+
+function isDateInSelectedRange(dateKey) {
+  if (!selectedStartDateKey || !selectedEndDateKey) return false;
+  return dateKey >= selectedStartDateKey && dateKey <= selectedEndDateKey;
+}
+
+function updateCalendarStatus() {
   const box = document.getElementById("calendarStatus");
   if (!box) return;
 
   box.classList.remove("ok", "error");
-  box.textContent = "日付と申請区分を選択してください。";
+
+  if (!currentRequestType) {
+    box.textContent = "申請区分を選択してください。";
+    return;
+  }
+
+  if (currentRequestType === "multi_day") {
+    if (!selectedStartDateKey) {
+      box.textContent = "複数日申請：開始日を選択してください。";
+      return;
+    }
+
+    if (!selectedEndDateKey) {
+      box.textContent = `開始日：${formatDateLabel(selectedStartDateKey)}\n終了日を選択してください。`;
+      return;
+    }
+
+    box.classList.add("ok");
+    box.textContent = `複数日申請：${formatDateLabel(selectedStartDateKey)} 〜 ${formatDateLabel(selectedEndDateKey)} を選択中です。`;
+    return;
+  }
+
+  if (!selectedStartDateKey) {
+    box.textContent = "カレンダーから希望日を選択してください。";
+    return;
+  }
+
+  const labelMap = {
+    one_day: "1日有給",
+    half_am: "午前半休",
+    half_pm: "午後半休"
+  };
+
+  box.classList.add("ok");
+  box.textContent = `${formatDateLabel(selectedStartDateKey)}：${labelMap[currentRequestType] || "有給"} を選択中です。`;
+}
+
+function renderRequestCalendar() {
+  const grid = document.getElementById("requestCalendarGrid");
+  const label = document.getElementById("calendarMonthLabel");
+
+  if (!grid || !label) return;
+
+  grid.innerHTML = "";
+
+  const year = calendarDisplayDate.getFullYear();
+  const month = calendarDisplayDate.getMonth();
+
+  label.textContent = `${year}年 ${month + 1}月`;
+
+  const firstDate = new Date(year, month, 1);
+  const lastDate = new Date(year, month + 1, 0);
+  const startDay = firstDate.getDay();
+  const daysInMonth = lastDate.getDate();
+
+  for (let i = 0; i < startDay; i++) {
+    const empty = document.createElement("div");
+    empty.className = "calendar-day empty";
+    grid.appendChild(empty);
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day);
+    const dateKey = toDateKeyLocal(date);
+    const type = getCalendarDayType(date);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `calendar-day ${type}`;
+
+    if (dateKey === selectedStartDateKey) {
+      btn.classList.add("selected", "range-start");
+    }
+
+    if (dateKey === selectedEndDateKey && selectedEndDateKey !== selectedStartDateKey) {
+      btn.classList.add("selected", "range-end");
+    }
+
+    if (isDateInSelectedRange(dateKey)) {
+      btn.classList.add("in-range");
+    }
+
+    const canSelect = type === "workday";
+    btn.disabled = !canSelect;
+
+    btn.innerHTML = `
+      <span class="calendar-day-number">${day}</span>
+      <span class="calendar-day-label">${getCalendarDayLabel(type)}</span>
+    `;
+
+    btn.onclick = () => selectCalendarDate(dateKey);
+    grid.appendChild(btn);
+  }
 }
 
 /* =========================
@@ -289,17 +558,19 @@ function submitRequest() {
     return;
   }
 
+  updateHiddenDateInputs();
+
   let startDate = "";
   let endDate = "";
   let halfDay = false;
   let halfType = "";
 
   if (currentRequestType === "multi_day") {
-    startDate = document.getElementById("rangeStartDate").value;
-    endDate = document.getElementById("rangeEndDate").value;
+    startDate = selectedStartDateKey;
+    endDate = selectedEndDateKey;
   } else {
-    startDate = document.getElementById("singleDate").value;
-    endDate = startDate;
+    startDate = selectedStartDateKey;
+    endDate = selectedStartDateKey;
   }
 
   if (!startDate || !endDate) {
@@ -344,6 +615,10 @@ function submitRequest() {
     .withSuccessHandler(() => {
       alert("申請しました");
 
+      resetSelectedDates();
+      updateCalendarStatus();
+      renderRequestCalendar();
+
       loadEmployeeLeaveHistory(selectedEmployee.employee_id);
 
       google.script.run
@@ -366,29 +641,28 @@ function submitRequest() {
         submitBtn.textContent = "申請する";
       }
     })
-    
     .withFailureHandler(err => {
-       console.error("submitLeaveRequest error:", err);
+      console.error("submitLeaveRequest error:", err);
 
-       let message = "エラーが発生しました";
+      let message = "エラーが発生しました";
 
-     if (err) {
-      if (err.message) {
-       message = err.message;
+      if (err) {
+        if (err.message) {
+          message = err.message;
         } else if (typeof err === "string") {
-         message = err;
-           } else {
-         message = String(err);
-       }
-  }
+          message = err;
+        } else {
+          message = String(err);
+        }
+      }
 
-  alert(message);
+      alert(message);
 
-  if (submitBtn) {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "申請する";
-  }
-})
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "申請する";
+      }
+    })
     .submitLeaveRequest(payload);
 }
 

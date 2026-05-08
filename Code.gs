@@ -2197,3 +2197,17 @@ function retireEmployeeFromAdmin(employeeId, leaveDate) {
     message: "退職処理を完了しました"
   };
 }
+
+function getCompanyCalendarMapForRequest() {
+  const map = getCompanyCalendarMap();
+  const result = {};
+
+  Object.keys(map).forEach(dateKey => {
+    result[dateKey] = {
+      type: map[dateKey],
+      notes: ""
+    };
+  });
+
+  return result;
+}

@@ -84,11 +84,42 @@
         <div class="request-section">
           <div class="request-section-title">1. 希望日を選択</div>
 
-          <div class="field single-date-field">
-            <label for="singleDate">希望日</label>
-            <input type="date" id="singleDate" onchange="handleRequestTypeChange()">
-          </div>
-        </div>
+        <div class="calendar-ui-card">
+  <div class="calendar-ui-header">
+    <button class="calendar-nav-btn" type="button" onclick="moveCalendarMonth(-1)">‹</button>
+
+    <div>
+      <div id="calendarMonthLabel" class="calendar-month-label">----</div>
+      <div class="calendar-help-text">希望日をタップしてください</div>
+    </div>
+
+    <button class="calendar-nav-btn" type="button" onclick="moveCalendarMonth(1)">›</button>
+  </div>
+
+  <div class="calendar-legend">
+    <span><i class="legend-dot workday"></i>営業日</span>
+    <span><i class="legend-dot holiday"></i>休日</span>
+    <span><i class="legend-dot no-leave"></i>有給NG</span>
+    <span><i class="legend-dot selected"></i>選択中</span>
+  </div>
+
+  <div class="calendar-week-row">
+    <div>日</div>
+    <div>月</div>
+    <div>火</div>
+    <div>水</div>
+    <div>木</div>
+    <div>金</div>
+    <div>土</div>
+  </div>
+
+  <div id="requestCalendarGrid" class="request-calendar-grid"></div>
+</div>
+
+<div class="field single-date-field hidden-date-field">
+  <label for="singleDate">希望日</label>
+  <input type="date" id="singleDate" onchange="handleRequestTypeChange(); syncCalendarFromInput();">
+</div>
 
         <div class="request-section">
           <div class="request-section-title">2. 申請区分を選択</div>

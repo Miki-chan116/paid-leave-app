@@ -1170,6 +1170,248 @@
     0 6px 14px rgba(79,140,255,0.25);
 }
 
+/* =========================
+   申請画面カレンダーUI
+========================= */
+.calendar-ui-card {
+  width: 100%;
+  max-width: 760px;
+  padding: 16px;
+  border-radius: 20px;
+  background: #f8fcfe;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.calendar-ui-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.calendar-nav-btn {
+  width: 54px;
+  height: 54px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent-blue);
+  color: #ffffff;
+  font-size: 34px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.calendar-month-label {
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--primary-dark);
+  text-align: center;
+}
+
+.calendar-help-text {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-sub);
+  text-align: center;
+  font-weight: 700;
+}
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin: 10px 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-sub);
+}
+
+.calendar-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legend-dot.workday {
+  background: #ffffff;
+  border: 2px solid var(--border);
+}
+
+.legend-dot.holiday {
+  background: #eef2f7;
+  border: 2px solid #cbd5e1;
+}
+
+.legend-dot.no-leave {
+  background: #ffe4e6;
+  border: 2px solid var(--accent-red);
+}
+
+.legend-dot.selected {
+  background: var(--primary-dark);
+}
+
+.calendar-week-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.calendar-week-row div {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--text-sub);
+}
+
+.request-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.calendar-day {
+  min-height: 74px;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(47, 111, 134, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.calendar-day.empty {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.calendar-day-number {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--text-main);
+}
+
+.calendar-day-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-sub);
+}
+
+.calendar-day.workday:hover {
+  border-color: var(--primary);
+  background: #f2fbfd;
+}
+
+.calendar-day.holiday {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.calendar-day.holiday .calendar-day-number,
+.calendar-day.holiday .calendar-day-label {
+  color: #64748b;
+}
+
+.calendar-day.no_leave {
+  background: #fff1f2;
+  border-color: var(--accent-red);
+  cursor: not-allowed;
+}
+
+.calendar-day.no_leave .calendar-day-number,
+.calendar-day.no_leave .calendar-day-label {
+  color: var(--accent-red);
+}
+
+.calendar-day.selected {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+  transform: translateY(-2px);
+}
+
+.calendar-day.selected .calendar-day-number,
+.calendar-day.selected .calendar-day-label {
+  color: #ffffff;
+}
+
+.hidden-date-field {
+  margin-top: 12px;
+  max-width: 260px;
+  opacity: 0.75;
+}
+
+.calendar-day.in-range {
+  background: #e6f6fb;
+  border-color: #9ed8ea;
+}
+
+.calendar-day.in-range .calendar-day-number,
+.calendar-day.in-range .calendar-day-label {
+  color: var(--primary-dark);
+}
+
+.calendar-day.selected,
+.calendar-day.range-start,
+.calendar-day.range-end {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+.calendar-day.selected .calendar-day-number,
+.calendar-day.selected .calendar-day-label,
+.calendar-day.range-start .calendar-day-number,
+.calendar-day.range-start .calendar-day-label,
+.calendar-day.range-end .calendar-day-number,
+.calendar-day.range-end .calendar-day-label {
+  color: #ffffff;
+}
+
+@media (max-width: 900px) {
+  .calendar-ui-card {
+    max-width: none;
+    padding: 12px;
+  }
+
+  .request-calendar-grid,
+  .calendar-week-row {
+    gap: 5px;
+  }
+
+  .calendar-day {
+    min-height: 58px;
+    border-radius: 11px;
+  }
+
+  .calendar-day-number {
+    font-size: 18px;
+  }
+
+  .calendar-day-label {
+    font-size: 10px;
+  }
+
+  .calendar-month-label {
+    font-size: 22px;
+  }
+}
+
 @media (max-width: 900px) {
   .menu-grid {
     grid-template-columns: 1fr;
