@@ -136,7 +136,6 @@ function showAdminApp() {
 
   setDefaultReportValues();
   setDefaultSearchDates();
-  loadDashboardSummary();
   loadRequests("pending");
 }
 
@@ -225,9 +224,41 @@ function logoutAdmin() {
    管理トップ件数表示
 ========================= */
 function loadDashboardSummary() {
-  loadDashboardCount("pending", "pendingCount");
-  loadDashboardCount("approved", "approvedCount");
-  loadDashboardCount("rejected", "rejectedCount");
+  google.script.run
+    .withSuccessHandler(summary => {
+
+      const pending = document.getElementById("pendingCount");
+      const approved = document.getElementById("approvedCount");
+      const rejected = document.getElementById("rejectedCount");
+
+      if (pending) {
+        pending.textContent = summary.pending || 0;
+      }
+
+      if (approved) {
+        approved.textContent = summary.approved || 0;
+      }
+
+      if (rejected) {
+        rejected.textContent = summary.rejected || 0;
+      }
+
+    })
+    .withFailureHandler(err => {
+      console.error("dashboard summary error:", err);
+
+      ["pendingCount", "approvedCount", "rejectedCount"]
+        .forEach(id => {
+
+          const el = document.getElementById(id);
+
+          if (el) {
+            el.textContent = "!";
+          }
+
+        });
+    })
+    .getAdminDashboardSummary();
 }
 
 function loadDashboardCount(status, elementId) {
@@ -808,6 +839,87 @@ function downloadCsvFile(rows, filename) {
   link.click();
 
   URL.revokeObjectURL(link.href);
+}
+
+/* =========================
+   6か月到達 有給付与
+========================= */
+function loadSixMonthGrantCandidates() {
+  const area = document.getElementById("sixMonthGrantArea");
+  if (!area) return;
+
+  area.innerHTML = `<div class="message">6か月付与対象者を確認しています...</div>`;
+
+  google.script.run
+    .withSuccessHandler(renderSixMonthGrantCandidates)
+    .withFailureHandler(err => {
+      console.error("6か月付与候補取得エラー:", err);
+      area.innerHTML = `<div class="message error">6か月付与対象者の取得でエラーが発生しました。</div>`;
+    })
+    .getSixMonthGrantCandidates();
+}
+
+function renderSixMonthGrantCandidates(data) {
+  const area = document.getElementById("sixMonthGrantArea");
+  if (!area) return;
+
+  if (!Array.isArray(data) || data.length === 0) {
+    area.innerHTML = `<div class="message">現在、6か月到達による付与対象者はいません。</div>`;
+    return;
+  }
+
+  area.innerHTML = data.map(emp => `
+    <div class="six-month-row">
+      <div class="six-month-main">
+        <div class="six-month-name">
+          ${escapeHtml(emp.name)}
+          <span class="six-month-id">${escapeHtml(emp.display_employee_id || emp.employee_id)}</span>
+        </div>
+
+        <div class="six-month-meta">
+          入社日：${escapeHtml(emp.hire_date || "")}
+          ／ 付与予定日：${escapeHtml(emp.grant_date || "")}
+          ／ 付与日数：${escapeHtml(emp.grant_days)}日
+          ／ 会社：${escapeHtml(emp.company_name || emp.company_code || "")}
+        </div>
+      </div>
+
+      <button class="btn btn-approve" type="button"
+        onclick="grantSixMonthPaidLeaveAction('${escapeHtml(emp.employee_id)}', '${escapeHtml(emp.name)}', '${escapeHtml(emp.grant_days)}')">
+        付与する
+      </button>
+    </div>
+  `).join("");
+}
+
+function grantSixMonthPaidLeaveAction(employeeId, name, grantDays) {
+  if (!employeeId) return;
+
+  const ok = confirm(
+    `${name} さんに ${grantDays}日 の有給を付与しますか？`
+  );
+
+  if (!ok) return;
+
+  const area = document.getElementById("sixMonthGrantArea");
+  if (area) {
+    area.innerHTML = `<div class="message">有給付与を実行しています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(res => {
+      alert(`${res.name} さんへ ${res.grant_days}日付与しました`);
+      loadDashboardSummary();
+      loadSixMonthGrantCandidates();
+    })
+    .withFailureHandler(err => {
+      console.error("6か月付与エラー:", err);
+      const message = err && err.message ? err.message : "6か月付与でエラーが発生しました。";
+      if (area) {
+        area.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+    })
+    .grantSixMonthPaidLeave(employeeId, currentAdminUser);
 }
 
 </script>

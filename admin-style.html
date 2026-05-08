@@ -401,4 +401,56 @@
   cursor: pointer;
 }
 
+/* =========================
+   6か月有給付与チェック
+========================= */
+.six-month-card {
+  border-left: 7px solid var(--accent-orange);
+}
+
+.six-month-grant-area {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.six-month-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.six-month-name {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--primary-dark);
+}
+
+.six-month-id {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--text-sub);
+  font-weight: 700;
+}
+
+.six-month-meta {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-sub);
+  line-height: 1.6;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .six-month-row {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

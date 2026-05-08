@@ -2371,3 +2371,231 @@ function verifyAdminLogin(adminId, pin) {
     admin_name: String(matched.admin_name || "").trim()
   };
 }
+
+/* =========================
+   6か月到達者：初回有給付与候補取得
+========================= */
+function getSixMonthGrantCandidates() {
+  const today = new Date();
+  const employees = getEmployeesForAdmin();
+  const grantedMap = getGrantedEmployeeMapByGrantType_("six_month");
+
+  return employees
+    .filter(emp => {
+      if (String(emp.employment_status || "").toLowerCase() !== "active") return false;
+      if (emp.leave_management_target !== true) return false;
+      if (!emp.hire_date) return false;
+      if (grantedMap[emp.employee_id]) return false;
+
+      const grantDate = addMonthsLocal_(parseLocalDate(emp.hire_date), 6);
+      return grantDate <= today;
+    })
+    .map(emp => {
+      const grantDate = addMonthsLocal_(parseLocalDate(emp.hire_date), 6);
+      const grantDays = getSixMonthGrantDays_(emp.work_days_per_week);
+
+      return {
+        employee_id: emp.employee_id,
+        display_employee_id: emp.display_employee_id,
+        name: emp.name,
+        hire_date: emp.hire_date,
+        grant_date: formatDateValue(grantDate),
+        grant_days: grantDays,
+        work_days_per_week: emp.work_days_per_week || "",
+        company_code: emp.company_code || "",
+        company_name: emp.company_name || ""
+      };
+    });
+}
+
+/* =========================
+   6か月到達者：1名付与
+========================= */
+function grantSixMonthPaidLeave(employeeId, adminUser) {
+  if (!employeeId) throw new Error("employeeId がありません");
+
+  const employees = getEmployeesForAdmin();
+  const emp = employees.find(e => String(e.employee_id) === String(employeeId));
+
+  if (!emp) throw new Error("対象社員が見つかりません");
+  if (!emp.hire_date) throw new Error("入社日がありません");
+
+  const grantedMap = getGrantedEmployeeMapByGrantType_("six_month");
+  if (grantedMap[employeeId]) {
+    throw new Error("この社員にはすでに6か月付与が登録されています");
+  }
+
+  const grantDate = addMonthsLocal_(parseLocalDate(emp.hire_date), 6);
+  const grantDays = getSixMonthGrantDays_(emp.work_days_per_week);
+  const now = new Date();
+
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "grant_id",
+    "employee_id",
+    "grant_date",
+    "grant_days",
+    "carry_over_days",
+    "valid_from",
+    "valid_to",
+    "grant_type",
+    "year",
+    "notes",
+    "created_at",
+    "updated_at"
+  ]);
+
+  const rowObj = createEmptyRowObject(headerInfo.headers);
+
+  rowObj.grant_id = getNextGrantId_();
+  rowObj.employee_id = employeeId;
+  rowObj.grant_date = grantDate;
+  rowObj.grant_days = grantDays;
+  rowObj.carry_over_days = 0;
+  rowObj.valid_from = grantDate;
+  rowObj.valid_to = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
+  rowObj.grant_type = "six_month";
+  rowObj.year = getFiscalYearFromDateWithStart(grantDate, Number(emp.fiscal_start_month || 4));
+  rowObj.notes = "入社6か月到達による初回付与";
+  rowObj.created_at = now;
+  rowObj.updated_at = now;
+
+  sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+
+  const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
+  const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
+
+  appendUsageLog({
+    request_id: employeeId,
+    action_type: "six_month_grant",
+    operator_id: operatorId,
+    operator_name: operatorName,
+    comment: emp.name + " さんへ " + grantDays + "日を6か月到達付与しました"
+  });
+
+  clearAppCache();
+
+  return {
+    ok: true,
+    employee_id: employeeId,
+    name: emp.name,
+    grant_date: formatDateValue(grantDate),
+    grant_days: grantDays
+  };
+}
+
+/* =========================
+   6か月付与済みチェック
+========================= */
+function getGrantedEmployeeMapByGrantType_(grantType) {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, ["employee_id", "grant_type"]);
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const type = String(rowObj.grant_type || "").trim();
+
+    if (employeeId && type === grantType) {
+      result[employeeId] = true;
+    }
+  });
+
+  return result;
+}
+
+/* =========================
+   6か月付与日数
+   週5日以上は10日
+   週4日以下は比例付与
+========================= */
+function getSixMonthGrantDays_(workDaysPerWeek) {
+  const days = Number(workDaysPerWeek || 5);
+
+  if (days >= 5) return 10;
+  if (days === 4) return 7;
+  if (days === 3) return 5;
+  if (days === 2) return 3;
+  if (days === 1) return 1;
+
+  return 10;
+}
+
+/* =========================
+   grant_id 自動採番
+========================= */
+function getNextGrantId_() {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, ["grant_id"]);
+  const data = sheet.getDataRange().getValues();
+
+  let max = 0;
+
+  if (data.length > 1) {
+    data.slice(1).forEach(row => {
+      const id = String(row[headerInfo.map.grant_id] || "").trim();
+      const num = Number(id.replace("G", ""));
+      if (!isNaN(num) && num > max) max = num;
+    });
+  }
+
+  return "G" + String(max + 1).padStart(4, "0");
+}
+
+/* =========================
+   日付加算ヘルパー
+========================= */
+function addMonthsLocal_(dateValue, months) {
+  const date = parseLocalDate(dateValue);
+  return new Date(date.getFullYear(), date.getMonth() + Number(months || 0), date.getDate());
+}
+
+function addYearsLocal_(dateValue, years) {
+  const date = parseLocalDate(dateValue);
+  return new Date(date.getFullYear() + Number(years || 0), date.getMonth(), date.getDate());
+}
+
+function addDaysLocal_(dateValue, days) {
+  const date = parseLocalDate(dateValue);
+  date.setDate(date.getDate() + Number(days || 0));
+  return date;
+}
+
+function getAdminDashboardSummary() {
+  const range = getAdminRecentRange();
+
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "start_date",
+    "end_date",
+    "status"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+
+  const result = {
+    pending: 0,
+    approved: 0,
+    rejected: 0
+  };
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const status = norm(rowObj.status);
+
+    if (!rowObj.start_date || !rowObj.end_date) return;
+    if (!isRequestInDateRange(rowObj, range.start, range.end)) return;
+
+    if (status === STATUS.PENDING) result.pending++;
+    if (status === STATUS.APPROVED) result.approved++;
+    if (status === STATUS.REJECTED) result.rejected++;
+  });
+
+  return result;
+}
