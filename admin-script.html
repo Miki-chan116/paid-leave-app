@@ -5,6 +5,7 @@ let currentMode = "recent";
 window.addEventListener("DOMContentLoaded", () => {
   setDefaultReportValues();
   setDefaultSearchDates();
+  loadDashboardSummary();
   loadRequests("pending");
 });
 
@@ -92,6 +93,32 @@ function formatDays(value) {
   return `${num}日`;
 }
 
+/* =========================
+   管理トップ件数表示
+========================= */
+function loadDashboardSummary() {
+  loadDashboardCount("pending", "pendingCount");
+  loadDashboardCount("approved", "approvedCount");
+  loadDashboardCount("rejected", "rejectedCount");
+}
+
+function loadDashboardCount(status, elementId) {
+  google.script.run
+    .withSuccessHandler(data => {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+
+      el.textContent = Array.isArray(data) ? data.length : 0;
+    })
+    .withFailureHandler(err => {
+      console.error("dashboard count error:", status, err);
+
+      const el = document.getElementById(elementId);
+      if (el) el.textContent = "!";
+    })
+    .getRequestsByStatus(status);
+}
+
 /* 申請一覧 */
 function loadRequests(status) {
   currentStatus = status;
@@ -102,6 +129,7 @@ function loadRequests(status) {
 
   setActiveTab(status);
   setDefaultSearchDates();
+  loadDashboardSummary();
 
   const start = document.getElementById("searchStartDate").value;
   const end = document.getElementById("searchEndDate").value;
@@ -247,8 +275,9 @@ function approveRequestAction(requestId) {
   google.script.run
     .withSuccessHandler(() => {
       alert("承認しました");
+      loadDashboardSummary();
       reloadCurrentView();
-    })
+})
     .withFailureHandler(err => {
       console.error("承認エラー:", err);
       showError("requestView", "承認処理でエラーが発生しました");
@@ -267,7 +296,10 @@ function rejectRequestAction(requestId) {
   google.script.run
     .withSuccessHandler(() => {
       alert("否認しました");
-      reloadCurrentView();
+
+        loadDashboardSummary();
+
+        reloadCurrentView();
     })
     .withFailureHandler(err => {
       console.error("否認エラー:", err);
@@ -364,6 +396,7 @@ function exportMonthlyReport() {
 
 function exportYearlyReport() {
   const fiscalYear = Number(document.getElementById("yearlyFiscalYear").value);
+  const companyCode = document.getElementById("yearlyCompany").value;
 
   if (!fiscalYear) {
     showExportMessage("年間一覧の対象年度を入力してください。", "error");
@@ -375,7 +408,7 @@ function exportYearlyReport() {
   google.script.run
     .withSuccessHandler(res => {
       showExportMessage(
-        `年間一覧を出力しました。対象年度: ${res.period_start} ～ ${res.period_end} / ${res.row_count} 名分`,
+        `年間一覧を出力しました。会社: ${res.company_code} / 対象年度: ${res.period_start} ～ ${res.period_end} / ${res.row_count} 名分`,
         "success"
       );
     })
@@ -383,7 +416,7 @@ function exportYearlyReport() {
       console.error("年間出力エラー:", err);
       showExportMessage("年間一覧の出力でエラーが発生しました。", "error");
     })
-    .exportYearlyPaidLeaveReport(fiscalYear);
+    .exportYearlyPaidLeaveReport(fiscalYear, companyCode);
 }
 
 let monthlyPreviewData = null;
@@ -580,4 +613,73 @@ function downloadMonthlyReportCsv() {
 
   URL.revokeObjectURL(link.href);
 }
+
+/* =========================
+   年間CSVダウンロード
+========================= */
+function downloadYearlyReportCsv() {
+  const fiscalYear = Number(document.getElementById("yearlyFiscalYear").value);
+  const companyCode = document.getElementById("yearlyCompany").value;
+
+  if (!fiscalYear) {
+    alert("年間一覧の対象年度を入力してください。");
+    return;
+  }
+
+  showExportMessage("年間CSVを作成しています...", "success");
+
+  google.script.run
+    .withSuccessHandler(res => {
+      const rows = [];
+
+      rows.push(["年間有給取得一覧"]);
+      rows.push(["会社", res.company_code || companyCode]);
+      rows.push(["対象期間", `${res.period_start}〜${res.period_end}`]);
+      rows.push([]);
+      rows.push([
+        "社員ID",
+        "氏名",
+        "前年度残日数",
+        "今年度付与日数",
+        "今年度取得済み日数",
+        "来年度繰越日数",
+        "消滅日数"
+      ]);
+
+      if (res.rows && res.rows.length > 0) {
+        res.rows.forEach(row => rows.push(row));
+      } else {
+        rows.push(["該当データなし", "", "", "", "", "", ""]);
+      }
+
+      downloadCsvFile(
+        rows,
+        `年間有給取得一覧_${fiscalYear}_${companyCode}.csv`
+      );
+
+      showExportMessage("年間CSVをダウンロードしました。", "success");
+    })
+    .withFailureHandler(err => {
+      console.error("年間CSV作成エラー:", err);
+      showExportMessage("年間CSV作成でエラーが発生しました。", "error");
+    })
+    .getYearlyPaidLeaveReportCsvData(fiscalYear, companyCode);
+}
+
+function downloadCsvFile(rows, filename) {
+  const csv = rows.map(row =>
+    row.map(value => `"${String(value == null ? "" : value).replace(/"/g, '""')}"`).join(",")
+  ).join("\n");
+
+  const bom = "\uFEFF";
+  const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+
+  URL.revokeObjectURL(link.href);
+}
+
 </script>

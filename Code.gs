@@ -2211,3 +2211,68 @@ function getCompanyCalendarMapForRequest() {
 
   return result;
 }
+
+/* =========================
+   年間一覧CSV用データ取得
+========================= */
+function getYearlyPaidLeaveReportCsvData(fiscalYear, companyCode) {
+  const code = String(companyCode || "MAIN").trim().toUpperCase();
+
+  if (!fiscalYear) {
+    fiscalYear = getFiscalYearFromDate(new Date());
+  }
+
+  const employees = getEmployees().filter(emp => {
+    return (
+      String(emp.company_code || "").trim().toUpperCase() === code &&
+      String(emp.employment_status || "").trim().toLowerCase() === "active" &&
+      emp.leave_management_target === true
+    );
+  });
+
+  const fiscalStartMonth =
+    employees.length > 0
+      ? Number(employees[0].fiscal_start_month || 4)
+      : code === "PARTNER" ? 7 : 4;
+
+  const yearRange = getFiscalYearRangeWithStart(Number(fiscalYear), fiscalStartMonth);
+
+  const grantMap = getGrantMapByFiscalYear(Number(fiscalYear));
+  const usedMap = getApprovedUsedDaysByFiscalYear(Number(fiscalYear));
+
+  const rows = employees
+    .map(emp => {
+      const grantInfo = grantMap[emp.id] || {
+        employee_id: emp.id,
+        grant_days: 0,
+        carry_over_days: 0
+      };
+
+      const balance = buildBalance(
+        emp.id,
+        grantInfo,
+        usedMap[emp.id] || 0
+      );
+
+      return [
+        emp.id,
+        emp.name,
+        balance.carry_over_days,
+        balance.grant_days,
+        balance.used_days,
+        balance.next_carry_over_days,
+        balance.expired_days
+      ];
+    })
+    .sort((a, b) => a[0] > b[0] ? 1 : -1);
+
+  return {
+    ok: true,
+    company_code: code,
+    fiscal_year: Number(fiscalYear),
+    period_start: formatDateValue(yearRange.start),
+    period_end: formatDateValue(yearRange.end),
+    rows: rows,
+    row_count: rows.length
+  };
+}

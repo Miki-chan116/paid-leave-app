@@ -226,4 +226,103 @@
     .compact-actions { min-width:0; justify-content:flex-start; flex-wrap:wrap; }
     .btn { width:auto; }
   }
+
+  /* =========================
+   管理画面トップ：状況カード
+========================= */
+.admin-dashboard {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.dashboard-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px 16px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  min-height: 140px;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(47, 111, 134, 0.16);
+  background: #f8fcfe;
+}
+
+.dashboard-label {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #ffffff;
+  background: var(--accent-blue);
+  margin-bottom: 10px;
+}
+
+.dashboard-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--primary-dark);
+}
+
+.dashboard-count {
+  margin-top: 8px;
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--text-main);
+  line-height: 1;
+}
+
+.dashboard-sub {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-sub);
+  font-weight: 700;
+}
+
+.pending-card {
+  border-left: 8px solid var(--accent-blue);
+}
+
+.approved-card {
+  border-left: 8px solid var(--primary);
+}
+
+.rejected-card {
+  border-left: 8px solid var(--accent-red);
+}
+
+.log-card-mini {
+  border-left: 8px solid var(--accent-orange);
+}
+
+.approved-card .dashboard-label {
+  background: var(--primary);
+}
+
+.rejected-card .dashboard-label {
+  background: var(--accent-red);
+}
+
+.log-card-mini .dashboard-label {
+  background: var(--accent-orange);
+}
+
+@media (max-width: 900px) {
+  .admin-dashboard {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-dashboard {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
