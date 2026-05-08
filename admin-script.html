@@ -3,10 +3,7 @@ let currentStatus = "pending";
 let currentMode = "recent";
 
 window.addEventListener("DOMContentLoaded", () => {
-  setDefaultReportValues();
-  setDefaultSearchDates();
-  loadDashboardSummary();
-  loadRequests("pending");
+  initAdminLogin();
 });
 
 function setDefaultReportValues() {
@@ -91,6 +88,137 @@ function getStatusLabel(status) {
 function formatDays(value) {
   const num = Number(value || 0);
   return `${num}日`;
+}
+
+/* =========================
+   簡易ログイン
+========================= */
+const ADMIN_LOGIN_KEY = "paid_leave_admin_login";
+
+let currentAdminUser = null;
+
+function initAdminLogin() {
+  const saved = localStorage.getItem(ADMIN_LOGIN_KEY);
+
+  if (saved) {
+    try {
+      currentAdminUser = JSON.parse(saved);
+
+      if (currentAdminUser && currentAdminUser.admin_id) {
+        showAdminApp();
+        return;
+      }
+    } catch (e) {
+      localStorage.removeItem(ADMIN_LOGIN_KEY);
+    }
+  }
+
+  showLoginScreen();
+  loadAdminUsersForLogin();
+}
+
+function showLoginScreen() {
+  const loginScreen = document.getElementById("loginScreen");
+  const adminApp = document.getElementById("adminApp");
+
+  if (loginScreen) loginScreen.style.display = "flex";
+  if (adminApp) adminApp.classList.add("admin-app-hidden");
+}
+
+function showAdminApp() {
+  const loginScreen = document.getElementById("loginScreen");
+  const adminApp = document.getElementById("adminApp");
+
+  if (loginScreen) loginScreen.style.display = "none";
+  if (adminApp) adminApp.classList.remove("admin-app-hidden");
+
+  renderLoginUserBar();
+
+  setDefaultReportValues();
+  setDefaultSearchDates();
+  loadDashboardSummary();
+  loadRequests("pending");
+}
+
+function renderLoginUserBar() {
+  const bar = document.getElementById("loginUserBar");
+  if (!bar) return;
+
+  const name = currentAdminUser ? currentAdminUser.admin_name : "";
+
+  bar.innerHTML = `
+    <span>ログイン中：${escapeHtml(name)}</span>
+    <button class="logout-btn" type="button" onclick="logoutAdmin()">ログアウト</button>
+  `;
+}
+
+function loadAdminUsersForLogin() {
+  const select = document.getElementById("adminUserSelect");
+  const message = document.getElementById("loginMessage");
+
+  if (message) message.textContent = "";
+
+  google.script.run
+    .withSuccessHandler(users => {
+      if (!select) return;
+
+      if (!Array.isArray(users) || users.length === 0) {
+        select.innerHTML = `<option value="">有効な管理者がいません</option>`;
+        return;
+      }
+
+      select.innerHTML = `<option value="">選択してください</option>`;
+
+      users.forEach(user => {
+        const option = document.createElement("option");
+        option.value = user.admin_id;
+        option.textContent = `${user.admin_name}（${user.admin_id}）`;
+        select.appendChild(option);
+      });
+    })
+    .withFailureHandler(err => {
+      console.error("管理者一覧取得エラー:", err);
+      if (message) message.textContent = "管理者一覧の取得でエラーが発生しました。";
+    })
+    .getAdminUsersForLogin();
+}
+
+function loginAdmin() {
+  const adminId = document.getElementById("adminUserSelect").value;
+  const pin = document.getElementById("adminPinInput").value;
+  const message = document.getElementById("loginMessage");
+
+  if (message) message.textContent = "";
+
+  google.script.run
+    .withSuccessHandler(user => {
+      currentAdminUser = user;
+
+      localStorage.setItem(ADMIN_LOGIN_KEY, JSON.stringify({
+        admin_id: user.admin_id,
+        admin_name: user.admin_name
+      }));
+
+      showAdminApp();
+    })
+    .withFailureHandler(err => {
+      console.error("ログインエラー:", err);
+      if (message) {
+        message.textContent = err && err.message ? err.message : "ログインできませんでした。";
+      }
+    })
+    .verifyAdminLogin(adminId, pin);
+}
+
+function logoutAdmin() {
+  localStorage.removeItem(ADMIN_LOGIN_KEY);
+  currentAdminUser = null;
+
+  const pin = document.getElementById("adminPinInput");
+  if (pin) pin.value = "";
+
+  showLoginScreen();
+  loadAdminUsersForLogin();
 }
 
 /* =========================
@@ -282,7 +410,7 @@ function approveRequestAction(requestId) {
       console.error("承認エラー:", err);
       showError("requestView", "承認処理でエラーが発生しました");
     })
-    .approveRequest(requestId);
+    .approveRequest(requestId, currentAdminUser);
 }
 
 function rejectRequestAction(requestId) {
@@ -305,7 +433,7 @@ function rejectRequestAction(requestId) {
       console.error("否認エラー:", err);
       showError("requestView", "否認処理でエラーが発生しました");
     })
-    .rejectRequest(requestId, reason);
+    .rejectRequest(requestId, reason, currentAdminUser);
 }
 
 /* ログ */

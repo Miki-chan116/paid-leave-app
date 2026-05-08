@@ -1048,7 +1048,7 @@ function searchRequests(filters) {
 /* =========================
    承認
 ========================= */
-function approveRequest(requestId) {
+function approveRequest(requestId, adminUser) {
   if (!requestId) {
     throw new Error("requestId がありません");
   }
@@ -1083,18 +1083,26 @@ function approveRequest(requestId) {
   const now = new Date();
 
   sheet.getRange(sheetRow, headerInfo.map.status + 1).setValue(STATUS.APPROVED);
-  sheet.getRange(sheetRow, headerInfo.map.approver_id + 1).setValue("A001");
-  sheet.getRange(sheetRow, headerInfo.map.approver_name + 1).setValue("管理者");
+  const operatorId = adminUser && adminUser.admin_id
+  ? String(adminUser.admin_id).trim()
+  : "admin";
+
+const operatorName = adminUser && adminUser.admin_name
+  ? String(adminUser.admin_name).trim()
+  : "管理者";
+
+sheet.getRange(sheetRow, headerInfo.map.approver_id + 1).setValue(operatorId);
+sheet.getRange(sheetRow, headerInfo.map.approver_name + 1).setValue(operatorName);
   sheet.getRange(sheetRow, headerInfo.map.approved_at + 1).setValue(now);
   sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(now);
 
   appendUsageLog({
-    request_id: requestId,
-    action_type: "approve",
-    operator_id: "A001",
-    operator_name: "管理者",
-    comment: "Approved"
-  });
+  request_id: requestId,
+  action_type: "approve",
+  operator_id: operatorId,
+  operator_name: operatorName,
+  comment: "Approved by " + operatorName
+});
 
   clearAppCache();
 
@@ -1104,7 +1112,7 @@ function approveRequest(requestId) {
 /* =========================
    否認
 ========================= */
-function rejectRequest(requestId, reason) {
+function rejectRequest(requestId, reason, adminUser) {
   if (!requestId) {
     throw new Error("requestId がありません");
   }
@@ -1139,14 +1147,21 @@ function rejectRequest(requestId, reason) {
   sheet.getRange(sheetRow, headerInfo.map.status + 1).setValue(STATUS.REJECTED);
   sheet.getRange(sheetRow, headerInfo.map.rejected_reason + 1).setValue(reason || "");
   sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(now);
+  const operatorId = adminUser && adminUser.admin_id
+  ? String(adminUser.admin_id).trim()
+  : "admin";
+  const operatorName = adminUser && adminUser.admin_name
+  ? String(adminUser.admin_name).trim()
+  : "管理者";
+
 
   appendUsageLog({
-    request_id: requestId,
-    action_type: "reject",
-    operator_id: "A001",
-    operator_name: "管理者",
-    comment: reason || ""
-  });
+  request_id: requestId,
+  action_type: "reject",
+  operator_id: operatorId,
+  operator_name: operatorName,
+  comment: reason || ""
+});
 
   clearAppCache();
 
@@ -2274,5 +2289,85 @@ function getYearlyPaidLeaveReportCsvData(fiscalYear, companyCode) {
     period_end: formatDateValue(yearRange.end),
     rows: rows,
     row_count: rows.length
+  };
+}
+
+/* =========================
+   管理者ログイン：ユーザー一覧取得
+========================= */
+function getAdminUsersForLogin() {
+  const sheet = getSheet("admin_users");
+  const headerInfo = requireHeaders(sheet, [
+    "admin_id",
+    "admin_name",
+    "pin",
+    "is_active"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+
+  if (data.length <= 1) return [];
+
+  return data.slice(1)
+    .map(row => rowToObject(row, headerInfo.headers))
+    .filter(rowObj => {
+      return String(rowObj.is_active || "").trim().toUpperCase() === "TRUE";
+    })
+    .map(rowObj => {
+      return {
+        admin_id: String(rowObj.admin_id || "").trim(),
+        admin_name: String(rowObj.admin_name || "").trim()
+      };
+    })
+    .filter(user => user.admin_id && user.admin_name);
+}
+
+/* =========================
+   管理者ログイン：PIN確認
+========================= */
+function verifyAdminLogin(adminId, pin) {
+  const sheet = getSheet("admin_users");
+
+  const headerInfo = requireHeaders(sheet, [
+    "admin_id",
+    "admin_name",
+    "pin",
+    "is_active"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+
+  const targetAdminId = String(adminId || "").trim();
+  const targetPin = String(pin || "").trim();
+
+  if (!targetAdminId) {
+    throw new Error("管理者を選択してください");
+  }
+
+  if (!targetPin) {
+    throw new Error("PINを入力してください");
+  }
+
+  const matched = data.slice(1)
+    .map(row => rowToObject(row, headerInfo.headers))
+    .find(rowObj => {
+      return (
+        String(rowObj.admin_id || "").trim() === targetAdminId &&
+        String(rowObj.is_active || "").trim().toUpperCase() === "TRUE"
+      );
+    });
+
+  if (!matched) {
+    throw new Error("管理者が見つかりません");
+  }
+
+  if (String(matched.pin || "").trim() !== targetPin) {
+    throw new Error("PINが違います");
+  }
+
+  return {
+    ok: true,
+    admin_id: String(matched.admin_id || "").trim(),
+    admin_name: String(matched.admin_name || "").trim()
   };
 }

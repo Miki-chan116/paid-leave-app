@@ -1529,4 +1529,108 @@
   border-left-color: #6fb7d6;
 }
 
+/* =========================
+   タブレット専用：申請画面レイアウト改善
+========================= */
+
+.tablet-request-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.tablet-calendar-column,
+.tablet-side-column {
+  min-width: 0;
+}
+
+.calendar-main-section {
+  margin-top: 0;
+}
+
+.tablet-side-column .request-section:first-child {
+  margin-top: 0;
+}
+
+.tablet-type-grid {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.tablet-type-grid .type-btn {
+  min-height: 76px;
+  font-size: 24px;
+}
+
+.tablet-side-column .status-box {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.tablet-side-column .submit-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 76px;
+  font-size: 30px;
+}
+
+.calendar-ui-card {
+  max-width: none;
+}
+
+.request-calendar-grid {
+  gap: 10px;
+}
+
+.calendar-day {
+  min-height: 86px;
+}
+
+.calendar-day-number {
+  font-size: 26px;
+}
+
+.calendar-day-label {
+  font-size: 12px;
+}
+
+.hidden-date-field {
+  display: none;
+}
+
+/* タブレット縦・スマホでは1列に戻す */
+@media (max-width: 1000px) {
+  .tablet-request-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .tablet-type-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tablet-side-column .submit-btn {
+    width: 100%;
+  }
+}
+
+/* 小さめ画面用 */
+@media (max-width: 700px) {
+  .tablet-type-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .calendar-day {
+    min-height: 58px;
+  }
+
+  .calendar-day-number {
+    font-size: 18px;
+  }
+
+  .calendar-day-label {
+    font-size: 10px;
+  }
+}
+
 </style>

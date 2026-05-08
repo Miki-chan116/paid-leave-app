@@ -11,7 +11,34 @@
 <body>
   <?!= include('nav'); ?>
 
-  <div class="page">
+    <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <h1 class="login-title">管理画面ログイン</h1>
+      <p class="login-subtitle">管理者を選択してPINを入力してください</p>
+
+      <div class="field">
+        <label for="adminUserSelect">管理者</label>
+        <select id="adminUserSelect">
+          <option value="">読み込み中...</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="adminPinInput">PIN</label>
+        <input type="password" id="adminPinInput" inputmode="numeric" placeholder="PINを入力">
+      </div>
+
+      <button class="btn btn-search login-btn" type="button" onclick="loginAdmin()">
+        ログイン
+      </button>
+
+      <div id="loginMessage" class="login-message"></div>
+    </div>
+  </div>
+
+ <div id="adminApp" class="page admin-app-hidden"></div>
+
+ <div id="loginUserBar" class="login-user-bar"></div>
 
     <div class="header">
       <h1 class="title">有給申請 管理画面</h1>
