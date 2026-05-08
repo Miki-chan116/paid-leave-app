@@ -23,8 +23,11 @@ const CALENDAR_TYPE = {
    出力シート名
 ========================= */
 const OUTPUT_SHEET = {
-  MONTHLY: "月間有給取得一覧",
-  YEARLY: "年間有給取得一覧"
+  MONTHLY_MAIN: "月間有給取得一覧_MAIN",
+  YEARLY_MAIN: "年間有給取得一覧_MAIN",
+
+  MONTHLY_PARTNER: "月間有給取得一覧_PARTNER",
+  YEARLY_PARTNER: "年間有給取得一覧_PARTNER"
 };
 
 /* =========================
@@ -106,6 +109,26 @@ function getOutputSheet(name) {
   }
 
   return sheet;
+}
+
+function getOutputSheetName(type, companyCode) {
+  const code = String(companyCode || "MAIN")
+    .trim()
+    .toUpperCase();
+
+  if (type === "monthly") {
+    return code === "PARTNER"
+      ? OUTPUT_SHEET.MONTHLY_PARTNER
+      : OUTPUT_SHEET.MONTHLY_MAIN;
+  }
+
+  if (type === "yearly") {
+    return code === "PARTNER"
+      ? OUTPUT_SHEET.YEARLY_PARTNER
+      : OUTPUT_SHEET.YEARLY_MAIN;
+  }
+
+  throw new Error("不正な出力タイプです");
 }
 
 /* =========================
@@ -813,20 +836,18 @@ function submitLeaveRequest(data) {
     "updated_at"
   ]);
 
-  if (!data.employee_id) {
-    throw new Error("employee_id がありません");
-  }
-
-  if (!data.start_date || !data.end_date) {
-    throw new Error("start_date または end_date がありません");
-  }
+  if (!data.employee_id) throw new Error("employee_id がありません");
+  if (!data.start_date || !data.end_date) throw new Error("start_date または end_date がありません");
 
   const start = parseLocalDate(data.start_date);
   const end = parseLocalDate(data.end_date);
 
-  validateLeaveRequestDates(start, end, data.half_type || (data.half_day ? "half" : ""));
+  const isHalf =
+    data.half_day === true ||
+    String(data.half_day || "").toLowerCase() === "true";
 
-  const isHalf = data.half_day === true;
+  validateLeaveRequestDates(start, end, isHalf ? (data.half_type || "half") : "");
+
   const days = isHalf ? 0.5 : calculateLeaveDays(start, end);
   const now = new Date();
 
@@ -848,13 +869,11 @@ function submitLeaveRequest(data) {
   rowObj.approved_at = "";
   rowObj.rejected_reason = "";
 
-  // 🔥ここが今回の修正ポイント
   const employeeMap = getEmployeeDetailMap();
   const employee = employeeMap[String(data.employee_id || "").trim()];
   const fiscalStartMonth = employee ? Number(employee.fiscal_start_month || 4) : 4;
 
   rowObj.year = getFiscalYearFromDateWithStart(start, fiscalStartMonth);
-
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
@@ -875,6 +894,7 @@ function submitLeaveRequest(data) {
     request_id: rowObj.request_id
   };
 }
+
 /* =========================
    社員詳細MAP
 ========================= */
@@ -1228,105 +1248,65 @@ function searchUsageLogs(filters) {
 /* =========================
    月間取得一覧出力
 ========================= */
-function exportMonthlyPaidLeaveReport(targetYear, targetMonth) {
+function exportMonthlyPaidLeaveReport(targetYear, targetMonth, companyCode) {
   if (!targetYear || !targetMonth) {
     const today = new Date();
     targetYear = today.getFullYear();
     targetMonth = today.getMonth() + 1;
   }
 
+  const code = String(companyCode || "MAIN").trim().toUpperCase();
+
   const range = getClosingMonthRange(Number(targetYear), Number(targetMonth));
-  const leaveSheet = getSheet("leave_requests");
-  const leaveHeaderInfo = requireHeaders(leaveSheet, [
-    "employee_id",
-    "start_date",
-    "end_date",
-    "days",
-    "half_day",
-    "status"
-  ]);
-
-  const leaveData = leaveSheet.getDataRange().getValues();
-  const employeeMap = getEmployeeMap();
-  const calendarMap = getCompanyCalendarMap();
-
-  const detailRows = [];
-  const totalMap = {};
-
-  if (leaveData.length > 1) {
-    leaveData.slice(1).forEach(row => {
-      const rowObj = rowToObject(row, leaveHeaderInfo.headers);
-      const employeeId = String(rowObj.employee_id || "").trim();
-      const status = norm(rowObj.status);
-
-      if (!employeeId) return;
-      if (status !== STATUS.APPROVED) return;
-
-      const employeeName = employeeMap[employeeId] || employeeId;
-
-      const dailyRows = expandLeaveRequestToDailyRows(
-        rowObj.start_date,
-        rowObj.end_date,
-        rowObj.days,
-        rowObj.half_day,
-        calendarMap
-      );
-
-      dailyRows.forEach(item => {
-        if (!isDateInRange(item.date, range.start, range.end)) return;
-
-        detailRows.push([
-          employeeId,
-          employeeName,
-          formatDateValue(item.date),
-          Number(item.days || 0)
-        ]);
-
-        if (!totalMap[employeeId]) {
-          totalMap[employeeId] = {
-            employee_id: employeeId,
-            name: employeeName,
-            total_days: 0
-          };
-        }
-
-        totalMap[employeeId].total_days += Number(item.days || 0);
-      });
-    });
-  }
-
-  detailRows.sort((a, b) => {
-    if (a[0] !== b[0]) return a[0] > b[0] ? 1 : -1;
-    return a[2] > b[2] ? 1 : -1;
+  const preview = getMonthlyPaidLeaveReportPreview({
+    target_year: targetYear,
+    target_month: targetMonth,
+    company_code: code
   });
 
-  const totalRows = Object.values(totalMap)
-    .sort((a, b) => a.employee_id > b.employee_id ? 1 : -1)
-    .map(item => [item.employee_id, item.name, item.total_days]);
+  const outputSheet = getOutputSheet(
+    getOutputSheetName("monthly", code)
+  );
 
-  const outputSheet = getOutputSheet(OUTPUT_SHEET.MONTHLY);
   outputSheet.clearContents();
 
   const values = [];
-  values.push(["月間有給取得一覧"]);
+  values.push(["月間有給取得一覧_" + code]);
   values.push(["対象期間：" + formatDateValue(range.start) + " ～ " + formatDateValue(range.end)]);
   values.push([]);
-  values.push(["社員ID", "氏名", "取得日", "取得日数"]);
+  values.push(["社員ID", "表示ID", "氏名", "会社", "取得日", "取得日数"]);
 
-  if (detailRows.length > 0) {
-    detailRows.forEach(row => values.push(row));
+  if (preview.detail_rows.length > 0) {
+    preview.detail_rows.forEach(row => {
+      values.push([
+        row.employee_id,
+        row.display_employee_id,
+        row.employee_name,
+        row.company_name,
+        row.date,
+        row.days
+      ]);
+    });
   } else {
-    values.push(["該当データなし", "", "", ""]);
+    values.push(["該当データなし", "", "", "", "", ""]);
   }
 
   values.push([]);
   values.push(["月間合計"]);
-  values.push(["社員ID", "氏名", "月間合計取得日数"]);
+  values.push(["社員ID", "表示ID", "氏名", "会社", "月間合計取得日数"]);
 
-  if (totalRows.length > 0) {
-    totalRows.forEach(row => values.push(row));
+  if (preview.total_rows.length > 0) {
+    preview.total_rows.forEach(row => {
+      values.push([
+        row.employee_id,
+        row.display_employee_id,
+        row.employee_name,
+        row.company_name,
+        row.total_days
+      ]);
+    });
   } else {
-    values.push(["該当データなし", "", ""]);
+    values.push(["該当データなし", "", "", "", ""]);
   }
 
   const maxLen = Math.max(...values.map(r => r.length || 1));
@@ -1340,10 +1320,11 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth) {
 
   return {
     ok: true,
+    company_code: code,
     period_start: formatDateValue(range.start),
     period_end: formatDateValue(range.end),
-    detail_count: detailRows.length,
-    total_count: totalRows.length
+    detail_count: preview.detail_count,
+    total_count: preview.total_count
   };
 }
 
@@ -1470,17 +1451,44 @@ function getMonthlyPaidLeaveReportPreview(filters) {
 /* =========================
    年間取得一覧出力
 ========================= */
-function exportYearlyPaidLeaveReport(fiscalYear) {
+function exportYearlyPaidLeaveReport(fiscalYear, companyCode) {
+  const code = String(companyCode || "MAIN").trim().toUpperCase();
+
   if (!fiscalYear) {
     fiscalYear = getFiscalYearFromDate(new Date());
   }
 
-  const yearRange = getFiscalYearRange(Number(fiscalYear));
-  const employees = getEmployees();
+  const employees = getEmployees().filter(emp => {
+  return (
+    String(emp.company_code || "").trim().toUpperCase() === code &&
+    String(emp.employment_status || "").trim().toLowerCase() === "active" &&
+    emp.leave_management_target === true
+  );
+});
+
+  const fiscalStartMonth =
+    employees.length > 0
+      ? Number(employees[0].fiscal_start_month || 4)
+      : code === "PARTNER" ? 7 : 4;
+
+  const yearRange = getFiscalYearRangeWithStart(Number(fiscalYear), fiscalStartMonth);
+
+  const grantMap = getGrantMapByFiscalYear(Number(fiscalYear));
+  const usedMap = getApprovedUsedDaysByFiscalYear(Number(fiscalYear));
 
   const reportRows = employees
     .map(emp => {
-      const balance = calculateYearlyBalanceByEmployee(emp.id, Number(fiscalYear));
+      const grantInfo = grantMap[emp.id] || {
+        employee_id: emp.id,
+        grant_days: 0,
+        carry_over_days: 0
+      };
+
+      const balance = buildBalance(
+        emp.id,
+        grantInfo,
+        usedMap[emp.id] || 0
+      );
 
       return [
         emp.id,
@@ -1494,11 +1502,14 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
     })
     .sort((a, b) => a[0] > b[0] ? 1 : -1);
 
-  const outputSheet = getOutputSheet(OUTPUT_SHEET.YEARLY);
+  const outputSheet = getOutputSheet(
+    getOutputSheetName("yearly", code)
+  );
+
   outputSheet.clearContents();
 
   const values = [];
-  values.push(["年間有給取得一覧"]);
+  values.push(["年間有給取得一覧_" + code]);
   values.push(["対象年度：" + formatDateValue(yearRange.start) + " ～ " + formatDateValue(yearRange.end)]);
   values.push([]);
   values.push([
@@ -1527,6 +1538,7 @@ function exportYearlyPaidLeaveReport(fiscalYear) {
 
   return {
     ok: true,
+    company_code: code,
     fiscal_year: Number(fiscalYear),
     period_start: formatDateValue(yearRange.start),
     period_end: formatDateValue(yearRange.end),
@@ -1633,10 +1645,14 @@ function getCalendarRules() {
 }
 
 function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
+  const isHalf =
+    halfDay === true ||
+    String(halfDay || "").toLowerCase() === "true";
+
   validateLeaveRequestDates(
     startDate,
     endDate,
-    halfType || (halfDay ? "half" : "")
+    isHalf ? (halfType || "half") : ""
   );
 
   return { ok: true };
