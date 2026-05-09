@@ -573,13 +573,13 @@ function previewMonthlyReport() {
 
   const filters = buildMonthlyPreviewFilters(year, month, company);
 
-  showExportMessage("月間一覧を作成しています...", "");
+  showExportMessage("月間一覧を作成しています...", "success");
 
   google.script.run
     .withSuccessHandler(data => {
       monthlyPreviewData = data;
       renderMonthlyPreview(data);
-      showExportMessage("月間一覧を表示しました。", "ok");
+      showExportMessage("月間一覧を表示しました。", "success");
     })
     .withFailureHandler(err => {
       console.error(err);
@@ -857,22 +857,37 @@ function renderSixMonthGrantCandidates(data) {
         <div class="six-month-name">
           ${escapeHtml(emp.name)}
           <span class="six-month-id">${escapeHtml(emp.display_employee_id || emp.employee_id)}</span>
+          <span class="grant-basis-badge">${escapeHtml(emp.fiscal_start_month || 4)}月基準</span>
         </div>
 
         <div class="six-month-meta">
           入社日：${escapeHtml(emp.hire_date || "")}
-          ／ 付与予定日：${escapeHtml(emp.grant_date || "")}
+          ／ 初回付与予定日：${escapeHtml(emp.grant_date || "")}
           ／ 付与日数：${escapeHtml(emp.grant_days)}日
           ／ 会社：${escapeHtml(emp.company_name || emp.company_code || "")}
         </div>
       </div>
 
-      <button class="btn btn-approve" type="button"
-        onclick="grantSixMonthPaidLeaveAction('${escapeHtml(emp.employee_id)}', '${escapeHtml(emp.name)}', '${escapeHtml(emp.grant_days)}')">
+      <button
+        class="btn btn-approve"
+        type="button"
+        data-employee-id="${escapeHtml(emp.employee_id)}"
+        data-name="${escapeHtml(emp.name)}"
+        data-grant-days="${escapeHtml(emp.grant_days)}"
+        onclick="grantSixMonthPaidLeaveActionFromButton(this)"
+      >
         付与する
       </button>
     </div>
   `).join("");
+}
+
+function grantSixMonthPaidLeaveActionFromButton(button) {
+  grantSixMonthPaidLeaveAction(
+    button.dataset.employeeId,
+    button.dataset.name,
+    button.dataset.grantDays
+  );
 }
 
 function grantSixMonthPaidLeaveAction(employeeId, name, grantDays) {
@@ -897,7 +912,10 @@ function grantSixMonthPaidLeaveAction(employeeId, name, grantDays) {
     })
     .withFailureHandler(err => {
       console.error("6か月付与エラー:", err);
-      const message = err && err.message ? err.message : "6か月付与でエラーが発生しました。";
+      const message = err && err.message
+        ? err.message
+        : "6か月付与でエラーが発生しました。";
+
       if (area) {
         area.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
       }
@@ -949,13 +967,13 @@ function renderYearlyGrantCandidates(data) {
 
   container.innerHTML = data.map(item => `
     <div class="yearly-grant-item">
-
       <div class="yearly-grant-main">
         <div class="yearly-grant-name">
           ${escapeHtml(item.name)}
           <span class="six-month-id">
             ${escapeHtml(item.display_employee_id || item.employee_id)}
           </span>
+          <span class="grant-basis-badge">${escapeHtml(item.fiscal_start_month || 4)}月基準</span>
         </div>
 
         <div class="yearly-grant-meta">
@@ -968,17 +986,25 @@ function renderYearlyGrantCandidates(data) {
       </div>
 
       <button
-  class="btn btn-approve"
-  type="button"
-  onclick="grantYearlyPaidLeaveAction(${JSON.stringify(item.employee_id)}, ${JSON.stringify(item.name)}, ${JSON.stringify(item.grant_days)})"
->
-  付与する
-</button>
-
+        class="btn btn-approve"
+        type="button"
+        data-employee-id="${escapeHtml(item.employee_id)}"
+        data-name="${escapeHtml(item.name)}"
+        data-grant-days="${escapeHtml(item.grant_days)}"
+        onclick="grantYearlyPaidLeaveActionFromButton(this)"
+      >
+        付与する
       </button>
-
     </div>
   `).join("");
+}
+
+function grantYearlyPaidLeaveActionFromButton(button) {
+  grantYearlyPaidLeaveAction(
+    button.dataset.employeeId,
+    button.dataset.name,
+    button.dataset.grantDays
+  );
 }
 
 /* =========================
@@ -1027,4 +1053,23 @@ function grantYearlyPaidLeaveAction(employeeId, name, grantDays) {
     })
     .grantYearlyPaidLeave(employeeId, currentAdminUser);
 }
+
+function closeYearlyGrantList() {
+  const container = document.getElementById("yearlyGrantList");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="empty-message">
+      「候補確認」を押してください
+    </div>
+  `;
+}
+
+function closeSixMonthGrantList() {
+  const area = document.getElementById("sixMonthGrantArea");
+  if (!area) return;
+
+  area.innerHTML = "";
+}
+
 </script>

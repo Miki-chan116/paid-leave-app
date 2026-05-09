@@ -4,9 +4,8 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <?!= include('style'); ?>
   <?!= include('admin-style'); ?>
+  <?!= include('style'); ?>
 </head>
 
 <body>
@@ -80,33 +79,62 @@
       </div>
     </div>
 
-<div class="tabs">
+    <!-- ================= タブ ================= -->
+    <div class="tabs">
       <button id="tab-pending" class="tab-btn" type="button" onclick="loadRequests('pending')">承認待ち</button>
       <button id="tab-approved" class="tab-btn" type="button" onclick="loadRequests('approved')">承認済み</button>
       <button id="tab-rejected" class="tab-btn" type="button" onclick="loadRequests('rejected')">否認</button>
       <button id="tab-logs" class="tab-btn" type="button" onclick="loadLogs()">ログ</button>
     </div>
 
+    <!-- ================= 申請一覧 ================= -->
     <div class="panel">
       <div id="requestView" class="card-container"></div>
       <div id="logView" style="display:none;"></div>
     </div>
 
-    <div class="search-card yearly-grant-card">
-      <div class="search-title">年次有給付与</div>
-      <p class="subtitle">基準日到達者を確認して付与できます</p>
+    <!-- ================= 付与チェック ================= -->
+    <div class="grant-check-grid">
 
-      <div class="search-actions">
-        <button class="btn btn-search" type="button" onclick="loadYearlyGrantCandidates()">
-          候補確認
-        </button>
+      <div class="search-card yearly-grant-card">
+        <div class="search-title">年次有給付与</div>
+        <p class="subtitle">基準日到達者を確認して付与できます。</p>
+
+        <div class="search-actions">
+          <button class="btn btn-search" type="button" onclick="loadYearlyGrantCandidates()">
+            候補確認
+          </button>
+
+          <button class="btn btn-reset" type="button" onclick="closeYearlyGrantList()">
+            閉じる
+          </button>
+        </div>
+
+        <div id="yearlyGrantList" class="yearly-grant-list">
+          <div class="empty-message">「候補確認」を押してください</div>
+        </div>
       </div>
 
-      <div id="yearlyGrantList" class="yearly-grant-list">
-        <div class="empty-message">「候補確認」を押してください</div>
+      <div class="search-card six-month-card">
+        <div class="search-title">6か月到達 有給付与チェック</div>
+        <p class="subtitle">入社から6か月経過し、まだ初回付与されていない社員を確認できます。</p>
+
+        <div class="search-actions">
+          <button class="btn btn-search" type="button" onclick="loadSixMonthGrantCandidates()">
+            付与対象者を確認する
+          </button>
+
+          <button class="btn btn-reset" type="button" onclick="closeSixMonthGrantList()">
+            閉じる
+          </button>
+        </div>
+
+        <div id="sixMonthGrantArea" class="six-month-grant-area"></div>
       </div>
+
     </div>
 
+    <!-- ================= 検索 ================= -->
     <div class="search-card">
       <div class="search-title">検索</div>
 
@@ -138,25 +166,19 @@
       </div>
 
       <div class="search-actions">
-        <button class="btn btn-search" type="button" onclick="searchRequestList()">検索する</button>
-        <button class="btn btn-reset" type="button" onclick="resetSearch()">前月＋当月に戻す</button>
-      </div>
-    </div>
+        <button class="btn btn-search" type="button" onclick="searchRequestList()">
+          検索する
+        </button>
 
-    <div class="search-card six-month-card">
-      <div class="search-title">6か月到達 有給付与チェック</div>
-      <p class="subtitle">入社から6か月経過し、まだ初回付与されていない社員を確認できます。</p>
-
-      <div class="search-actions">
-        <button class="btn btn-search" type="button" onclick="loadSixMonthGrantCandidates()">
-          付与対象者を確認する
+        <button class="btn btn-reset" type="button" onclick="resetSearch()">
+          前月＋当月に戻す
         </button>
       </div>
-
-      <div id="sixMonthGrantArea" class="six-month-grant-area"></div>
     </div>
 
+    <!-- ================= 出力 ================= -->
     <div class="toolbar">
+
       <div class="tool-card">
         <div class="tool-title">月間一覧確認・CSV出力</div>
 
@@ -214,6 +236,7 @@
           CSVダウンロード
         </button>
       </div>
+
     </div>
 
     <div id="exportMessage" style="margin-bottom:20px;"></div>
@@ -224,10 +247,9 @@
       <div id="monthlyPreviewTable"></div>
     </div>
 
-    
-
   </div>
 
   <?!= include('admin-script'); ?>
+
 </body>
 </html>

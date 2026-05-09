@@ -1800,6 +1800,7 @@ function runMaintainEmployeeMasterFromAdmin() {
   return result;
 
 }
+
 function getLogActionLabel(actionType) {
   const type = String(actionType || "");
 
@@ -1807,13 +1808,35 @@ function getLogActionLabel(actionType) {
     submit: "申請",
     approve: "承認",
     reject: "否認",
+
     employee_add: "社員追加",
     employee_update: "社員編集",
     employee_retire: "退職処理",
-    employee_maintain: "ID採番・並び順整理"
+    employee_maintain: "ID採番・並び順整理",
+
+    six_month_grant: "6か月有給付与",
+    yearly_grant: "年次有給付与"
   };
 
   return labels[type] || type;
+}
+
+function getLogActionClass(actionType) {
+  const type = String(actionType || "");
+
+  if (type === "approve") return "log-approve";
+  if (type === "reject") return "log-reject";
+  if (type === "submit") return "log-submit";
+
+  if (type === "employee_add") return "log-employee-add";
+  if (type === "employee_update") return "log-employee-update";
+  if (type === "employee_retire") return "log-employee-retire";
+  if (type === "employee_maintain") return "log-employee-maintain";
+
+  if (type === "six_month_grant") return "log-employee-update";
+  if (type === "yearly_grant") return "log-employee-update";
+
+  return "log-default";
 }
 
 function getLogActionClass(actionType) {
@@ -2403,7 +2426,8 @@ function getSixMonthGrantCandidates() {
         grant_days: grantDays,
         work_days_per_week: emp.work_days_per_week || "",
         company_code: emp.company_code || "",
-        company_name: emp.company_name || ""
+        company_name: emp.company_name || "",
+        fiscal_start_month: Number(emp.fiscal_start_month || 4)
       };
     });
 }
@@ -2646,7 +2670,8 @@ function getYearlyGrantCandidates() {
         grant_days: grantDays,
         fiscal_year: fiscalYear,
         company_code: emp.company_code,
-        company_name: emp.company_name
+        company_name: emp.company_name,
+        fiscal_start_month: fiscalStartMonth
       };
     });
 }
