@@ -39,16 +39,12 @@ function loadCompanyCalendarForRequest() {
   google.script.run
     .withSuccessHandler(data => {
       console.log("companyCalendarMap:", data);
-
       companyCalendarMap = data || {};
-
       renderRequestCalendar();
     })
     .withFailureHandler(err => {
       console.error("company_calendar取得エラー:", err);
-
       companyCalendarMap = {};
-
       renderRequestCalendar();
     })
     .getCompanyCalendarMapForRequest();
@@ -247,6 +243,8 @@ function selectEmployee(emp) {
   calendarDisplayDate = new Date();
   renderRequestCalendar();
   updateCalendarStatus();
+
+  closeHistorySection();
 
   loadEmployeeLeaveHistory(emp.employee_id);
 }
@@ -448,7 +446,7 @@ function updateCalendarStatus() {
   const box = document.getElementById("calendarStatus");
   if (!box) return;
 
-  box.classList.remove("ok", "error");
+  box.classList.remove("ok", "error", "success");
 
   if (!currentRequestType) {
     box.textContent = "申請区分を選択してください。";
@@ -606,20 +604,35 @@ function submitRequest() {
   };
 
   const submitBtn = document.getElementById("submitBtn");
+  const statusBox = document.getElementById("calendarStatus");
+
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.textContent = "申請中...";
+    submitBtn.classList.add("submitting");
+    submitBtn.classList.remove("submitted");
+  }
+
+  if (statusBox) {
+    statusBox.className = "status-box ok";
+    statusBox.textContent = "申請を送信しています...";
   }
 
   google.script.run
     .withSuccessHandler(() => {
-      alert("申請しました");
+      if (statusBox) {
+        statusBox.className = "status-box success";
+        statusBox.textContent = "送信完了！申請を受け付けました。";
+      }
+
+      if (submitBtn) {
+        submitBtn.textContent = "送信完了！";
+        submitBtn.classList.remove("submitting");
+        submitBtn.classList.add("submitted");
+      }
 
       resetSelectedDates();
-      updateCalendarStatus();
       renderRequestCalendar();
-
-      loadEmployeeLeaveHistory(selectedEmployee.employee_id);
 
       google.script.run
         .withSuccessHandler(data => {
@@ -628,7 +641,6 @@ function submitRequest() {
 
           if (updated) {
             selectedEmployee = updated;
-            selectEmployee(updated);
           }
 
           render();
@@ -636,10 +648,15 @@ function submitRequest() {
         })
         .getEmployeesForRequest();
 
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "申請する";
-      }
+      setTimeout(() => {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "申請する";
+          submitBtn.classList.remove("submitted");
+        }
+
+        backToEmployeeList();
+      }, 2500);
     })
     .withFailureHandler(err => {
       console.error("submitLeaveRequest error:", err);
@@ -656,14 +673,49 @@ function submitRequest() {
         }
       }
 
-      alert(message);
+      if (statusBox) {
+        statusBox.className = "status-box error";
+        statusBox.textContent = message;
+      }
 
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = "申請する";
+        submitBtn.classList.remove("submitting", "submitted");
       }
     })
     .submitLeaveRequest(payload);
+}
+
+/* =========================
+   履歴開閉
+========================= */
+function closeHistorySection() {
+  const section = document.getElementById("historySection");
+  const btn = document.getElementById("historyToggleBtn");
+
+  if (section) {
+    section.classList.add("history-collapsed");
+  }
+
+  if (btn) {
+    btn.textContent = "申請履歴を見る";
+  }
+}
+
+function toggleHistorySection() {
+  const section = document.getElementById("historySection");
+  const btn = document.getElementById("historyToggleBtn");
+
+  if (!section || !btn) return;
+
+  const isCollapsed = section.classList.contains("history-collapsed");
+
+  section.classList.toggle("history-collapsed", !isCollapsed);
+
+  btn.textContent = isCollapsed
+    ? "申請履歴を閉じる"
+    : "申請履歴を見る";
 }
 
 /* =========================

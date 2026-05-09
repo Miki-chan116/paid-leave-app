@@ -1633,4 +1633,228 @@
   }
 }
 
+.submit-btn:disabled,
+.submit-btn.submitting {
+  opacity: 0.75;
+  cursor: not-allowed;
+  background: #9bb8c7;
+}
+
+.submit-btn.submitted {
+  background: #2f9e7e;
+}
+
+.status-box.success {
+  border-left: 8px solid #2f9e7e;
+  color: #1f7a61;
+  background: #eefaf5;
+  font-weight: 900;
+  font-size: 24px;
+}
+
+/* =========================
+   iPad横置き：申請画面を1画面に収める調整
+========================= */
+
+@media (min-width: 1001px) {
+  body {
+    overflow: hidden;
+  }
+
+  .app-shell {
+    max-width: 1280px;
+    height: 100vh;
+    padding: 8px 14px;
+    overflow: hidden;
+  }
+
+  .app-header {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+
+  .app-title {
+    font-size: 26px;
+    margin-bottom: 2px;
+  }
+
+  .app-subtitle {
+    font-size: 14px;
+  }
+
+  #requestScreen.active {
+    height: calc(100vh - 86px);
+    overflow: hidden;
+  }
+
+  #requestScreen .screen-card {
+    height: 100%;
+    padding: 12px;
+    overflow: hidden;
+  }
+
+  .request-topbar {
+    margin-bottom: 10px;
+    gap: 10px;
+  }
+
+  .back-btn {
+    min-height: 48px;
+    min-width: 110px;
+    font-size: 18px;
+  }
+
+  .selected-employee-box {
+    padding: 8px 12px;
+  }
+
+  .selected-employee-label {
+    display: none;
+  }
+
+  .selected-employee-name {
+    font-size: 24px;
+  }
+
+  .selected-fiscal-year {
+    font-size: 11px;
+  }
+
+  .tablet-request-layout {
+    height: calc(100% - 82px);
+    grid-template-columns: minmax(0, 1.45fr) minmax(310px, 0.75fr);
+    gap: 12px;
+  }
+
+  .request-section {
+    margin-top: 10px;
+    padding: 10px;
+  }
+
+  .request-section-title {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+
+  .calendar-ui-card {
+    padding: 10px;
+  }
+
+  .calendar-ui-header {
+    margin-bottom: 6px;
+  }
+
+  .calendar-nav-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 28px;
+  }
+
+  .calendar-month-label {
+    font-size: 22px;
+  }
+
+  .calendar-help-text {
+    display: none;
+  }
+
+  .calendar-legend {
+    display: none;
+  }
+
+  .calendar-week-row,
+  .request-calendar-grid {
+    gap: 5px;
+  }
+
+  .calendar-day {
+    min-height: 62px;
+    border-radius: 10px;
+    gap: 2px;
+  }
+
+  .calendar-day-number {
+    font-size: 21px;
+  }
+
+  .calendar-day-label {
+    font-size: 9px;
+  }
+
+  .tablet-type-grid {
+    gap: 8px;
+  }
+
+  .tablet-type-grid .type-btn {
+    min-height: 58px;
+    font-size: 20px;
+  }
+
+  .field label {
+    font-size: 14px;
+  }
+
+  .field select,
+  .field textarea,
+  .field input {
+    font-size: 17px;
+    padding: 10px 12px;
+  }
+
+  #reasonDetail {
+    rows: 2;
+  }
+
+  .tablet-side-column .status-box {
+    margin-top: 10px;
+    padding: 10px;
+    font-size: 15px;
+    line-height: 1.4;
+  }
+
+  .tablet-side-column .submit-btn {
+    min-height: 62px;
+    font-size: 24px;
+  }
+
+  .submit-area {
+    margin-top: 10px;
+  }
+
+  .history-section {
+    display: none;
+  }
+}
+
+/* =========================
+   申請履歴：ボタン開閉
+========================= */
+
+.history-toggle-area {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.history-toggle-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  background: #ffffff;
+  color: var(--primary-dark);
+  border: 2px solid var(--border);
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.history-toggle-btn:hover {
+  background: #f2fbfd;
+  border-color: var(--primary);
+}
+
+.history-section.history-collapsed {
+  display: none;
+}
+
 </style>

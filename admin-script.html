@@ -261,23 +261,6 @@ function loadDashboardSummary() {
     .getAdminDashboardSummary();
 }
 
-function loadDashboardCount(status, elementId) {
-  google.script.run
-    .withSuccessHandler(data => {
-      const el = document.getElementById(elementId);
-      if (!el) return;
-
-      el.textContent = Array.isArray(data) ? data.length : 0;
-    })
-    .withFailureHandler(err => {
-      console.error("dashboard count error:", status, err);
-
-      const el = document.getElementById(elementId);
-      if (el) el.textContent = "!";
-    })
-    .getRequestsByStatus(status);
-}
-
 /* 申請一覧 */
 function loadRequests(status) {
   currentStatus = status;
@@ -922,4 +905,126 @@ function grantSixMonthPaidLeaveAction(employeeId, name, grantDays) {
     .grantSixMonthPaidLeave(employeeId, currentAdminUser);
 }
 
+/* =========================
+   年次付与候補読み込み
+========================= */
+function loadYearlyGrantCandidates() {
+  const container = document.getElementById("yearlyGrantList");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="message">
+      年次付与対象者を確認しています...
+    </div>
+  `;
+
+  google.script.run
+    .withSuccessHandler(renderYearlyGrantCandidates)
+    .withFailureHandler(err => {
+      console.error("年次付与候補取得エラー:", err);
+      container.innerHTML = `
+        <div class="message error">
+          年次付与対象者の取得でエラーが発生しました。
+        </div>
+      `;
+    })
+    .getYearlyGrantCandidates();
+}
+
+/* =========================
+   年次付与候補描画
+========================= */
+function renderYearlyGrantCandidates(data) {
+  const container = document.getElementById("yearlyGrantList");
+  if (!container) return;
+
+  if (!Array.isArray(data) || data.length === 0) {
+    container.innerHTML = `
+      <div class="message">
+        現在、年次付与対象者はいません。
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = data.map(item => `
+    <div class="yearly-grant-item">
+
+      <div class="yearly-grant-main">
+        <div class="yearly-grant-name">
+          ${escapeHtml(item.name)}
+          <span class="six-month-id">
+            ${escapeHtml(item.display_employee_id || item.employee_id)}
+          </span>
+        </div>
+
+        <div class="yearly-grant-meta">
+          入社日：${escapeHtml(item.hire_date || "")}
+          ／ 基準日：${escapeHtml(item.basis_date || "")}
+          ／ 勤続：${escapeHtml(item.months_worked)}か月
+          ／ 付与日数：${escapeHtml(item.grant_days)}日
+          ／ 会社：${escapeHtml(item.company_name || item.company_code || "")}
+        </div>
+      </div>
+
+      <button
+  class="btn btn-approve"
+  type="button"
+  onclick="grantYearlyPaidLeaveAction(${JSON.stringify(item.employee_id)}, ${JSON.stringify(item.name)}, ${JSON.stringify(item.grant_days)})"
+>
+  付与する
+</button>
+
+      </button>
+
+    </div>
+  `).join("");
+}
+
+/* =========================
+   年次付与実行
+========================= */
+function grantYearlyPaidLeaveAction(employeeId, name, grantDays) {
+  if (!employeeId) return;
+
+  const ok = confirm(
+    `${name} さんに ${grantDays}日 の年次有給を付与しますか？`
+  );
+
+  if (!ok) return;
+
+  const container = document.getElementById("yearlyGrantList");
+
+  if (container) {
+    container.innerHTML = `
+      <div class="message">
+        年次有給付与を実行しています...
+      </div>
+    `;
+  }
+
+  google.script.run
+    .withSuccessHandler(() => {
+      alert(`${name} さんへ ${grantDays}日付与しました`);
+      loadDashboardSummary();
+      loadYearlyGrantCandidates();
+    })
+    .withFailureHandler(err => {
+      console.error("年次付与エラー:", err);
+
+      const message =
+        err && err.message
+          ? err.message
+          : "年次付与でエラーが発生しました。";
+
+      if (container) {
+        container.innerHTML = `
+          <div class="message error">
+            ${escapeHtml(message)}
+          </div>
+        `;
+      }
+    })
+    .grantYearlyPaidLeave(employeeId, currentAdminUser);
+}
 </script>

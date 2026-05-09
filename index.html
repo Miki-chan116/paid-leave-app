@@ -14,7 +14,6 @@
       <p id="appSubtitle" class="app-subtitle">名前を選んで申請してください</p>
     </header>
 
-    <!-- 社員選択画面 -->
     <section id="employeeScreen" class="screen active">
       <div class="sticky-tabs-wrap">
         <div class="kana-tabs" id="kanaTabs">
@@ -44,7 +43,6 @@
       </div>
     </section>
 
-    <!-- 個人申請画面 -->
     <section id="requestScreen" class="screen">
       <div class="screen-card">
 
@@ -123,6 +121,17 @@
                 <div id="requestCalendarGrid" class="request-calendar-grid"></div>
               </div>
 
+              <div class="history-toggle-area">
+                <button
+                  id="historyToggleBtn"
+                  class="history-toggle-btn"
+                  type="button"
+                  onclick="toggleHistorySection()"
+                >
+                  申請履歴を見る
+                </button>
+              </div>
+
               <div class="field single-date-field hidden-date-field">
                 <label for="singleDate">希望日</label>
                 <input type="date" id="singleDate" onchange="handleRequestTypeChange(); syncCalendarFromInput();">
@@ -183,7 +192,7 @@
 
         </div>
 
-        <div class="history-section">
+        <div id="historySection" class="history-section history-collapsed">
           <div class="history-header">
             <div>
               <div class="history-title">今年度の申請履歴</div>

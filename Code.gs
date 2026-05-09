@@ -2599,3 +2599,202 @@ function getAdminDashboardSummary() {
 
   return result;
 }
+
+/* =========================
+   年次付与候補取得
+========================= */
+function getYearlyGrantCandidates() {
+  const today = new Date();
+  const employees = getEmployeesForAdmin();
+
+  return employees
+    .filter(emp => {
+      if (String(emp.employment_status || "").toLowerCase() !== "active") return false;
+      if (emp.leave_management_target !== true) return false;
+      if (!emp.hire_date) return false;
+
+      const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+      const fiscalYear = getFiscalYearFromDateWithStart(today, fiscalStartMonth);
+      const basisDate = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth).start;
+
+      // 基準日前ならまだ表示しない
+      if (today < basisDate) return false;
+
+      const months = getMonthsWorked_(parseLocalDate(emp.hire_date), basisDate);
+
+      // 年次付与は1年6か月以上から
+      if (months < 18) return false;
+
+      if (hasYearlyGrantForFiscalYear_(emp.employee_id, fiscalYear)) return false;
+
+      return true;
+    })
+    .map(emp => {
+      const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+      const fiscalYear = getFiscalYearFromDateWithStart(today, fiscalStartMonth);
+      const basisDate = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth).start;
+      const months = getMonthsWorked_(parseLocalDate(emp.hire_date), basisDate);
+      const grantDays = getYearlyGrantDays_(months);
+
+      return {
+        employee_id: emp.employee_id,
+        display_employee_id: emp.display_employee_id,
+        name: emp.name,
+        hire_date: emp.hire_date,
+        basis_date: formatDateValue(basisDate),
+        months_worked: months,
+        grant_days: grantDays,
+        fiscal_year: fiscalYear,
+        company_code: emp.company_code,
+        company_name: emp.company_name
+      };
+    });
+}
+
+/* =========================
+   年次付与実行
+========================= */
+function grantYearlyPaidLeave(employeeId, adminUser) {
+  if (!employeeId) throw new Error("employeeId がありません");
+
+  const employees = getEmployeesForAdmin();
+  const emp = employees.find(e => String(e.employee_id) === String(employeeId));
+
+  if (!emp) throw new Error("対象社員が見つかりません");
+  if (!emp.hire_date) throw new Error("入社日がありません");
+
+  const today = new Date();
+  const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+  const fiscalYear = getFiscalYearFromDateWithStart(today, fiscalStartMonth);
+  const basisDate = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth).start;
+
+  const months = getMonthsWorked_(parseLocalDate(emp.hire_date), basisDate);
+
+  if (months < 18) {
+    throw new Error("年次付与対象ではありません");
+  }
+
+  if (hasYearlyGrantForFiscalYear_(employeeId, fiscalYear)) {
+    throw new Error("この年度はすでに年次付与済みです");
+  }
+
+  const grantDays = getYearlyGrantDays_(months);
+  const now = new Date();
+
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "grant_id",
+    "employee_id",
+    "grant_date",
+    "grant_days",
+    "carry_over_days",
+    "valid_from",
+    "valid_to",
+    "grant_type",
+    "year",
+    "notes",
+    "created_at",
+    "updated_at"
+  ]);
+
+  const rowObj = createEmptyRowObject(headerInfo.headers);
+
+  rowObj.grant_id = getNextGrantId_();
+  rowObj.employee_id = employeeId;
+  rowObj.grant_date = basisDate;
+  rowObj.grant_days = grantDays;
+  rowObj.carry_over_days = 0;
+  rowObj.valid_from = basisDate;
+  rowObj.valid_to = addDaysLocal_(addYearsLocal_(basisDate, 2), -1);
+  rowObj.grant_type = "yearly";
+  rowObj.year = fiscalYear;
+  rowObj.notes = "年次有給付与";
+  rowObj.created_at = now;
+  rowObj.updated_at = now;
+
+  sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+
+  const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
+  const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
+
+  appendUsageLog({
+    request_id: employeeId,
+    action_type: "yearly_grant",
+    operator_id: operatorId,
+    operator_name: operatorName,
+    comment: emp.name + " さんへ " + grantDays + "日を年次付与しました"
+  });
+
+  clearAppCache();
+
+  return { ok: true };
+}
+
+/* =========================
+   勤続月数計算
+========================= */
+function getMonthsWorked_(startDate, endDate) {
+  const start = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
+
+  let months =
+    (end.getFullYear() - start.getFullYear()) * 12 +
+    (end.getMonth() - start.getMonth());
+
+  if (end.getDate() < start.getDate()) {
+    months--;
+  }
+
+  return months;
+}
+
+/* =========================
+   年次付与日数
+========================= */
+function getYearlyGrantDays_(monthsWorked) {
+  if (monthsWorked >= 78) return 20; // 6年6か月以上
+  if (monthsWorked >= 66) return 18; // 5年6か月
+  if (monthsWorked >= 54) return 16; // 4年6か月
+  if (monthsWorked >= 42) return 14; // 3年6か月
+  if (monthsWorked >= 30) return 12; // 2年6か月
+  if (monthsWorked >= 18) return 11; // 1年6か月
+  return 0;
+}
+
+/* =========================
+   同年度付与済みチェック
+========================= */
+function hasYearlyGrantForFiscalYear_(
+  employeeId,
+  fiscalYear
+) {
+  const sheet = getSheet("paid_leave_grants");
+
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "grant_type",
+    "year"
+  ]);
+
+  const data = sheet.getDataRange().getValues();
+
+  if (data.length <= 1) {
+    return false;
+  }
+
+  return data.slice(1).some(row => {
+    const rowObj = rowToObject(
+      row,
+      headerInfo.headers
+    );
+
+    return (
+      String(rowObj.employee_id) ===
+        String(employeeId) &&
+      String(rowObj.grant_type) ===
+        "yearly" &&
+      Number(rowObj.year) ===
+        Number(fiscalYear)
+    );
+  });
+}

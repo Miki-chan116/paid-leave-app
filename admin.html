@@ -79,6 +79,34 @@
       </div>
     </div>
 
+<!-- =========================
+     年次有給付与
+========================= -->
+<div class="search-card yearly-grant-card">
+
+  <div class="search-title">年次有給付与</div>
+  <p class="subtitle">
+    基準日到達者を確認して付与できます
+  </p>
+
+  <div class="search-actions">
+    <button
+      class="btn btn-search"
+      type="button"
+      onclick="loadYearlyGrantCandidates()"
+    >
+      候補確認
+    </button>
+  </div>
+
+  <div id="yearlyGrantList" class="yearly-grant-list">
+    <div class="empty-message">
+      「候補確認」を押してください
+    </div>
+  </div>
+
+</div>
+
     <!-- ================= 検索 ================= -->
     <div class="search-card">
       <div class="search-title">検索</div>
