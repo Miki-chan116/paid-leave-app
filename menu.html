@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <?!= include('style'); ?>
 </head>
+
 <body>
   <div class="app-shell">
 
@@ -26,31 +27,26 @@
 
         <div class="menu-grid">
 
-          <!-- 有給申請 -->
-          <a class="menu-card" target="_top"
-             href="https://script.google.com/macros/s/AKfycbw8twEdzYRrcrxz0PIVyAgYyHla6Hz4i7YL7Fm-vVJ6PnlCVHkfBZmKKM84xBWUH5SQLQ/exec?page=index">
+          <a class="menu-card" target="_top" href="<?= ScriptApp.getService().getUrl(); ?>?page=index">
             <div class="menu-icon">📝</div>
             <div class="menu-title">有給申請</div>
             <div class="menu-desc">社員が有給を申請する画面</div>
           </a>
 
-          <!-- 申請管理 -->
-          <a class="menu-card" target="_top"
-             href="https://script.google.com/macros/s/AKfycbw8twEdzYRrcrxz0PIVyAgYyHla6Hz4i7YL7Fm-vVJ6PnlCVHkfBZmKKM84xBWUH5SQLQ/exec?page=admin">
+          <a class="menu-card" target="_top" href="<?= ScriptApp.getService().getUrl(); ?>?page=admin">
             <div class="menu-icon">✅</div>
             <div class="menu-title">申請管理</div>
             <div class="menu-desc">承認・否認・ログ・出力を行う画面</div>
           </a>
 
-          <!-- 社員マスター -->
-          <a class="menu-card" target="_top"
-             href="https://script.google.com/macros/s/AKfycbw8twEdzYRrcrxz0PIVyAgYyHla6Hz4i7YL7Fm-vVJ6PnlCVHkfBZmKKM84xBWUH5SQLQ/exec?page=employee-admin">
+          <a class="menu-card" target="_top" href="<?= ScriptApp.getService().getUrl(); ?>?page=employee-admin">
             <div class="menu-icon">👥</div>
             <div class="menu-title">社員マスター管理</div>
             <div class="menu-desc">社員追加・編集・退職処理を行う画面</div>
           </a>
 
         </div>
+
       </div>
     </section>
 

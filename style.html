@@ -199,14 +199,6 @@
     flex-shrink: 0;
   }
 
-  .employee-days {
-    font-size: 15px;
-    font-weight: bold;
-    color: var(--accent-blue);
-    text-align: right;
-    line-height: 1.1;
-  }
-
   .employee-days-sub {
     font-size: 12px;
     color: var(--text-sub);
@@ -222,13 +214,22 @@
     margin-top: 2px;
   }
 
-  .five-mini-bar {
-    width: 42px;
-    height: 5px;
-    border-radius: 999px;
-    background: #eadfcb;
-    overflow: hidden;
-  }
+.employee-days {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--primary-dark);
+  text-align: right;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.five-mini-bar {
+  width: 54px;
+  height: 8px;
+  border-radius: 999px;
+  background: #eadfcb;
+  overflow: hidden;
+}
 
   .five-mini-bar-fill {
     height: 100%;
@@ -1654,34 +1655,20 @@
 
 /* =========================
    iPad横置き：申請画面を1画面に収める調整
+   ※管理画面・社員マスター画面ではスクロールできるようにする
 ========================= */
 
 @media (min-width: 1001px) {
   body {
-    overflow: hidden;
+    overflow-y: auto;
   }
 
   .app-shell {
     max-width: 1280px;
-    height: 100vh;
     padding: 8px 14px;
-    overflow: hidden;
   }
 
-  .app-header {
-    padding: 10px 14px;
-    margin-bottom: 8px;
-  }
-
-  .app-title {
-    font-size: 26px;
-    margin-bottom: 2px;
-  }
-
-  .app-subtitle {
-    font-size: 14px;
-  }
-
+  /* 申請画面を開いている時だけ、画面内に収める */
   #requestScreen.active {
     height: calc(100vh - 86px);
     overflow: hidden;
@@ -1754,10 +1741,7 @@
     font-size: 22px;
   }
 
-  .calendar-help-text {
-    display: none;
-  }
-
+  .calendar-help-text,
   .calendar-legend {
     display: none;
   }
@@ -1801,10 +1785,6 @@
     padding: 10px 12px;
   }
 
-  #reasonDetail {
-    rows: 2;
-  }
-
   .tablet-side-column .status-box {
     margin-top: 10px;
     padding: 10px;
@@ -1820,41 +1800,5 @@
   .submit-area {
     margin-top: 10px;
   }
-
-  .history-section {
-    display: none;
-  }
 }
-
-/* =========================
-   申請履歴：ボタン開閉
-========================= */
-
-.history-toggle-area {
-  margin-top: 12px;
-  text-align: center;
-}
-
-.history-toggle-btn {
-  border: none;
-  border-radius: 999px;
-  padding: 10px 22px;
-  background: #ffffff;
-  color: var(--primary-dark);
-  border: 2px solid var(--border);
-  font-size: 16px;
-  font-weight: 900;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
-
-.history-toggle-btn:hover {
-  background: #f2fbfd;
-  border-color: var(--primary);
-}
-
-.history-section.history-collapsed {
-  display: none;
-}
-
 </style>

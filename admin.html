@@ -4,14 +4,15 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <?!= include('admin-style'); ?>
+
   <?!= include('style'); ?>
+  <?!= include('admin-style'); ?>
 </head>
 
 <body>
   <?!= include('nav'); ?>
 
-    <div id="loginScreen" class="login-screen">
+  <div id="loginScreen" class="login-screen">
     <div class="login-card">
       <h1 class="login-title">管理画面ログイン</h1>
       <p class="login-subtitle">管理者を選択してPINを入力してください</p>
@@ -36,9 +37,9 @@
     </div>
   </div>
 
- <div id="adminApp" class="page admin-app-hidden"></div>
+  <div id="adminApp" class="page admin-app-hidden">
 
- <div id="loginUserBar" class="login-user-bar"></div>
+    <div id="loginUserBar" class="login-user-bar"></div>
 
     <div class="header">
       <h1 class="title">有給申請 管理画面</h1>
@@ -79,42 +80,28 @@
       </div>
     </div>
 
-<!-- =========================
-     年次有給付与
-========================= -->
-<div class="search-card yearly-grant-card">
+    <div class="search-card yearly-grant-card">
+      <div class="search-title">年次有給付与</div>
+      <p class="subtitle">基準日到達者を確認して付与できます</p>
 
-  <div class="search-title">年次有給付与</div>
-  <p class="subtitle">
-    基準日到達者を確認して付与できます
-  </p>
+      <div class="search-actions">
+        <button class="btn btn-search" type="button" onclick="loadYearlyGrantCandidates()">
+          候補確認
+        </button>
+      </div>
 
-  <div class="search-actions">
-    <button
-      class="btn btn-search"
-      type="button"
-      onclick="loadYearlyGrantCandidates()"
-    >
-      候補確認
-    </button>
-  </div>
-
-  <div id="yearlyGrantList" class="yearly-grant-list">
-    <div class="empty-message">
-      「候補確認」を押してください
+      <div id="yearlyGrantList" class="yearly-grant-list">
+        <div class="empty-message">「候補確認」を押してください</div>
+      </div>
     </div>
-  </div>
 
-</div>
-
-    <!-- ================= 検索 ================= -->
     <div class="search-card">
       <div class="search-title">検索</div>
 
       <div class="search-grid">
         <div class="field">
           <label for="searchKeyword">社員ID・氏名</label>
-          <input type="text" id="searchKeyword" placeholder="例：E001 / 青木">
+          <input type="text" id="searchKeyword" placeholder="例：EMP0001 / 山田">
         </div>
 
         <div class="field">
@@ -139,30 +126,25 @@
       </div>
 
       <div class="search-actions">
-        <button class="btn btn-search" onclick="searchRequestList()">検索する</button>
-        <button class="btn btn-reset" onclick="resetSearch()">前月＋当月に戻す</button>
+        <button class="btn btn-search" type="button" onclick="searchRequestList()">検索する</button>
+        <button class="btn btn-reset" type="button" onclick="resetSearch()">前月＋当月に戻す</button>
       </div>
     </div>
 
-    <!-- ================= 6か月有給付与 ================= -->
-<div class="search-card six-month-card">
-  <div class="search-title">6か月到達 有給付与チェック</div>
-  <p class="subtitle">
-    入社から6か月経過し、まだ初回付与されていない社員を確認できます。
-  </p>
+    <div class="search-card six-month-card">
+      <div class="search-title">6か月到達 有給付与チェック</div>
+      <p class="subtitle">入社から6か月経過し、まだ初回付与されていない社員を確認できます。</p>
 
-  <div class="search-actions">
-    <button class="btn btn-search" type="button" onclick="loadSixMonthGrantCandidates()">
-      付与対象者を確認する
-    </button>
-  </div>
+      <div class="search-actions">
+        <button class="btn btn-search" type="button" onclick="loadSixMonthGrantCandidates()">
+          付与対象者を確認する
+        </button>
+      </div>
 
-  <div id="sixMonthGrantArea" class="six-month-grant-area"></div>
-</div>
+      <div id="sixMonthGrantArea" class="six-month-grant-area"></div>
+    </div>
 
-    <!-- ================= 出力 ================= -->
     <div class="toolbar">
-
       <div class="tool-card">
         <div class="tool-title">月間一覧確認・CSV出力</div>
 
@@ -186,11 +168,11 @@
           </select>
         </div>
 
-        <button class="btn btn-export-monthly" onclick="previewMonthlyReport()">
+        <button class="btn btn-export-monthly" type="button" onclick="previewMonthlyReport()">
           画面で確認する
         </button>
 
-        <button class="btn btn-reset" onclick="downloadMonthlyReportCsv()">
+        <button class="btn btn-reset" type="button" onclick="downloadMonthlyReportCsv()">
           CSVダウンロード
         </button>
       </div>
@@ -212,15 +194,14 @@
           </select>
         </div>
 
-        <button class="btn btn-export-yearly" onclick="exportYearlyReport()">
+        <button class="btn btn-export-yearly" type="button" onclick="exportYearlyReport()">
           年間一覧を出力
         </button>
 
-        <button class="btn btn-reset" onclick="downloadYearlyReportCsv()">
+        <button class="btn btn-reset" type="button" onclick="downloadYearlyReportCsv()">
           CSVダウンロード
         </button>
       </div>
-
     </div>
 
     <div id="exportMessage" style="margin-bottom:20px;"></div>
@@ -231,15 +212,13 @@
       <div id="monthlyPreviewTable"></div>
     </div>
 
-    <!-- ================= タブ ================= -->
     <div class="tabs">
-      <button id="tab-pending" class="tab-btn" onclick="loadRequests('pending')">承認待ち</button>
-      <button id="tab-approved" class="tab-btn" onclick="loadRequests('approved')">承認済み</button>
-      <button id="tab-rejected" class="tab-btn" onclick="loadRequests('rejected')">否認</button>
-      <button id="tab-logs" class="tab-btn" onclick="loadLogs()">ログ</button>
+      <button id="tab-pending" class="tab-btn" type="button" onclick="loadRequests('pending')">承認待ち</button>
+      <button id="tab-approved" class="tab-btn" type="button" onclick="loadRequests('approved')">承認済み</button>
+      <button id="tab-rejected" class="tab-btn" type="button" onclick="loadRequests('rejected')">否認</button>
+      <button id="tab-logs" class="tab-btn" type="button" onclick="loadLogs()">ログ</button>
     </div>
 
-    <!-- ================= コンテンツ ================= -->
     <div class="panel">
       <div id="requestView" class="card-container"></div>
       <div id="logView" style="display:none;"></div>
@@ -248,6 +227,5 @@
   </div>
 
   <?!= include('admin-script'); ?>
-
 </body>
 </html>

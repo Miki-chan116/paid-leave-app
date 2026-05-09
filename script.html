@@ -176,7 +176,7 @@ function render() {
 
       <div class="employee-right">
         <div class="employee-days">残 ${escapeHtml(emp.current_remaining_days)}日</div>
-        <div class="employee-days-sub">付与 ${escapeHtml(emp.grant_days)}日</div>
+        <div class="employee-days-sub">繰越 ${escapeHtml(emp.grant_days)}日</div>
 
         <div class="employee-five">
           <div class="five-mini-bar">
@@ -224,9 +224,6 @@ function selectEmployee(emp) {
 
   document.getElementById("selectedRemainingDays").textContent =
     `${emp.current_remaining_days}日`;
-
-  document.getElementById("selectedGrantDays").textContent =
-    `${emp.grant_days}日`;
 
   const used = Number(emp.five_day_used || 0);
   const remain = Number(emp.five_day_remaining || 0);
