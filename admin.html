@@ -80,6 +80,18 @@
       </div>
     </div>
 
+<div class="tabs">
+      <button id="tab-pending" class="tab-btn" type="button" onclick="loadRequests('pending')">承認待ち</button>
+      <button id="tab-approved" class="tab-btn" type="button" onclick="loadRequests('approved')">承認済み</button>
+      <button id="tab-rejected" class="tab-btn" type="button" onclick="loadRequests('rejected')">否認</button>
+      <button id="tab-logs" class="tab-btn" type="button" onclick="loadLogs()">ログ</button>
+    </div>
+
+    <div class="panel">
+      <div id="requestView" class="card-container"></div>
+      <div id="logView" style="display:none;"></div>
+    </div>
+
     <div class="search-card yearly-grant-card">
       <div class="search-title">年次有給付与</div>
       <p class="subtitle">基準日到達者を確認して付与できます</p>
@@ -212,17 +224,7 @@
       <div id="monthlyPreviewTable"></div>
     </div>
 
-    <div class="tabs">
-      <button id="tab-pending" class="tab-btn" type="button" onclick="loadRequests('pending')">承認待ち</button>
-      <button id="tab-approved" class="tab-btn" type="button" onclick="loadRequests('approved')">承認済み</button>
-      <button id="tab-rejected" class="tab-btn" type="button" onclick="loadRequests('rejected')">否認</button>
-      <button id="tab-logs" class="tab-btn" type="button" onclick="loadLogs()">ログ</button>
-    </div>
-
-    <div class="panel">
-      <div id="requestView" class="card-container"></div>
-      <div id="logView" style="display:none;"></div>
-    </div>
+    
 
   </div>
 
