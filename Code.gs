@@ -1839,21 +1839,6 @@ function getLogActionClass(actionType) {
   return "log-default";
 }
 
-function getLogActionClass(actionType) {
-  const type = String(actionType || "");
-
-  if (type === "approve") return "log-approve";
-  if (type === "reject") return "log-reject";
-  if (type === "submit") return "log-submit";
-  if (type === "employee_add") return "log-employee-add";
-  if (type === "employee_update") return "log-employee-update";
-  if (type === "employee_retire") return "log-employee-retire";
-  if (type === "employee_maintain") return "log-employee-maintain";
-
-  return "log-default";
-}
-
-
 /* =========================
    IDの次番号取得
 ========================= */
@@ -2310,6 +2295,77 @@ function getYearlyPaidLeaveReportCsvData(fiscalYear, companyCode) {
     fiscal_year: Number(fiscalYear),
     period_start: formatDateValue(yearRange.start),
     period_end: formatDateValue(yearRange.end),
+    rows: rows,
+    row_count: rows.length
+  };
+}
+
+function getYearlyPaidLeaveReportPreview(filters) {
+  filters = filters || {};
+
+  const fiscalYear = Number(filters.fiscal_year || getFiscalYearFromDate(new Date()));
+  const companyCodeFilter = String(filters.company_code || "").trim().toUpperCase();
+  const companyNameFilter = String(filters.company_name || "").trim();
+
+  const employees = getEmployeesForAdmin().filter(emp => {
+    if (String(emp.employment_status || "").trim().toLowerCase() !== "active") return false;
+    if (emp.leave_management_target !== true) return false;
+
+    const empCompanyCode = String(emp.company_code || "").trim().toUpperCase();
+    const empCompanyName = String(emp.company_name || "").trim();
+
+    if (companyCodeFilter && empCompanyCode !== companyCodeFilter) return false;
+    if (companyNameFilter && empCompanyName !== companyNameFilter) return false;
+
+    return true;
+  });
+
+  const fiscalStartMonth =
+    employees.length > 0
+      ? Number(employees[0].fiscal_start_month || 4)
+      : companyCodeFilter === "PARTNER" ? 7 : 4;
+
+  const yearRange = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
+
+  const grantMap = getGrantMapByFiscalYear(fiscalYear);
+  const usedMap = getApprovedUsedDaysByFiscalYear(fiscalYear);
+
+  const rows = employees.map(emp => {
+    const grantInfo = grantMap[emp.employee_id] || {
+      employee_id: emp.employee_id,
+      grant_days: 0,
+      carry_over_days: 0
+    };
+
+    const balance = buildBalance(
+      emp.employee_id,
+      grantInfo,
+      usedMap[emp.employee_id] || 0
+    );
+
+    return {
+      employee_id: emp.employee_id,
+      display_employee_id: emp.display_employee_id || "",
+      employee_name: emp.name || emp.employee_id,
+      company_code: emp.company_code || "",
+      company_name: emp.company_name || "",
+      carry_over_days: balance.carry_over_days,
+      grant_days: balance.grant_days,
+      used_days: balance.used_days,
+      next_carry_over_days: balance.next_carry_over_days,
+      expired_days: balance.expired_days
+    };
+  }).sort((a, b) => {
+    return String(a.employee_id).localeCompare(String(b.employee_id));
+  });
+
+  return {
+    ok: true,
+    fiscal_year: fiscalYear,
+    period_start: formatDateValue(yearRange.start),
+    period_end: formatDateValue(yearRange.end),
+    company_code: companyCodeFilter || "ALL",
+    company_name: companyNameFilter || "",
     rows: rows,
     row_count: rows.length
   };

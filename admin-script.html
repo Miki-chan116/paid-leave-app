@@ -510,68 +510,63 @@ function renderLogs(data) {
   `).join("");
 }
 
-/* 出力 */
-function exportMonthlyReport() {
-  const year = Number(document.getElementById("monthlyYear").value);
-  const month = Number(document.getElementById("monthlyMonth").value);
-
-  if (!year || !month) {
-    showExportMessage("月間一覧の対象年・対象月を入力してください。", "error");
-    return;
-  }
-
-  showExportMessage("月間一覧を出力しています...", "success");
-
-  google.script.run
-    .withSuccessHandler(res => {
-      showExportMessage(
-        `月間一覧を出力しました。対象期間: ${res.period_start} ～ ${res.period_end} / 明細 ${res.detail_count} 件 / 集計 ${res.total_count} 件`,
-        "success"
-      );
-    })
-    .withFailureHandler(err => {
-      console.error("月間出力エラー:", err);
-      showExportMessage("月間一覧の出力でエラーが発生しました。", "error");
-    })
-    .exportMonthlyPaidLeaveReport(year, month);
-}
-
-function exportYearlyReport() {
-  const fiscalYear = Number(document.getElementById("yearlyFiscalYear").value);
-  const companyCode = document.getElementById("yearlyCompany").value;
-
-  if (!fiscalYear) {
-    showExportMessage("年間一覧の対象年度を入力してください。", "error");
-    return;
-  }
-
-  showExportMessage("年間一覧を出力しています...", "success");
-
-  google.script.run
-    .withSuccessHandler(res => {
-      showExportMessage(
-        `年間一覧を出力しました。会社: ${res.company_code} / 対象年度: ${res.period_start} ～ ${res.period_end} / ${res.row_count} 名分`,
-        "success"
-      );
-    })
-    .withFailureHandler(err => {
-      console.error("年間出力エラー:", err);
-      showExportMessage("年間一覧の出力でエラーが発生しました。", "error");
-    })
-    .exportYearlyPaidLeaveReport(fiscalYear, companyCode);
-}
-
-let monthlyPreviewData = null;
-
 /* =========================
-   月間一覧プレビュー
+   出力
 ========================= */
+let monthlyPreviewData = null;
+let yearlyPreviewData = null;
+
+function buildMonthlyPreviewFilters(year, month, company) {
+  const filters = {
+    target_year: year,
+    target_month: month,
+    company_code: "",
+    company_name: ""
+  };
+
+  if (company === "MAIN") filters.company_code = "MAIN";
+  if (company === "PARTNER") filters.company_code = "PARTNER";
+  if (company === "TOMOHISA") {
+    filters.company_code = "PARTNER";
+    filters.company_name = "（有）友尚建設";
+  }
+
+  return filters;
+}
+
+function buildYearlyPreviewFilters(fiscalYear, company) {
+  const filters = {
+    fiscal_year: fiscalYear,
+    company_code: "",
+    company_name: ""
+  };
+
+  if (company === "MAIN") filters.company_code = "MAIN";
+  if (company === "PARTNER") filters.company_code = "PARTNER";
+  if (company === "TOMOHISA") {
+    filters.company_code = "PARTNER";
+    filters.company_name = "（有）友尚建設";
+  }
+
+  return filters;
+}
+
+function getCompanyLabel(companyCode, companyName) {
+  if (companyName) return companyName;
+  if (companyCode === "MAIN") return "MAIN（自社）";
+  if (companyCode === "PARTNER") return "PARTNER（協力会社）";
+  return "すべて";
+}
+
 function previewMonthlyReport() {
   const year = document.getElementById("monthlyYear").value;
   const month = document.getElementById("monthlyMonth").value;
   const company = document.getElementById("monthlyCompany").value;
 
-  const filters = buildMonthlyPreviewFilters(year, month, company);
+  if (!year || !month) {
+    showExportMessage("月間一覧の対象年・対象月を入力してください。", "error");
+    return;
+  }
 
   showExportMessage("月間一覧を作成しています...", "success");
 
@@ -585,31 +580,9 @@ function previewMonthlyReport() {
       console.error(err);
       showExportMessage("月間一覧の取得でエラーが発生しました。\n" + (err.message || err), "error");
     })
-    .getMonthlyPaidLeaveReportPreview(filters);
-}
-
-function buildMonthlyPreviewFilters(year, month, company) {
-  const filters = {
-    target_year: year,
-    target_month: month,
-    company_code: "",
-    company_name: ""
-  };
-
-  if (company === "MAIN") {
-    filters.company_code = "MAIN";
-  }
-
-  if (company === "PARTNER") {
-    filters.company_code = "PARTNER";
-  }
-
-  if (company === "TOMOHISA") {
-    filters.company_code = "PARTNER";
-    filters.company_name = "（有）友尚建設";
-  }
-
-  return filters;
+    .getMonthlyPaidLeaveReportPreview(
+      buildMonthlyPreviewFilters(year, month, company)
+    );
 }
 
 function renderMonthlyPreview(data) {
@@ -621,10 +594,8 @@ function renderMonthlyPreview(data) {
 
   area.style.display = "block";
 
-  const companyLabel = getMonthlyCompanyLabel(data.company_code, data.company_name);
-
   summary.textContent =
-    `対象期間：${data.period_start} 〜 ${data.period_end} ／ ${companyLabel} ／ 明細 ${data.detail_count}件`;
+    `対象期間：${data.period_start} 〜 ${data.period_end} ／ ${getCompanyLabel(data.company_code, data.company_name)} ／ 明細 ${data.detail_count}件`;
 
   if (!data.detail_rows || data.detail_rows.length === 0) {
     table.innerHTML = `<div class="history-empty">該当データはありません。</div>`;
@@ -641,18 +612,8 @@ function renderMonthlyPreview(data) {
     </tr>
   `).join("");
 
-  const totalHtml = data.total_rows.map(row => `
-    <tr>
-      <td>${escapeHtml(row.display_employee_id || row.employee_id)}</td>
-      <td>${escapeHtml(row.employee_name)}</td>
-      <td>${escapeHtml(row.company_name || row.company_code)}</td>
-      <td style="text-align:right;">${escapeHtml(row.total_days)}</td>
-    </tr>
-  `).join("");
-
   table.innerHTML = `
     <div style="overflow-x:auto;">
-      <h3>取得明細</h3>
       <table class="preview-table">
         <thead>
           <tr>
@@ -665,46 +626,23 @@ function renderMonthlyPreview(data) {
         </thead>
         <tbody>${detailHtml}</tbody>
       </table>
-
-      <h3 style="margin-top:24px;">社員別合計</h3>
-      <table class="preview-table">
-        <thead>
-          <tr>
-            <th>表示ID</th>
-            <th>氏名</th>
-            <th>会社</th>
-            <th>合計日数</th>
-          </tr>
-        </thead>
-        <tbody>${totalHtml}</tbody>
-      </table>
     </div>
   `;
 }
 
-function getMonthlyCompanyLabel(companyCode, companyName) {
-  if (companyName) return companyName;
-  if (companyCode === "MAIN") return "MAIN（自社）";
-  if (companyCode === "PARTNER") return "PARTNER（協力会社）";
-  return "すべて";
-}
-
-/* =========================
-   CSVダウンロード
-========================= */
 function downloadMonthlyReportCsv() {
   if (!monthlyPreviewData || !monthlyPreviewData.detail_rows) {
-    alert("先に「画面で確認する」を押してください。");
+    alert("先に「月間一覧を確認」を押してください。");
     return;
   }
 
-  const rows = [];
-
-  rows.push(["月間有給取得一覧"]);
-  rows.push([`対象期間`, `${monthlyPreviewData.period_start}〜${monthlyPreviewData.period_end}`]);
-  rows.push([`会社`, getMonthlyCompanyLabel(monthlyPreviewData.company_code, monthlyPreviewData.company_name)]);
-  rows.push([]);
-  rows.push(["表示ID", "社員ID", "氏名", "会社コード", "会社名", "取得日", "取得日数"]);
+  const rows = [
+    ["月間有給取得一覧"],
+    ["対象期間", `${monthlyPreviewData.period_start}〜${monthlyPreviewData.period_end}`],
+    ["会社", getCompanyLabel(monthlyPreviewData.company_code, monthlyPreviewData.company_name)],
+    [],
+    ["表示ID", "社員ID", "氏名", "会社コード", "会社名", "取得日", "取得日数"]
+  ];
 
   monthlyPreviewData.detail_rows.forEach(row => {
     rows.push([
@@ -718,94 +656,136 @@ function downloadMonthlyReportCsv() {
     ]);
   });
 
-  rows.push([]);
-  rows.push(["社員別合計"]);
-  rows.push(["表示ID", "社員ID", "氏名", "会社コード", "会社名", "合計取得日数"]);
+  const companyPart = getCompanyLabel(
+    monthlyPreviewData.company_code,
+    monthlyPreviewData.company_name
+  ).replace(/[\\/:*?"<>|]/g, "");
 
-  monthlyPreviewData.total_rows.forEach(row => {
+  downloadCsvFile(
+    rows,
+    `月間有給一覧_${monthlyPreviewData.target_year}_${monthlyPreviewData.target_month}_${companyPart}.csv`
+  );
+
+  showExportMessage("月間CSVを保存しました。", "success");
+}
+
+function previewYearlyReport() {
+  const fiscalYear = document.getElementById("yearlyFiscalYear").value;
+  const company = document.getElementById("yearlyCompany").value;
+
+  if (!fiscalYear) {
+    showExportMessage("年間一覧の対象年度を入力してください。", "error");
+    return;
+  }
+
+  showExportMessage("年間一覧を作成しています...", "success");
+
+  google.script.run
+    .withSuccessHandler(data => {
+      yearlyPreviewData = data;
+      renderYearlyPreview(data);
+      showExportMessage("年間一覧を表示しました。", "success");
+    })
+    .withFailureHandler(err => {
+      console.error(err);
+      showExportMessage("年間一覧の取得でエラーが発生しました。\n" + (err.message || err), "error");
+    })
+    .getYearlyPaidLeaveReportPreview(
+      buildYearlyPreviewFilters(fiscalYear, company)
+    );
+}
+
+function renderYearlyPreview(data) {
+  const area = document.getElementById("yearlyPreviewArea");
+  const summary = document.getElementById("yearlyPreviewSummary");
+  const table = document.getElementById("yearlyPreviewTable");
+
+  if (!area || !summary || !table) return;
+
+  area.style.display = "block";
+
+  summary.textContent =
+    `対象期間：${data.period_start} 〜 ${data.period_end} ／ ${getCompanyLabel(data.company_code, data.company_name)} ／ ${data.row_count}名`;
+
+  if (!data.rows || data.rows.length === 0) {
+    table.innerHTML = `<div class="history-empty">該当データはありません。</div>`;
+    return;
+  }
+
+  const rowsHtml = data.rows.map(row => `
+    <tr>
+      <td>${escapeHtml(row.display_employee_id || row.employee_id)}</td>
+      <td>${escapeHtml(row.employee_name)}</td>
+      <td>${escapeHtml(row.company_name || row.company_code)}</td>
+      <td style="text-align:right;">${escapeHtml(row.carry_over_days)}</td>
+      <td style="text-align:right;">${escapeHtml(row.grant_days)}</td>
+      <td style="text-align:right;">${escapeHtml(row.used_days)}</td>
+      <td style="text-align:right;">${escapeHtml(row.next_carry_over_days)}</td>
+      <td style="text-align:right;">${escapeHtml(row.expired_days)}</td>
+    </tr>
+  `).join("");
+
+  table.innerHTML = `
+    <div style="overflow-x:auto;">
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th>表示ID</th>
+            <th>氏名</th>
+            <th>会社</th>
+            <th>前年度残</th>
+            <th>今年度付与</th>
+            <th>取得済</th>
+            <th>来年度繰越</th>
+            <th>消滅</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function downloadYearlyReportCsv() {
+  if (!yearlyPreviewData || !yearlyPreviewData.rows) {
+    alert("先に「年間一覧を確認」を押してください。");
+    return;
+  }
+
+  const rows = [
+    ["年間有給一覧"],
+    ["対象期間", `${yearlyPreviewData.period_start}〜${yearlyPreviewData.period_end}`],
+    ["会社", getCompanyLabel(yearlyPreviewData.company_code, yearlyPreviewData.company_name)],
+    [],
+    ["表示ID", "社員ID", "氏名", "会社コード", "会社名", "前年度残日数", "今年度付与日数", "今年度取得済み日数", "来年度繰越日数", "消滅日数"]
+  ];
+
+  yearlyPreviewData.rows.forEach(row => {
     rows.push([
       row.display_employee_id || "",
       row.employee_id || "",
       row.employee_name || "",
       row.company_code || "",
       row.company_name || "",
-      row.total_days || 0
+      row.carry_over_days || 0,
+      row.grant_days || 0,
+      row.used_days || 0,
+      row.next_carry_over_days || 0,
+      row.expired_days || 0
     ]);
   });
 
-  const csv = rows.map(row =>
-    row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")
-  ).join("\n");
-
-  const bom = "\uFEFF";
-  const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
-
-  const companyPart = getMonthlyCompanyLabel(
-    monthlyPreviewData.company_code,
-    monthlyPreviewData.company_name
+  const companyPart = getCompanyLabel(
+    yearlyPreviewData.company_code,
+    yearlyPreviewData.company_name
   ).replace(/[\\/:*?"<>|]/g, "");
 
-  const filename =
-    `月間有給取得一覧_${monthlyPreviewData.target_year}_${monthlyPreviewData.target_month}_${companyPart}.csv`;
+  downloadCsvFile(
+    rows,
+    `年間有給一覧_${yearlyPreviewData.fiscal_year}_${companyPart}.csv`
+  );
 
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  link.click();
-
-  URL.revokeObjectURL(link.href);
-}
-
-/* =========================
-   年間CSVダウンロード
-========================= */
-function downloadYearlyReportCsv() {
-  const fiscalYear = Number(document.getElementById("yearlyFiscalYear").value);
-  const companyCode = document.getElementById("yearlyCompany").value;
-
-  if (!fiscalYear) {
-    alert("年間一覧の対象年度を入力してください。");
-    return;
-  }
-
-  showExportMessage("年間CSVを作成しています...", "success");
-
-  google.script.run
-    .withSuccessHandler(res => {
-      const rows = [];
-
-      rows.push(["年間有給取得一覧"]);
-      rows.push(["会社", res.company_code || companyCode]);
-      rows.push(["対象期間", `${res.period_start}〜${res.period_end}`]);
-      rows.push([]);
-      rows.push([
-        "社員ID",
-        "氏名",
-        "前年度残日数",
-        "今年度付与日数",
-        "今年度取得済み日数",
-        "来年度繰越日数",
-        "消滅日数"
-      ]);
-
-      if (res.rows && res.rows.length > 0) {
-        res.rows.forEach(row => rows.push(row));
-      } else {
-        rows.push(["該当データなし", "", "", "", "", "", ""]);
-      }
-
-      downloadCsvFile(
-        rows,
-        `年間有給取得一覧_${fiscalYear}_${companyCode}.csv`
-      );
-
-      showExportMessage("年間CSVをダウンロードしました。", "success");
-    })
-    .withFailureHandler(err => {
-      console.error("年間CSV作成エラー:", err);
-      showExportMessage("年間CSV作成でエラーが発生しました。", "error");
-    })
-    .getYearlyPaidLeaveReportCsvData(fiscalYear, companyCode);
+  showExportMessage("年間CSVを保存しました。", "success");
 }
 
 function downloadCsvFile(rows, filename) {
