@@ -1801,4 +1801,67 @@
     margin-top: 10px;
   }
 }
+
+/* =========================
+   申請履歴：ボタン開閉
+========================= */
+
+.history-toggle-area {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.history-toggle-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 12px 24px;
+  background: #ffffff;
+  color: var(--primary-dark);
+  border: 2px solid var(--border);
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.history-toggle-btn:hover {
+  background: #f2fbfd;
+  border-color: var(--primary);
+}
+
+.history-section.history-collapsed {
+  display: none;
+}
+
+@media (min-width: 1001px) {
+  .history-toggle-area {
+    display: block;
+    margin-top: 10px;
+  }
+
+  .history-section {
+    display: block;
+    margin-top: 10px;
+    max-height: 170px;
+    overflow-y: auto;
+  }
+
+  .history-section.history-collapsed {
+    display: none;
+  }
+
+  .history-row {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .history-title {
+    font-size: 16px;
+  }
+
+  .history-subtitle {
+    font-size: 12px;
+  }
+}
+
 </style>
