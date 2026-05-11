@@ -179,7 +179,14 @@ function clearAppCache() {
 
   cache.remove(CACHE_KEY.EMPLOYEE_MAP);
   cache.remove(CACHE_KEY.COMPANY_CALENDAR);
-  cache.remove(CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + currentFiscalYear);
+
+  [
+    currentFiscalYear - 1,
+    currentFiscalYear,
+    currentFiscalYear + 1
+  ].forEach(year => {
+    cache.remove(CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + year);
+  });
 }
 
 /* =========================
@@ -331,6 +338,15 @@ function createEmptyRowObject(headers) {
 ========================= */
 function objectToRow(obj, headers) {
   return headers.map(header => obj[String(header || "").trim()]);
+}
+
+function appendRowFast_(sheet, values) {
+  const nextRow = sheet.getLastRow() + 1;
+  sheet.getRange(nextRow, 1, 1, values.length).setValues([values]);
+}
+
+function updateSheetRowFast_(sheet, sheetRow, rowValues) {
+  sheet.getRange(sheetRow, 1, 1, rowValues.length).setValues([rowValues]);
 }
 
 /* =========================
@@ -847,7 +863,10 @@ function appendUsageLog(logData) {
   rowObj.action_date = new Date();
   rowObj.comment = logData.comment || "";
 
-  sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+  appendRowFast_(
+    sheet,
+    objectToRow(rowObj, headerInfo.headers)
+  );
 }
 
 function appendEmployeeMasterLog(actionType, employeeId, comment) {
@@ -931,7 +950,10 @@ function submitLeaveRequest(data) {
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
-  sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+appendRowFast_(
+  sheet,
+  objectToRow(rowObj, headerInfo.headers)
+);
 
   appendUsageLog({
     request_id: rowObj.request_id,
@@ -1100,24 +1122,104 @@ function searchRequests(filters) {
 }
 
 function approveRequestsBatch(requestIds, adminUser) {
-
   if (!Array.isArray(requestIds) || requestIds.length === 0) {
     throw new Error("承認対象が選択されていません");
   }
 
-  requestIds.forEach(requestId => {
-    approveRequest(requestId, adminUser);
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id",
+    "status",
+    "approver_id",
+    "approver_name",
+    "approved_at",
+    "updated_at"
+  ]);
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  if (lastRow <= 1) {
+    throw new Error("申請データがありません");
+  }
+
+  const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  const targetIdSet = new Set(requestIds.map(id => String(id)));
+
+  const now = new Date();
+
+  const operatorId = adminUser && adminUser.admin_id
+    ? String(adminUser.admin_id).trim()
+    : "admin";
+
+  const operatorName = adminUser && adminUser.admin_name
+    ? String(adminUser.admin_name).trim()
+    : "管理者";
+
+  let updatedCount = 0;
+
+  const updatedRows = data.slice(1).map(row => {
+    const requestId = String(row[headerInfo.map.request_id] || "");
+
+    if (!targetIdSet.has(requestId)) {
+      return row;
+    }
+
+    row[headerInfo.map.status] = STATUS.APPROVED;
+    row[headerInfo.map.approver_id] = operatorId;
+    row[headerInfo.map.approver_name] = operatorName;
+    row[headerInfo.map.approved_at] = now;
+    row[headerInfo.map.updated_at] = now;
+
+    updatedCount++;
+
+    return row;
   });
+
+  if (updatedCount === 0) {
+    throw new Error("承認対象の申請が見つかりません");
+  }
+
+  sheet.getRange(2, 1, updatedRows.length, lastCol).setValues(updatedRows);
+
+  const logSheet = getSheet("usage_log");
+  const logHeaderInfo = requireHeaders(logSheet, [
+    "log_id",
+    "request_id",
+    "action_type",
+    "operator_id",
+    "operator_name",
+    "action_date",
+    "comment"
+  ]);
+
+  const logRows = requestIds.map(requestId => {
+    const rowObj = createEmptyRowObject(logHeaderInfo.headers);
+
+    rowObj.log_id = Utilities.getUuid();
+    rowObj.request_id = requestId;
+    rowObj.action_type = "approve";
+    rowObj.operator_id = operatorId;
+    rowObj.operator_name = operatorName;
+    rowObj.action_date = now;
+    rowObj.comment = "Batch approved by " + operatorName;
+
+    return objectToRow(rowObj, logHeaderInfo.headers);
+  });
+
+  const logStartRow = logSheet.getLastRow() + 1;
+  logSheet
+    .getRange(logStartRow, 1, logRows.length, logRows[0].length)
+    .setValues(logRows);
+
+  clearAppCache();
 
   return {
     ok: true,
-    count: requestIds.length
+    count: updatedCount
   };
 }
 
-/* =========================
-   承認
-========================= */
 function approveRequest(requestId, adminUser) {
   if (!requestId) {
     throw new Error("requestId がありません");
@@ -1133,16 +1235,18 @@ function approveRequest(requestId, adminUser) {
     "updated_at"
   ]);
 
-  const data = sheet.getDataRange().getValues();
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
 
-  if (data.length <= 1) {
+  if (lastRow <= 1) {
     throw new Error("申請データがありません");
   }
 
+  const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+
   const rowIndex = data.findIndex((row, index) => {
     if (index === 0) return false;
-    const rowObj = rowToObject(row, headerInfo.headers);
-    return String(rowObj.request_id) === String(requestId);
+    return String(row[headerInfo.map.request_id]) === String(requestId);
   });
 
   if (rowIndex === -1) {
@@ -1150,29 +1254,32 @@ function approveRequest(requestId, adminUser) {
   }
 
   const sheetRow = rowIndex + 1;
+  const rowValues = data[rowIndex].slice();
   const now = new Date();
 
-  sheet.getRange(sheetRow, headerInfo.map.status + 1).setValue(STATUS.APPROVED);
   const operatorId = adminUser && adminUser.admin_id
-  ? String(adminUser.admin_id).trim()
-  : "admin";
+    ? String(adminUser.admin_id).trim()
+    : "admin";
 
-const operatorName = adminUser && adminUser.admin_name
-  ? String(adminUser.admin_name).trim()
-  : "管理者";
+  const operatorName = adminUser && adminUser.admin_name
+    ? String(adminUser.admin_name).trim()
+    : "管理者";
 
-sheet.getRange(sheetRow, headerInfo.map.approver_id + 1).setValue(operatorId);
-sheet.getRange(sheetRow, headerInfo.map.approver_name + 1).setValue(operatorName);
-  sheet.getRange(sheetRow, headerInfo.map.approved_at + 1).setValue(now);
-  sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(now);
+  rowValues[headerInfo.map.status] = STATUS.APPROVED;
+  rowValues[headerInfo.map.approver_id] = operatorId;
+  rowValues[headerInfo.map.approver_name] = operatorName;
+  rowValues[headerInfo.map.approved_at] = now;
+  rowValues[headerInfo.map.updated_at] = now;
+
+  updateSheetRowFast_(sheet, sheetRow, rowValues);
 
   appendUsageLog({
-  request_id: requestId,
-  action_type: "approve",
-  operator_id: operatorId,
-  operator_name: operatorName,
-  comment: "Approved by " + operatorName
-});
+    request_id: requestId,
+    action_type: "approve",
+    operator_id: operatorId,
+    operator_name: operatorName,
+    comment: "Approved by " + operatorName
+  });
 
   clearAppCache();
 
@@ -1636,15 +1743,6 @@ function exportYearlyPaidLeaveReport(fiscalYear, companyCode) {
    社員ごとの年度開始月対応版
 ========================= */
 function getEmployeesForRequest() {
-  const fiscalYear = getCurrentFiscalYear();
-  const cache = CacheService.getScriptCache();
-  const cacheKey = CACHE_KEY.EMPLOYEES_FOR_REQUEST_PREFIX + fiscalYear;
-  const cached = cache.get(cacheKey);
-
-  if (cached) {
-    return JSON.parse(cached);
-  }
-
   const sheet = getSheet("employees");
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
@@ -1664,30 +1762,59 @@ function getEmployeesForRequest() {
     .filter(rowObj => {
       const employeeId = String(rowObj.employee_id || "").trim();
       const name = String(rowObj.name || "").trim();
-      const employmentStatus = String(rowObj.employment_status || "").trim().toLowerCase();
-      const leaveTarget = String(rowObj.leave_management_target || "").trim().toUpperCase() === "TRUE";
 
-      return (
-        employeeId &&
-        name &&
-        employmentStatus === "active" &&
-        leaveTarget === true
-      );
+      const employmentStatus = String(rowObj.employment_status || "")
+        .trim()
+        .toLowerCase();
+
+      const leaveTargetRaw = String(rowObj.leave_management_target || "")
+        .trim()
+        .toUpperCase();
+
+      const isActive =
+        employmentStatus === "active" ||
+        employmentStatus === "在職";
+
+      const isLeaveTarget =
+        rowObj.leave_management_target === true ||
+        leaveTargetRaw === "TRUE" ||
+        leaveTargetRaw === "1" ||
+        leaveTargetRaw === "YES" ||
+        leaveTargetRaw === "対象";
+
+      return employeeId && name && isActive && isLeaveTarget;
     });
 
-  const employeeIds = employeeRows.map(rowObj =>
-    String(rowObj.employee_id || "").trim()
-  );
+  const fiscalYearGroups = {};
 
-  const balanceMap = getEmployeeBalanceMapForEmployeeIdsForFiscalYear(
-    fiscalYear,
-    employeeIds
-  );
-
-  const result = employeeRows.map(rowObj => {
+  employeeRows.forEach(rowObj => {
     const employeeId = String(rowObj.employee_id || "").trim();
     const fiscalStartMonth = Number(rowObj.fiscal_start_month || 4);
+    const fiscalYear = getFiscalYearFromDateWithStart(new Date(), fiscalStartMonth);
 
+    if (!fiscalYearGroups[fiscalYear]) {
+      fiscalYearGroups[fiscalYear] = [];
+    }
+
+    fiscalYearGroups[fiscalYear].push(employeeId);
+  });
+
+  const balanceMapByFiscalYear = {};
+
+  Object.keys(fiscalYearGroups).forEach(fiscalYear => {
+    balanceMapByFiscalYear[fiscalYear] =
+      getEmployeeBalanceMapForEmployeeIdsForFiscalYear(
+        Number(fiscalYear),
+        fiscalYearGroups[fiscalYear]
+      );
+  });
+
+  return employeeRows.map(rowObj => {
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const fiscalStartMonth = Number(rowObj.fiscal_start_month || 4);
+    const fiscalYear = getFiscalYearFromDateWithStart(new Date(), fiscalStartMonth);
+
+    const balanceMap = balanceMapByFiscalYear[fiscalYear] || {};
     const balance = balanceMap[employeeId] || {
       current_remaining_days: 0,
       carry_over_days: 0,
@@ -1717,9 +1844,6 @@ function getEmployeesForRequest() {
       five_day_completed: fiveDayRemaining === 0
     };
   });
-
-  cache.put(cacheKey, JSON.stringify(result), 300);
-  return result;
 }
 
 /* =========================
@@ -2023,7 +2147,10 @@ function addEmployeeFromAdmin(data) {
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
-  sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+  appendRowFast_(
+  sheet,
+  objectToRow(rowObj, headerInfo.headers)
+);
 
   maintainEmployeeMaster();
 
@@ -2610,7 +2737,10 @@ function grantSixMonthPaidLeave(employeeId, adminUser) {
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
-  sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+  appendRowFast_(
+  sheet,
+  objectToRow(rowObj, headerInfo.headers)
+);
 
   const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
   const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
@@ -2863,7 +2993,10 @@ function grantYearlyPaidLeave(employeeId, adminUser) {
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
-  sheet.appendRow(objectToRow(rowObj, headerInfo.headers));
+  appendRowFast_(
+  sheet,
+  objectToRow(rowObj, headerInfo.headers)
+);
 
   const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
   const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";

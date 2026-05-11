@@ -28,7 +28,9 @@
 
 html,
 body {
+  width: 100%;
   min-height: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -40,6 +42,7 @@ body {
 }
 
 .app-shell {
+  width: 100%;
   max-width: 1280px;
   min-height: 100vh;
   margin: 0 auto;
@@ -76,7 +79,6 @@ body {
 ========================= */
 .screen {
   display: none;
-  overflow-y: auto;
 }
 
 .screen.active {
@@ -90,11 +92,10 @@ body {
   border-radius: 20px;
   box-shadow: var(--shadow);
   padding: 18px;
-  overflow: visible;
 }
 
 /* =========================
-   社員選択画面
+   社員選択
 ========================= */
 .sticky-tabs-wrap {
   position: sticky;
@@ -122,7 +123,6 @@ body {
   font-weight: bold;
   cursor: pointer;
   box-shadow: var(--shadow);
-  white-space: nowrap;
 }
 
 .kana-tabs button.active {
@@ -136,9 +136,6 @@ body {
 }
 
 .group-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 16px;
 }
 
@@ -169,10 +166,12 @@ body {
   cursor: pointer;
   padding: 10px 14px;
   box-shadow: var(--shadow);
+
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+
   overflow: hidden;
   text-align: left;
 }
@@ -183,11 +182,8 @@ body {
 }
 
 .employee-left {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
   flex: 1;
+  min-width: 0;
 }
 
 .employee-name {
@@ -195,6 +191,7 @@ body {
   font-weight: bold;
   color: var(--text-main);
   line-height: 1.1;
+
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -205,7 +202,7 @@ body {
   margin-top: 4px;
   font-size: 12px;
   color: var(--text-sub);
-  font-weight: 600;
+
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -214,36 +211,30 @@ body {
 .employee-right {
   width: 92px;
   min-width: 92px;
-  max-width: 92px;
+
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
-  gap: 3px;
-  flex-shrink: 0;
+
+  gap: 4px;
 }
 
 .employee-days {
   font-size: 22px;
   font-weight: 900;
   color: var(--primary-dark);
-  text-align: right;
-  line-height: 1;
 }
 
 .employee-days-sub {
   font-size: 12px;
   color: var(--text-sub);
-  text-align: right;
-  line-height: 1.1;
 }
 
 .employee-five {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 5px;
-  margin-top: 2px;
 }
 
 .five-mini-bar {
@@ -256,139 +247,83 @@ body {
 
 .five-mini-bar-fill {
   height: 100%;
-  width: 0%;
   background: linear-gradient(90deg, var(--accent-orange), #efb14f);
-  border-radius: 999px;
 }
 
 .five-mini-text {
   font-size: 11px;
   font-weight: bold;
   color: var(--accent-orange);
-  min-width: 24px;
-  text-align: right;
-  line-height: 1;
 }
 
 /* =========================
-   有給申請画面
+   上部カード
 ========================= */
-#requestScreen.active {
-  height: auto;
-  min-height: 100vh;
-  overflow-y: auto;
-}
-
-#requestScreen .screen-card {
-  height: auto;
-  min-height: auto;
-  overflow: visible;
-  padding-bottom: 120px;
-}
-
 .request-topbar {
   display: flex;
   gap: 16px;
-  align-items: flex-start;
+  align-items: stretch;
   margin-bottom: 18px;
 }
 
-.back-btn {
-  border: none;
-  border-radius: 14px;
-  background: var(--accent-blue);
-  color: #ffffff;
-  min-height: 60px;
-  min-width: 140px;
-  font-size: 22px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-  flex-shrink: 0;
-}
-
-.selected-employee-box {
+.selected-employee-top-cards {
   flex: 1;
-  background: #f8f6f1;
-  border: 1px solid #e7e0d4;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 12px;
+}
+
+.selected-employee-name-card,
+.selected-employee-balance-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 12px 14px;
-}
-
-.selected-employee-label {
-  font-size: 13px;
-  color: var(--text-sub);
-  margin-bottom: 6px;
-}
-
-.selected-employee-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
+  padding: 12px;
+  box-shadow: var(--shadow);
 }
 
 .selected-employee-name {
-  flex: 1;
-  font-size: 30px;
+  font-size: 26px;
   font-weight: bold;
   color: var(--primary-dark);
-  line-height: 1.15;
-  min-width: 0;
-  word-break: break-word;
+  line-height: 1.2;
 }
 
 .selected-fiscal-year {
   margin-top: 4px;
-  font-size: 13px;
-  color: #64748b;
-  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-sub);
 }
 
-.selected-employee-mini-info {
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
+.selected-employee-balance-card {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
+  justify-content: center;
+  gap: 8px;
 }
 
-.mini-info-line {
+.mini-info-line,
+.mini-five-wrap {
   display: flex;
-  align-items: baseline;
-  justify-content: flex-end;
+  align-items: center;
   gap: 6px;
-  width: 100%;
 }
 
 .mini-info-label {
   font-size: 12px;
   color: var(--text-sub);
-  white-space: nowrap;
 }
 
 .mini-info-value {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: bold;
   color: var(--accent-blue);
-  white-space: nowrap;
-}
-
-.mini-five-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  width: 100%;
-  margin-top: 2px;
 }
 
 .mini-five-bar {
-  width: 48px;
-  height: 6px;
+  width: 72px;
+  height: 8px;
   border-radius: 999px;
   background: #eadfcb;
   overflow: hidden;
@@ -396,46 +331,40 @@ body {
 
 .mini-five-bar-fill {
   height: 100%;
-  width: 0%;
   background: linear-gradient(90deg, var(--accent-orange), #efb14f);
-  border-radius: 999px;
-  transition: width 0.2s ease;
 }
 
-.mini-five-count {
-  font-size: 11px;
-  font-weight: bold;
-  color: var(--accent-orange);
-  min-width: 26px;
-  text-align: right;
-}
-
+.mini-five-count,
 .mini-five-message {
   font-size: 12px;
   font-weight: bold;
   color: var(--accent-orange);
-  text-align: right;
-  width: 100%;
-  line-height: 1.2;
 }
 
+.back-btn {
+  border: none;
+  border-radius: 14px;
+  background: var(--accent-blue);
+  color: #ffffff;
+
+  min-height: 60px;
+  min-width: 140px;
+
+  font-size: 22px;
+  font-weight: bold;
+
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+/* =========================
+   レイアウト
+========================= */
 .tablet-request-layout {
   display: grid;
   grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.35fr);
   gap: 18px;
   align-items: start;
-  min-height: auto;
-  overflow: visible;
-}
-
-.tablet-calendar-column,
-.tablet-side-column {
-  min-width: 0;
-  overflow: visible;
-}
-
-.tablet-side-column {
-  padding-bottom: 120px;
 }
 
 .request-section {
@@ -446,8 +375,8 @@ body {
   background: #fcfbf8;
 }
 
-.calendar-main-section,
-.tablet-side-column .request-section:first-child {
+.request-section:first-child,
+.calendar-main-section {
   margin-top: 0;
 }
 
@@ -459,34 +388,28 @@ body {
 }
 
 /* =========================
-   申請区分・入力
+   区分ボタン
 ========================= */
-.request-type-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-}
-
 .tablet-type-grid {
+  display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
 }
 
 .type-btn {
-  min-height: 88px;
+  min-height: 76px;
+
   border: 2px solid var(--border);
   border-radius: 18px;
+
   background: #ffffff;
   color: var(--text-main);
+
   font-size: 24px;
   font-weight: bold;
+
   cursor: pointer;
   box-shadow: var(--shadow);
-}
-
-.tablet-type-grid .type-btn {
-  min-height: 76px;
-  font-size: 24px;
 }
 
 .type-btn.active {
@@ -495,6 +418,9 @@ body {
   border-color: var(--primary-dark);
 }
 
+/* =========================
+   フォーム
+========================= */
 .field {
   display: flex;
   flex-direction: column;
@@ -511,15 +437,14 @@ body {
 .field select,
 .field textarea {
   width: 100%;
+
   border: 2px solid var(--border);
   border-radius: 14px;
-  padding: 14px 16px;
-  font-size: 22px;
-  background: #ffffff;
-}
 
-.full-width {
-  width: 100%;
+  padding: 14px 16px;
+
+  font-size: 20px;
+  background: #ffffff;
 }
 
 .multi-day-grid {
@@ -536,8 +461,6 @@ body {
    カレンダー
 ========================= */
 .calendar-ui-card {
-  width: 100%;
-  max-width: none;
   padding: 16px;
   border-radius: 20px;
   background: #f8fcfe;
@@ -549,21 +472,24 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+
   margin-bottom: 12px;
 }
 
 .calendar-nav-btn {
   width: 54px;
   height: 54px;
+
   border: none;
   border-radius: 999px;
+
   background: var(--accent-blue);
   color: #ffffff;
+
   font-size: 34px;
   font-weight: bold;
+
   cursor: pointer;
-  box-shadow: var(--shadow);
 }
 
 .calendar-month-label {
@@ -578,49 +504,6 @@ body {
   font-size: 13px;
   color: var(--text-sub);
   text-align: center;
-  font-weight: 700;
-}
-
-.calendar-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  margin: 10px 0 14px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-sub);
-}
-
-.calendar-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.legend-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  display: inline-block;
-}
-
-.legend-dot.workday {
-  background: #ffffff;
-  border: 2px solid var(--border);
-}
-
-.legend-dot.holiday {
-  background: #eef2f7;
-  border: 2px solid #cbd5e1;
-}
-
-.legend-dot.no-leave {
-  background: #ffe4e6;
-  border: 2px solid var(--accent-red);
-}
-
-.legend-dot.selected {
-  background: var(--primary-dark);
 }
 
 .calendar-week-row,
@@ -637,77 +520,50 @@ body {
 .calendar-week-row div {
   text-align: center;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: bold;
   color: var(--text-sub);
 }
 
 .calendar-day {
   min-height: 86px;
+
   border: 2px solid var(--border);
   border-radius: 14px;
+
   background: #ffffff;
-  cursor: pointer;
-  box-shadow: 0 3px 10px rgba(47, 111, 134, 0.08);
+
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+
   gap: 4px;
+
+  cursor: pointer;
 }
 
 .calendar-day.empty {
   background: transparent;
   border: none;
-  box-shadow: none;
   pointer-events: none;
 }
 
 .calendar-day-number {
   font-size: 26px;
   font-weight: 900;
-  color: var(--text-main);
 }
 
 .calendar-day-label {
   font-size: 12px;
-  font-weight: 800;
-  color: var(--text-sub);
-}
-
-.calendar-day.workday:hover {
-  border-color: var(--primary);
-  background: #f2fbfd;
 }
 
 .calendar-day.holiday {
   background: #f1f5f9;
-  border-color: #cbd5e1;
-}
-
-.calendar-day.holiday .calendar-day-number,
-.calendar-day.holiday .calendar-day-label {
-  color: #64748b;
 }
 
 .calendar-day.no_leave {
   background: #fff1f2;
   border-color: var(--accent-red);
-  cursor: not-allowed;
-}
-
-.calendar-day.no_leave .calendar-day-number,
-.calendar-day.no_leave .calendar-day-label {
-  color: var(--accent-red);
-}
-
-.calendar-day.in-range {
-  background: #e6f6fb;
-  border-color: #9ed8ea;
-}
-
-.calendar-day.in-range .calendar-day-number,
-.calendar-day.in-range .calendar-day-label {
-  color: var(--primary-dark);
 }
 
 .calendar-day.selected,
@@ -715,79 +571,74 @@ body {
 .calendar-day.range-end {
   background: var(--primary-dark);
   border-color: var(--primary-dark);
-  transform: translateY(-2px);
 }
 
-.calendar-day.selected .calendar-day-number,
-.calendar-day.selected .calendar-day-label,
-.calendar-day.range-start .calendar-day-number,
-.calendar-day.range-start .calendar-day-label,
-.calendar-day.range-end .calendar-day-number,
-.calendar-day.range-end .calendar-day-label {
+.calendar-day.selected *,
+.calendar-day.range-start *,
+.calendar-day.range-end * {
   color: #ffffff;
 }
 
+.calendar-day.in-range {
+  background: #e6f6fb;
+}
+
+/* =========================
+   ステータス
+========================= */
 .calendar-selected-status {
   margin-top: 12px;
-  margin-bottom: 16px;
+
   padding: 12px 14px;
+
   border-radius: 14px;
+
   background: #f1f7ff;
-  color: #1f4f7a;
-  font-size: 14px;
-  line-height: 1.5;
-  text-align: center;
   border: 1px solid #d6e8ff;
+
+  color: #1f4f7a;
+
+  text-align: center;
   white-space: pre-line;
 }
 
 .calendar-selected-status.ok {
   background: #eefaf3;
   color: #216b3a;
-  border-color: #cdeed8;
 }
 
 .calendar-selected-status.error {
   background: #fff1f1;
   color: #9f2a2a;
-  border-color: #ffd1d1;
 }
 
 .calendar-selected-status.success {
   background: #eefaf3;
   color: #216b3a;
-  border-color: #cdeed8;
 }
 
 /* =========================
-   申請ボタン
+   送信
 ========================= */
 .submit-area {
   margin-top: 24px;
-  padding-bottom: 120px;
-  text-align: center;
 }
 
 .submit-btn {
   width: 100%;
-  min-width: 0;
   min-height: 76px;
+
   border: none;
   border-radius: 16px;
-  padding: 18px 36px;
+
   font-size: 30px;
   font-weight: bold;
+
   background: var(--primary);
   color: #ffffff;
+
   cursor: pointer;
   box-shadow: var(--shadow);
-}
-
-.submit-btn:disabled,
-.submit-btn.submitting {
-  opacity: 0.75;
-  cursor: not-allowed;
-  background: #9bb8c7;
 }
 
 .submit-btn.submitted {
@@ -795,42 +646,7 @@ body {
 }
 
 /* =========================
-   ステータス表示
-========================= */
-.status-box {
-  margin-top: 18px;
-  padding: 16px;
-  border-radius: 14px;
-  background: #faf9f6;
-  border: 1px solid #eee8dc;
-  color: var(--text-sub);
-  font-size: 20px;
-  white-space: pre-line;
-  line-height: 1.5;
-}
-
-.status-box.ok {
-  border-left: 8px solid var(--primary);
-  color: var(--primary-dark);
-  background: #f4f8f3;
-}
-
-.status-box.error {
-  border-left: 8px solid var(--accent-red);
-  color: var(--accent-red);
-  background: #fff4f4;
-}
-
-.status-box.success {
-  border-left: 8px solid #2f9e7e;
-  color: #1f7a61;
-  background: #eefaf5;
-  font-weight: 900;
-  font-size: 24px;
-}
-
-/* =========================
-   申請履歴
+   履歴
 ========================= */
 .history-toggle-area {
   margin-top: 12px;
@@ -840,49 +656,31 @@ body {
 .history-toggle-btn {
   border-radius: 999px;
   padding: 12px 24px;
+
   background: #ffffff;
   color: var(--primary-dark);
-  border: 2px solid var(--border);
-  font-size: 16px;
-  font-weight: 900;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
 
-.history-toggle-btn:hover {
-  background: #f2fbfd;
-  border-color: var(--primary);
+  border: 2px solid var(--border);
+
+  font-size: 16px;
+  font-weight: bold;
+
+  cursor: pointer;
 }
 
 .history-section {
   margin-top: 18px;
+
   padding: 14px;
+
   border-radius: 16px;
+
   background: #f8fcfe;
   border: 1px solid var(--border);
 }
 
 .history-section.history-collapsed {
   display: none;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.history-title {
-  font-size: 20px;
-  font-weight: bold;
-  color: var(--primary-dark);
-}
-
-.history-subtitle {
-  margin-top: 3px;
-  font-size: 13px;
-  color: var(--text-sub);
 }
 
 .history-list {
@@ -895,29 +693,21 @@ body {
   display: grid;
   grid-template-columns: 1.4fr 0.8fr 0.6fr 0.8fr;
   gap: 8px;
-  align-items: center;
+
   padding: 10px 12px;
+
   border-radius: 12px;
+
   background: #ffffff;
   border: 1px solid #e3f1f6;
-  font-size: 14px;
-}
-
-.history-date {
-  font-weight: bold;
-  color: var(--primary-dark);
-}
-
-.history-type,
-.history-days {
-  color: var(--text-main);
-  font-weight: bold;
 }
 
 .history-status {
   text-align: center;
+
   border-radius: 999px;
   padding: 5px 8px;
+
   color: #ffffff;
   font-size: 12px;
   font-weight: bold;
@@ -935,769 +725,9 @@ body {
   background: var(--accent-red);
 }
 
-.history-empty {
-  padding: 12px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px dashed var(--border);
-  color: var(--text-sub);
-  font-size: 14px;
-}
-
-.history-error {
-  color: var(--accent-red);
-  font-weight: bold;
-}
-
 /* =========================
-   管理画面・メニュー共通
+   個人QRページ
 ========================= */
-.top-nav {
-  position: sticky;
-  top: 0;
-  z-index: 999;
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  flex-wrap: wrap;
-  padding: 10px;
-  background: rgba(243, 249, 251, 0.95);
-  border-bottom: 1px solid var(--border);
-}
-
-.top-nav a {
-  text-decoration: none;
-  background: #ffffff;
-  color: var(--primary-dark);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-weight: bold;
-  box-shadow: var(--shadow);
-}
-
-.menu-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-  margin-top: 18px;
-}
-
-.menu-card {
-  display: block;
-  text-decoration: none;
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 26px 20px;
-  box-shadow: var(--shadow);
-  color: var(--text-main);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.menu-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 22px rgba(47, 111, 134, 0.18);
-}
-
-.menu-icon {
-  font-size: 42px;
-  margin-bottom: 12px;
-}
-
-.menu-title {
-  font-size: 24px;
-  font-weight: 900;
-  color: var(--primary-dark);
-  margin-bottom: 8px;
-}
-
-.menu-desc {
-  font-size: 15px;
-  color: var(--text-sub);
-  line-height: 1.6;
-}
-
-.preview-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  background: #ffffff;
-  border-radius: 14px;
-  overflow: hidden;
-}
-
-.preview-table th,
-.preview-table td {
-  border-bottom: 1px solid var(--border);
-  padding: 10px 12px;
-  font-size: 14px;
-  text-align: left;
-}
-
-.preview-table th {
-  background: #eaf6fb;
-  color: var(--primary-dark);
-  font-weight: 900;
-}
-
-.preview-table tr:last-child td {
-  border-bottom: none;
-}
-
-/* =========================
-   社員管理・社員マスター
-========================= */
-.employee-add-toggle-btn,
-.admin-action-btn,
-.master-maintain-btn {
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.employee-add-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 12px;
-  background: #eef5ff;
-  color: #2f5fa7;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.employee-add-toggle-btn:hover {
-  background: #dfeeff;
-  transform: translateY(-1px);
-}
-
-.employee-form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.employee-form-grid .full-width {
-  grid-column: 1 / -1;
-}
-
-.employee-form-grid .field {
-  background: #f8fcfe;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 14px;
-}
-
-.employee-form-grid .field label {
-  color: var(--primary-dark);
-}
-
-.employee-form-grid input,
-.employee-form-grid select,
-.employee-form-grid textarea {
-  font-size: 18px;
-}
-
-.admin-employee-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.admin-employee-row.retired {
-  opacity: 0.55;
-}
-
-.admin-employee-row + .admin-employee-row {
-  border-top: 1px solid rgba(210, 228, 234, 0.75);
-}
-
-.admin-employee-name,
-.admin-employee-name-link {
-  font-size: 28px;
-  font-weight: 900;
-  color: var(--primary-dark);
-  letter-spacing: 0.02em;
-}
-
-.admin-employee-name-link {
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-}
-
-.admin-employee-name-link:hover {
-  text-decoration: underline;
-}
-
-.admin-employee-meta {
-  margin-top: 8px;
-  font-size: 15px;
-  color: var(--text-main);
-  font-weight: 600;
-  line-height: 1.6;
-}
-
-.admin-employee-sub {
-  display: none;
-}
-
-.admin-action-btn {
-  border: none;
-  border-radius: 14px;
-  padding: 12px 20px;
-  min-width: 100px;
-  font-size: 16px;
-  font-weight: bold;
-  background: #6fb7d6;
-  color: #ffffff;
-  box-shadow: var(--shadow);
-}
-
-.admin-action-btn.retire-btn {
-  background: var(--accent-red);
-}
-
-.admin-action-btn.modal-cancel-btn {
-  background: #9bb8c7;
-}
-
-.admin-action-btn:hover {
-  opacity: 0.9;
-}
-
-.master-maintain-card {
-  margin: 28px auto 0;
-  padding: 22px 24px;
-  max-width: 720px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
-  border: 1px solid #d6e7ff;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-}
-
-.master-maintain-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #2c4d7a;
-}
-
-.master-maintain-subtitle {
-  font-size: 14px;
-  color: #5f6f82;
-  line-height: 1.7;
-}
-
-.master-maintain-btn {
-  margin-top: 4px;
-  padding: 13px 24px;
-  border: none;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #4f8cff, #6aa7ff);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.master-maintain-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(79,140,255,0.25);
-}
-
-/* =========================
-   モーダル
-========================= */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: rgba(38, 50, 56, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.modal-card {
-  width: min(980px, 96vw);
-  max-height: 90vh;
-  overflow-y: auto;
-  background: #ffffff;
-  border-radius: 22px;
-  border: 1px solid var(--border);
-  box-shadow: 0 18px 50px rgba(47, 111, 134, 0.28);
-  padding: 22px;
-}
-
-.retire-modal-card {
-  width: min(560px, 94vw);
-}
-
-.modal-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.modal-title {
-  font-size: 28px;
-  font-weight: 900;
-  color: var(--primary-dark);
-}
-
-.modal-subtitle {
-  margin-top: 4px;
-  font-size: 14px;
-  color: var(--text-sub);
-  font-weight: 700;
-}
-
-.modal-close-btn {
-  border: none;
-  border-radius: 999px;
-  width: 42px;
-  height: 42px;
-  font-size: 28px;
-  line-height: 1;
-  font-weight: bold;
-  color: #ffffff;
-  background: var(--accent-blue);
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 18px;
-}
-
-/* =========================
-   ログ
-========================= */
-.log-card {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-left: 8px solid #9bb8c7;
-  border-radius: 16px;
-  padding: 16px;
-  margin-bottom: 12px;
-  box-shadow: var(--shadow);
-}
-
-.log-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.log-badge {
-  display: inline-block;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 900;
-  background: #eaf6fb;
-  color: var(--primary-dark);
-}
-
-.log-date {
-  font-size: 13px;
-  color: var(--text-sub);
-  font-weight: bold;
-}
-
-.log-main {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-main);
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-
-.log-sub {
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--text-sub);
-}
-
-.log-submit {
-  border-left-color: #6fb7d6;
-}
-
-.log-approve,
-.log-employee-add {
-  border-left-color: #72c7a0;
-}
-
-.log-reject,
-.log-employee-retire {
-  border-left-color: var(--accent-red);
-}
-
-.log-employee-update,
-.log-employee-maintain {
-  border-left-color: #6fb7d6;
-}
-
-/* =========================
-   PC・タブレット横置き
-========================= */
-@media (min-width: 1200px) {
-  .app-shell {
-    max-width: 1360px;
-  }
-
-  #requestScreen .tablet-request-layout {
-    grid-template-columns: minmax(360px, 0.8fr) minmax(0, 1.35fr);
-  }
-}
-
-@media (min-width: 1001px) and (max-width: 1199px) {
-  .app-shell {
-    max-width: 1180px;
-    padding: 8px 14px 120px;
-  }
-
-  .app-header {
-    padding: 12px 16px;
-    margin-bottom: 10px;
-  }
-
-  .app-title {
-    font-size: 28px;
-  }
-
-  .app-subtitle {
-    font-size: 14px;
-  }
-
-  #requestScreen .screen-card {
-    padding: 12px 12px 120px;
-  }
-
-  #requestScreen .tablet-request-layout {
-    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.8fr);
-    gap: 12px;
-  }
-
-  .request-topbar {
-    margin-bottom: 10px;
-    gap: 10px;
-  }
-
-  .back-btn {
-    min-height: 48px;
-    min-width: 110px;
-    font-size: 18px;
-  }
-
-  .selected-employee-box {
-    padding: 8px 12px;
-  }
-
-  .selected-employee-label {
-    display: none;
-  }
-
-  .selected-employee-name {
-    font-size: 24px;
-  }
-
-  .selected-fiscal-year {
-    font-size: 11px;
-  }
-
-  .request-section {
-    margin-top: 10px;
-    padding: 10px;
-  }
-
-  .request-section-title {
-    font-size: 18px;
-    margin-bottom: 8px;
-  }
-
-  .calendar-ui-card {
-    padding: 10px;
-  }
-
-  .calendar-ui-header {
-    margin-bottom: 6px;
-  }
-
-  .calendar-nav-btn {
-    width: 42px;
-    height: 42px;
-    font-size: 28px;
-  }
-
-  .calendar-month-label {
-    font-size: 22px;
-  }
-
-  .calendar-help-text,
-  .calendar-legend {
-    display: none;
-  }
-
-  .calendar-week-row,
-  .request-calendar-grid {
-    gap: 5px;
-  }
-
-  .calendar-day {
-    min-height: 60px;
-    border-radius: 10px;
-    gap: 2px;
-  }
-
-  .calendar-day-number {
-    font-size: 21px;
-  }
-
-  .calendar-day-label {
-    font-size: 9px;
-  }
-
-  .tablet-type-grid {
-    gap: 8px;
-  }
-
-  .tablet-type-grid .type-btn {
-    min-height: 56px;
-    font-size: 20px;
-  }
-
-  .field label {
-    font-size: 14px;
-  }
-
-  .field select,
-  .field textarea,
-  .field input {
-    font-size: 17px;
-    padding: 10px 12px;
-  }
-
-  .submit-btn {
-    min-height: 64px;
-    font-size: 24px;
-  }
-
-  .submit-area {
-    margin-top: 16px;
-    padding-bottom: 120px;
-  }
-
-  .history-section {
-    margin-top: 10px;
-    max-height: 170px;
-    overflow-y: auto;
-  }
-
-  .history-row {
-    padding: 8px 10px;
-    font-size: 13px;
-  }
-
-  .history-title {
-    font-size: 16px;
-  }
-
-  .history-subtitle {
-    font-size: 12px;
-  }
-}
-
-/* =========================
-   タブレット縦・スマホ
-========================= */
-@media (max-width: 1000px) {
-  .tablet-request-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .tablet-type-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .request-topbar {
-    flex-direction: column;
-  }
-
-  .multi-day-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .submit-btn {
-    width: 100%;
-  }
-}
-
-@media (max-width: 900px) {
-  .kana-tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .employee-grid {
-    grid-template-columns: 1fr;
-    grid-auto-rows: 104px;
-  }
-
-  .employee-btn {
-    height: 104px;
-    padding: 10px 12px;
-  }
-
-  .employee-name {
-    font-size: 26px;
-  }
-
-  .employee-right {
-    width: 86px;
-    min-width: 86px;
-    max-width: 86px;
-  }
-
-  .employee-days {
-    font-size: 14px;
-  }
-
-  .employee-days-sub {
-    font-size: 11px;
-  }
-
-  .selected-employee-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .selected-employee-mini-info {
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    align-items: flex-start;
-  }
-
-  .mini-info-line,
-  .mini-five-wrap,
-  .mini-five-message {
-    justify-content: flex-start;
-    text-align: left;
-    width: auto;
-  }
-
-  .menu-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .employee-form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-employee-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .modal-overlay {
-    align-items: flex-start;
-    padding: 14px;
-  }
-
-  .modal-card {
-    width: 100%;
-    max-height: 94vh;
-    padding: 16px;
-  }
-
-  .modal-title {
-    font-size: 24px;
-  }
-
-  .modal-actions {
-    flex-direction: column;
-  }
-
-  .history-row {
-    grid-template-columns: 1fr 0.8fr;
-    font-size: 13px;
-  }
-
-  .history-status {
-    text-align: left;
-  }
-}
-
-@media (max-width: 700px) {
-  .app-shell {
-    padding: 12px 10px 120px;
-  }
-
-  .calendar-ui-card {
-    padding: 12px;
-  }
-
-  .calendar-week-row,
-  .request-calendar-grid {
-    gap: 5px;
-  }
-
-  .calendar-day {
-    min-height: 58px;
-    border-radius: 11px;
-  }
-
-  .calendar-day-number {
-    font-size: 18px;
-  }
-
-  .calendar-day-label {
-    font-size: 10px;
-  }
-
-  .calendar-month-label {
-    font-size: 22px;
-  }
-}
-
-/* =========================
-   スマホ個人ページ用
-   追加CSS
-========================= */
-.personal-page-notice {
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: 999px;
-  background: #fff7d6;
-  border: 1px solid #f0d98a;
-  color: #7a5a00;
-  font-size: 14px;
-  font-weight: 900;
-  text-align: center;
-}
-
-/* 個人QRページでは社員選択を隠す */
 body.personal-page-mode #employeeScreen {
   display: none !important;
 }
@@ -1706,1808 +736,11 @@ body.personal-page-mode #requestScreen {
   display: block !important;
 }
 
-/* スマホ全体調整 */
-@media (max-width: 700px) {
-  body {
-    background: #f3f9fb;
-  }
-
-  .app-shell {
-    padding: 8px 8px 96px;
-  }
-
-  .app-header {
-    padding: 14px 12px;
-    margin-bottom: 10px;
-    border-radius: 18px;
-  }
-
-  .app-title {
-    font-size: 26px;
-  }
-
-  .app-subtitle {
-    font-size: 13px;
-  }
-
-  .screen-card {
-    padding: 10px;
-    border-radius: 18px;
-  }
-
-  #requestScreen .screen-card {
-    padding: 10px 10px 96px;
-  }
-
-  .request-topbar {
-    gap: 10px;
-    margin-bottom: 10px;
-  }
-
-  .selected-employee-box {
-    padding: 12px;
-    border-radius: 16px;
-  }
-
-  .selected-employee-label {
-    font-size: 12px;
-  }
-
-  .selected-employee-name {
-    font-size: 25px;
-  }
-
-  .selected-fiscal-year {
-    font-size: 12px;
-  }
-
-  .selected-employee-header {
-    gap: 10px;
-  }
-
-  .selected-employee-mini-info {
-    gap: 6px;
-  }
-
-  .mini-info-value {
-    font-size: 18px;
-  }
-
-  .mini-five-bar {
-    width: 88px;
-    height: 9px;
-  }
-
-  .mini-five-count,
-  .mini-five-message {
-    font-size: 13px;
-  }
-
-  .tablet-request-layout {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  /* スマホではカレンダーを先に表示 */
-  .tablet-calendar-column {
-    order: 1;
-  }
-
-  .tablet-side-column {
-    order: 2;
-    padding-bottom: 0;
-  }
-
-  .request-section {
-    margin-top: 12px;
-    padding: 12px;
-    border-radius: 16px;
-  }
-
-  .request-section-title {
-    font-size: 20px;
-    margin-bottom: 10px;
-  }
-
-  .tablet-type-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-  }
-
-  .tablet-type-grid .type-btn {
-    min-height: 62px;
-    font-size: 19px;
-    border-radius: 16px;
-  }
-
-  .calendar-ui-card {
-    padding: 10px;
-    border-radius: 18px;
-  }
-
-  .calendar-ui-header {
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .calendar-nav-btn {
-    width: 44px;
-    height: 44px;
-    font-size: 28px;
-  }
-
-  .calendar-month-label {
-    font-size: 21px;
-  }
-
-  .calendar-help-text {
-    font-size: 11px;
-  }
-
-  .calendar-legend {
-    gap: 6px 10px;
-    font-size: 11px;
-    margin: 8px 0 10px;
-  }
-
-  .calendar-week-row,
-  .request-calendar-grid {
-    gap: 4px;
-  }
-
-  .calendar-week-row div {
-    font-size: 12px;
-  }
-
-  .calendar-day {
-    min-height: 52px;
-    border-radius: 10px;
-    gap: 1px;
-    padding: 2px;
-  }
-
-  .calendar-day-number {
-    font-size: 17px;
-  }
-
-  .calendar-day-label {
-    font-size: 8px;
-  }
-
-  .calendar-selected-status {
-    font-size: 13px;
-    padding: 10px;
-    margin-bottom: 10px;
-  }
-
-  .field label {
-    font-size: 15px;
-  }
-
-  .field input,
-  .field select,
-  .field textarea {
-    font-size: 18px;
-    padding: 12px;
-    border-radius: 13px;
-  }
-
-  .multi-day-grid {
-    gap: 10px;
-  }
-
-  .submit-area {
-    margin-top: 16px;
-    padding-bottom: 0;
-  }
-
-  .submit-btn {
-    min-height: 68px;
-    font-size: 24px;
-    border-radius: 18px;
-  }
-
-  .history-toggle-btn {
-    width: 100%;
-    padding: 12px;
-    font-size: 15px;
-  }
-
-  .history-section {
-    padding: 10px;
-  }
-
-  .history-title {
-    font-size: 18px;
-  }
-
-  .history-subtitle {
-    font-size: 12px;
-  }
-
-  .history-row {
-    grid-template-columns: 1fr 0.8fr;
-    gap: 6px;
-    padding: 10px;
-    font-size: 12px;
-  }
-}
-
-/* さらに小さいスマホ用 */
-@media (max-width: 420px) {
-  .app-title {
-    font-size: 24px;
-  }
-
-  .selected-employee-name {
-    font-size: 23px;
-  }
-
-  .request-section-title {
-    font-size: 18px;
-  }
-
-  .tablet-type-grid .type-btn {
-    min-height: 58px;
-    font-size: 17px;
-  }
-
-  .calendar-day {
-    min-height: 47px;
-  }
-
-  .calendar-day-number {
-    font-size: 16px;
-  }
-
-  .calendar-day-label {
-    display: none;
-  }
-
-  .calendar-legend {
-    display: none;
-  }
-
-  .submit-btn {
-    font-size: 22px;
-  }
-}
-
 /* =========================
-   基本設定
-========================= */
-:root {
-  --bg-main: #f3f9fb;
-  --bg-sub: #dceff5;
-  --card-bg: #ffffff;
-
-  --primary: #4f9fba;
-  --primary-dark: #2f6f86;
-  --accent-blue: #3f8fc5;
-  --accent-red: #d94f78;
-  --accent-orange: #e59a45;
-
-  --text-main: #263238;
-  --text-sub: #60727a;
-  --border: #d2e4ea;
-
-  --shadow: 0 4px 14px rgba(47, 111, 134, 0.10);
-  --radius: 18px;
-}
-
-* {
-  box-sizing: border-box;
-  -webkit-tap-highlight-color: transparent;
-}
-
-html,
-body {
-  min-height: 100%;
-  overflow-y: auto;
-}
-
-body {
-  margin: 0;
-  font-family: sans-serif;
-  background: var(--bg-main);
-  color: var(--text-main);
-}
-
-.app-shell {
-  max-width: 1280px;
-  min-height: 100vh;
-  margin: 0 auto;
-  padding: 16px 18px 120px;
-}
-
-/* =========================
-   ヘッダー
-========================= */
-.app-header {
-  text-align: center;
-  background: linear-gradient(135deg, #eef6ef, var(--bg-sub));
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-  padding: 20px 16px;
-  margin-bottom: 18px;
-}
-
-.app-title {
-  margin: 0 0 8px;
-  font-size: 36px;
-  color: var(--primary-dark);
-}
-
-.app-subtitle {
-  margin: 0;
-  font-size: 18px;
-  color: var(--text-sub);
-}
-
-/* =========================
-   共通画面
-========================= */
-.screen {
-  display: none;
-  overflow-y: auto;
-}
-
-.screen.active {
-  display: block;
-}
-
-.screen-card {
-  width: 100%;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-  padding: 18px;
-  overflow: visible;
-}
-
-/* =========================
-   社員選択画面
-========================= */
-.sticky-tabs-wrap {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  padding-bottom: 10px;
-  background: linear-gradient(to bottom, var(--bg-main) 80%, rgba(243,249,251,0));
-}
-
-.kana-tabs {
-  display: grid;
-  grid-template-columns: repeat(11, minmax(0, 1fr));
-  gap: 8px;
-  background: rgba(243,249,251,0.96);
-  padding: 8px 0 2px;
-}
-
-.kana-tabs button {
-  min-height: 52px;
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  background: #ffffff;
-  color: var(--primary-dark);
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-  white-space: nowrap;
-}
-
-.kana-tabs button.active {
-  background: var(--primary-dark);
-  color: #ffffff;
-  border-color: var(--primary-dark);
-}
-
-.kana-tabs button.no-member {
-  opacity: 0.55;
-}
-
-.group-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.section-title {
-  font-size: 28px;
-  font-weight: bold;
-  color: var(--primary-dark);
-}
-
-.section-subtitle {
-  font-size: 16px;
-  color: var(--text-sub);
-  margin-top: 4px;
-}
-
-.employee-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 108px;
-  gap: 14px;
-}
-
-.employee-btn {
-  height: 108px;
-  border: 2px solid var(--border);
-  border-radius: 18px;
-  background: #ffffff;
-  cursor: pointer;
-  padding: 10px 14px;
-  box-shadow: var(--shadow);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  overflow: hidden;
-  text-align: left;
-}
-
-.employee-btn:hover {
-  background: #f7fbf7;
-  border-color: var(--primary);
-}
-
-.employee-left {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-  flex: 1;
-}
-
-.employee-name {
-  font-size: 30px;
-  font-weight: bold;
-  color: var(--text-main);
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.employee-kana,
-.employee-fiscal-year {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text-sub);
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.employee-right {
-  width: 92px;
-  min-width: 92px;
-  max-width: 92px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.employee-days {
-  font-size: 22px;
-  font-weight: 900;
-  color: var(--primary-dark);
-  text-align: right;
-  line-height: 1;
-}
-
-.employee-days-sub {
-  font-size: 12px;
-  color: var(--text-sub);
-  text-align: right;
-  line-height: 1.1;
-}
-
-.employee-five {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 5px;
-  margin-top: 2px;
-}
-
-.five-mini-bar {
-  width: 54px;
-  height: 8px;
-  border-radius: 999px;
-  background: #eadfcb;
-  overflow: hidden;
-}
-
-.five-mini-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--accent-orange), #efb14f);
-  border-radius: 999px;
-}
-
-.five-mini-text {
-  font-size: 11px;
-  font-weight: bold;
-  color: var(--accent-orange);
-  min-width: 24px;
-  text-align: right;
-  line-height: 1;
-}
-
-/* =========================
-   有給申請画面
-========================= */
-#requestScreen.active {
-  height: auto;
-  min-height: 100vh;
-  overflow-y: auto;
-}
-
-#requestScreen .screen-card {
-  height: auto;
-  min-height: auto;
-  overflow: visible;
-  padding-bottom: 120px;
-}
-
-.request-topbar {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  margin-bottom: 18px;
-}
-
-.back-btn {
-  border: none;
-  border-radius: 14px;
-  background: var(--accent-blue);
-  color: #ffffff;
-  min-height: 60px;
-  min-width: 140px;
-  font-size: 22px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-  flex-shrink: 0;
-}
-
-.selected-employee-box {
-  flex: 1;
-  background: #f8f6f1;
-  border: 1px solid #e7e0d4;
-  border-radius: 16px;
-  padding: 12px 14px;
-}
-
-.selected-employee-label {
-  font-size: 13px;
-  color: var(--text-sub);
-  margin-bottom: 6px;
-}
-
-.selected-employee-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.selected-employee-name {
-  flex: 1;
-  font-size: 30px;
-  font-weight: bold;
-  color: var(--primary-dark);
-  line-height: 1.15;
-  min-width: 0;
-  word-break: break-word;
-}
-
-.selected-fiscal-year {
-  margin-top: 4px;
-  font-size: 13px;
-  color: #64748b;
-  font-weight: 600;
-}
-
-.selected-employee-mini-info {
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.mini-info-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 6px;
-  width: 100%;
-}
-
-.mini-info-label {
-  font-size: 12px;
-  color: var(--text-sub);
-  white-space: nowrap;
-}
-
-.mini-info-value {
-  font-size: 15px;
-  font-weight: bold;
-  color: var(--accent-blue);
-  white-space: nowrap;
-}
-
-.mini-five-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  width: 100%;
-  margin-top: 2px;
-}
-
-.mini-five-bar {
-  width: 48px;
-  height: 6px;
-  border-radius: 999px;
-  background: #eadfcb;
-  overflow: hidden;
-}
-
-.mini-five-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--accent-orange), #efb14f);
-  border-radius: 999px;
-  transition: width 0.2s ease;
-}
-
-.mini-five-count {
-  font-size: 11px;
-  font-weight: bold;
-  color: var(--accent-orange);
-  min-width: 26px;
-  text-align: right;
-}
-
-.mini-five-message {
-  font-size: 12px;
-  font-weight: bold;
-  color: var(--accent-orange);
-  text-align: right;
-  width: 100%;
-  line-height: 1.2;
-}
-
-.tablet-request-layout {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.35fr);
-  gap: 18px;
-  align-items: start;
-  min-height: auto;
-  overflow: visible;
-}
-
-.tablet-calendar-column,
-.tablet-side-column {
-  min-width: 0;
-  overflow: visible;
-}
-
-.tablet-side-column {
-  padding-bottom: 120px;
-}
-
-.request-section {
-  margin-top: 20px;
-  padding: 16px;
-  border: 1px solid #e6e0d6;
-  border-radius: 16px;
-  background: #fcfbf8;
-}
-
-.calendar-main-section,
-.tablet-side-column .request-section:first-child {
-  margin-top: 0;
-}
-
-.request-section-title {
-  font-size: 24px;
-  font-weight: bold;
-  color: var(--primary-dark);
-  margin-bottom: 14px;
-}
-
-/* =========================
-   申請区分・入力
-========================= */
-.request-type-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-}
-
-.tablet-type-grid {
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-
-.type-btn {
-  min-height: 88px;
-  border: 2px solid var(--border);
-  border-radius: 18px;
-  background: #ffffff;
-  color: var(--text-main);
-  font-size: 24px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
-
-.tablet-type-grid .type-btn {
-  min-height: 76px;
-  font-size: 24px;
-}
-
-.type-btn.active {
-  background: var(--primary-dark);
-  color: #ffffff;
-  border-color: var(--primary-dark);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.field label {
-  font-size: 18px;
-  font-weight: bold;
-  color: var(--text-sub);
-}
-
-.field input,
-.field select,
-.field textarea {
-  width: 100%;
-  border: 2px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px;
-  font-size: 22px;
-  background: #ffffff;
-}
-
-.full-width {
-  width: 100%;
-}
-
-.multi-day-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.hidden-date-field {
-  display: none;
-}
-
-/* =========================
-   カレンダー
-========================= */
-.calendar-ui-card {
-  width: 100%;
-  max-width: none;
-  padding: 16px;
-  border-radius: 20px;
-  background: #f8fcfe;
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-}
-
-.calendar-ui-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 12px;
-}
-
-.calendar-nav-btn {
-  width: 54px;
-  height: 54px;
-  border: none;
-  border-radius: 999px;
-  background: var(--accent-blue);
-  color: #ffffff;
-  font-size: 34px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
-
-.calendar-month-label {
-  font-size: 26px;
-  font-weight: 900;
-  color: var(--primary-dark);
-  text-align: center;
-}
-
-.calendar-help-text {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--text-sub);
-  text-align: center;
-  font-weight: 700;
-}
-
-.calendar-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  margin: 10px 0 14px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-sub);
-}
-
-.calendar-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.legend-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  display: inline-block;
-}
-
-.legend-dot.workday {
-  background: #ffffff;
-  border: 2px solid var(--border);
-}
-
-.legend-dot.holiday {
-  background: #eef2f7;
-  border: 2px solid #cbd5e1;
-}
-
-.legend-dot.no-leave {
-  background: #ffe4e6;
-  border: 2px solid var(--accent-red);
-}
-
-.legend-dot.selected {
-  background: var(--primary-dark);
-}
-
-.calendar-week-row,
-.request-calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 10px;
-}
-
-.calendar-week-row {
-  margin-bottom: 8px;
-}
-
-.calendar-week-row div {
-  text-align: center;
-  font-size: 13px;
-  font-weight: 900;
-  color: var(--text-sub);
-}
-
-.calendar-day {
-  min-height: 86px;
-  border: 2px solid var(--border);
-  border-radius: 14px;
-  background: #ffffff;
-  cursor: pointer;
-  box-shadow: 0 3px 10px rgba(47, 111, 134, 0.08);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.calendar-day.empty {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  pointer-events: none;
-}
-
-.calendar-day-number {
-  font-size: 26px;
-  font-weight: 900;
-  color: var(--text-main);
-}
-
-.calendar-day-label {
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--text-sub);
-}
-
-.calendar-day.workday:hover {
-  border-color: var(--primary);
-  background: #f2fbfd;
-}
-
-.calendar-day.holiday {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-}
-
-.calendar-day.holiday .calendar-day-number,
-.calendar-day.holiday .calendar-day-label {
-  color: #64748b;
-}
-
-.calendar-day.no_leave {
-  background: #fff1f2;
-  border-color: var(--accent-red);
-  cursor: not-allowed;
-}
-
-.calendar-day.no_leave .calendar-day-number,
-.calendar-day.no_leave .calendar-day-label {
-  color: var(--accent-red);
-}
-
-.calendar-day.in-range {
-  background: #e6f6fb;
-  border-color: #9ed8ea;
-}
-
-.calendar-day.in-range .calendar-day-number,
-.calendar-day.in-range .calendar-day-label {
-  color: var(--primary-dark);
-}
-
-.calendar-day.selected,
-.calendar-day.range-start,
-.calendar-day.range-end {
-  background: var(--primary-dark);
-  border-color: var(--primary-dark);
-  transform: translateY(-2px);
-}
-
-.calendar-day.selected .calendar-day-number,
-.calendar-day.selected .calendar-day-label,
-.calendar-day.range-start .calendar-day-number,
-.calendar-day.range-start .calendar-day-label,
-.calendar-day.range-end .calendar-day-number,
-.calendar-day.range-end .calendar-day-label {
-  color: #ffffff;
-}
-
-.calendar-selected-status {
-  margin-top: 12px;
-  margin-bottom: 16px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: #f1f7ff;
-  color: #1f4f7a;
-  font-size: 14px;
-  line-height: 1.5;
-  text-align: center;
-  border: 1px solid #d6e8ff;
-  white-space: pre-line;
-}
-
-.calendar-selected-status.ok {
-  background: #eefaf3;
-  color: #216b3a;
-  border-color: #cdeed8;
-}
-
-.calendar-selected-status.error {
-  background: #fff1f1;
-  color: #9f2a2a;
-  border-color: #ffd1d1;
-}
-
-.calendar-selected-status.success {
-  background: #eefaf3;
-  color: #216b3a;
-  border-color: #cdeed8;
-}
-
-/* =========================
-   申請ボタン
-========================= */
-.submit-area {
-  margin-top: 24px;
-  padding-bottom: 120px;
-  text-align: center;
-}
-
-.submit-btn {
-  width: 100%;
-  min-width: 0;
-  min-height: 76px;
-  border: none;
-  border-radius: 16px;
-  padding: 18px 36px;
-  font-size: 30px;
-  font-weight: bold;
-  background: var(--primary);
-  color: #ffffff;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
-
-.submit-btn:disabled,
-.submit-btn.submitting {
-  opacity: 0.75;
-  cursor: not-allowed;
-  background: #9bb8c7;
-}
-
-.submit-btn.submitted {
-  background: #2f9e7e;
-}
-
-/* =========================
-   ステータス表示
-========================= */
-.status-box {
-  margin-top: 18px;
-  padding: 16px;
-  border-radius: 14px;
-  background: #faf9f6;
-  border: 1px solid #eee8dc;
-  color: var(--text-sub);
-  font-size: 20px;
-  white-space: pre-line;
-  line-height: 1.5;
-}
-
-.status-box.ok {
-  border-left: 8px solid var(--primary);
-  color: var(--primary-dark);
-  background: #f4f8f3;
-}
-
-.status-box.error {
-  border-left: 8px solid var(--accent-red);
-  color: var(--accent-red);
-  background: #fff4f4;
-}
-
-.status-box.success {
-  border-left: 8px solid #2f9e7e;
-  color: #1f7a61;
-  background: #eefaf5;
-  font-weight: 900;
-  font-size: 24px;
-}
-
-/* =========================
-   申請履歴
-========================= */
-.history-toggle-area {
-  margin-top: 12px;
-  text-align: center;
-}
-
-.history-toggle-btn {
-  border-radius: 999px;
-  padding: 12px 24px;
-  background: #ffffff;
-  color: var(--primary-dark);
-  border: 2px solid var(--border);
-  font-size: 16px;
-  font-weight: 900;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
-
-.history-toggle-btn:hover {
-  background: #f2fbfd;
-  border-color: var(--primary);
-}
-
-.history-section {
-  margin-top: 18px;
-  padding: 14px;
-  border-radius: 16px;
-  background: #f8fcfe;
-  border: 1px solid var(--border);
-}
-
-.history-section.history-collapsed {
-  display: none;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.history-title {
-  font-size: 20px;
-  font-weight: bold;
-  color: var(--primary-dark);
-}
-
-.history-subtitle {
-  margin-top: 3px;
-  font-size: 13px;
-  color: var(--text-sub);
-}
-
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.history-row {
-  display: grid;
-  grid-template-columns: 1.4fr 0.8fr 0.6fr 0.8fr;
-  gap: 8px;
-  align-items: center;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid #e3f1f6;
-  font-size: 14px;
-}
-
-.history-date {
-  font-weight: bold;
-  color: var(--primary-dark);
-}
-
-.history-type,
-.history-days {
-  color: var(--text-main);
-  font-weight: bold;
-}
-
-.history-status {
-  text-align: center;
-  border-radius: 999px;
-  padding: 5px 8px;
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: bold;
-}
-
-.history-status.approved {
-  background: var(--primary);
-}
-
-.history-status.pending {
-  background: var(--accent-blue);
-}
-
-.history-status.rejected {
-  background: var(--accent-red);
-}
-
-.history-empty {
-  padding: 12px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px dashed var(--border);
-  color: var(--text-sub);
-  font-size: 14px;
-}
-
-.history-error {
-  color: var(--accent-red);
-  font-weight: bold;
-}
-
-/* =========================
-   管理画面・メニュー共通
-========================= */
-.top-nav {
-  position: sticky;
-  top: 0;
-  z-index: 999;
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  flex-wrap: wrap;
-  padding: 10px;
-  background: rgba(243, 249, 251, 0.95);
-  border-bottom: 1px solid var(--border);
-}
-
-.top-nav a {
-  text-decoration: none;
-  background: #ffffff;
-  color: var(--primary-dark);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-weight: bold;
-  box-shadow: var(--shadow);
-}
-
-.menu-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-  margin-top: 18px;
-}
-
-.menu-card {
-  display: block;
-  text-decoration: none;
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 26px 20px;
-  box-shadow: var(--shadow);
-  color: var(--text-main);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.menu-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 22px rgba(47, 111, 134, 0.18);
-}
-
-.menu-icon {
-  font-size: 42px;
-  margin-bottom: 12px;
-}
-
-.menu-title {
-  font-size: 24px;
-  font-weight: 900;
-  color: var(--primary-dark);
-  margin-bottom: 8px;
-}
-
-.menu-desc {
-  font-size: 15px;
-  color: var(--text-sub);
-  line-height: 1.6;
-}
-
-.preview-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  background: #ffffff;
-  border-radius: 14px;
-  overflow: hidden;
-}
-
-.preview-table th,
-.preview-table td {
-  border-bottom: 1px solid var(--border);
-  padding: 10px 12px;
-  font-size: 14px;
-  text-align: left;
-}
-
-.preview-table th {
-  background: #eaf6fb;
-  color: var(--primary-dark);
-  font-weight: 900;
-}
-
-.preview-table tr:last-child td {
-  border-bottom: none;
-}
-
-/* =========================
-   社員管理・社員マスター
-========================= */
-.employee-add-toggle-btn,
-.admin-action-btn,
-.master-maintain-btn {
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.employee-add-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 12px;
-  background: #eef5ff;
-  color: #2f5fa7;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.employee-add-toggle-btn:hover {
-  background: #dfeeff;
-  transform: translateY(-1px);
-}
-
-.employee-form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.employee-form-grid .full-width {
-  grid-column: 1 / -1;
-}
-
-.employee-form-grid .field {
-  background: #f8fcfe;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 14px;
-}
-
-.employee-form-grid .field label {
-  color: var(--primary-dark);
-}
-
-.employee-form-grid input,
-.employee-form-grid select,
-.employee-form-grid textarea {
-  font-size: 18px;
-}
-
-.admin-employee-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.admin-employee-row.retired {
-  opacity: 0.55;
-}
-
-.admin-employee-row + .admin-employee-row {
-  border-top: 1px solid rgba(210, 228, 234, 0.75);
-}
-
-.admin-employee-name,
-.admin-employee-name-link {
-  font-size: 28px;
-  font-weight: 900;
-  color: var(--primary-dark);
-  letter-spacing: 0.02em;
-}
-
-.admin-employee-name-link {
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-}
-
-.admin-employee-name-link:hover {
-  text-decoration: underline;
-}
-
-.admin-employee-meta {
-  margin-top: 8px;
-  font-size: 15px;
-  color: var(--text-main);
-  font-weight: 600;
-  line-height: 1.6;
-}
-
-.admin-employee-sub {
-  display: none;
-}
-
-.admin-action-btn {
-  border: none;
-  border-radius: 14px;
-  padding: 12px 20px;
-  min-width: 100px;
-  font-size: 16px;
-  font-weight: bold;
-  background: #6fb7d6;
-  color: #ffffff;
-  box-shadow: var(--shadow);
-}
-
-.admin-action-btn.retire-btn {
-  background: var(--accent-red);
-}
-
-.admin-action-btn.modal-cancel-btn {
-  background: #9bb8c7;
-}
-
-.admin-action-btn:hover {
-  opacity: 0.9;
-}
-
-.master-maintain-card {
-  margin: 28px auto 0;
-  padding: 22px 24px;
-  max-width: 720px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
-  border: 1px solid #d6e7ff;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-}
-
-.master-maintain-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #2c4d7a;
-}
-
-.master-maintain-subtitle {
-  font-size: 14px;
-  color: #5f6f82;
-  line-height: 1.7;
-}
-
-.master-maintain-btn {
-  margin-top: 4px;
-  padding: 13px 24px;
-  border: none;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #4f8cff, #6aa7ff);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.master-maintain-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(79,140,255,0.25);
-}
-
-/* =========================
-   モーダル
-========================= */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: rgba(38, 50, 56, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.modal-card {
-  width: min(980px, 96vw);
-  max-height: 90vh;
-  overflow-y: auto;
-  background: #ffffff;
-  border-radius: 22px;
-  border: 1px solid var(--border);
-  box-shadow: 0 18px 50px rgba(47, 111, 134, 0.28);
-  padding: 22px;
-}
-
-.retire-modal-card {
-  width: min(560px, 94vw);
-}
-
-.modal-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.modal-title {
-  font-size: 28px;
-  font-weight: 900;
-  color: var(--primary-dark);
-}
-
-.modal-subtitle {
-  margin-top: 4px;
-  font-size: 14px;
-  color: var(--text-sub);
-  font-weight: 700;
-}
-
-.modal-close-btn {
-  border: none;
-  border-radius: 999px;
-  width: 42px;
-  height: 42px;
-  font-size: 28px;
-  line-height: 1;
-  font-weight: bold;
-  color: #ffffff;
-  background: var(--accent-blue);
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 18px;
-}
-
-/* =========================
-   ログ
-========================= */
-.log-card {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-left: 8px solid #9bb8c7;
-  border-radius: 16px;
-  padding: 16px;
-  margin-bottom: 12px;
-  box-shadow: var(--shadow);
-}
-
-.log-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.log-badge {
-  display: inline-block;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 900;
-  background: #eaf6fb;
-  color: var(--primary-dark);
-}
-
-.log-date {
-  font-size: 13px;
-  color: var(--text-sub);
-  font-weight: bold;
-}
-
-.log-main {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-main);
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-
-.log-sub {
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--text-sub);
-}
-
-.log-submit {
-  border-left-color: #6fb7d6;
-}
-
-.log-approve,
-.log-employee-add {
-  border-left-color: #72c7a0;
-}
-
-.log-reject,
-.log-employee-retire {
-  border-left-color: var(--accent-red);
-}
-
-.log-employee-update,
-.log-employee-maintain {
-  border-left-color: #6fb7d6;
-}
-
-/* =========================
-   PC・タブレット横置き
-========================= */
-@media (min-width: 1200px) {
-  .app-shell {
-    max-width: 1360px;
-  }
-
-  #requestScreen .tablet-request-layout {
-    grid-template-columns: minmax(360px, 0.8fr) minmax(0, 1.35fr);
-  }
-}
-
-@media (min-width: 1001px) and (max-width: 1199px) {
-  .app-shell {
-    max-width: 1180px;
-    padding: 8px 14px 120px;
-  }
-
-  .app-header {
-    padding: 12px 16px;
-    margin-bottom: 10px;
-  }
-
-  .app-title {
-    font-size: 28px;
-  }
-
-  .app-subtitle {
-    font-size: 14px;
-  }
-
-  #requestScreen .screen-card {
-    padding: 12px 12px 120px;
-  }
-
-  #requestScreen .tablet-request-layout {
-    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.8fr);
-    gap: 12px;
-  }
-
-  .request-topbar {
-    margin-bottom: 10px;
-    gap: 10px;
-  }
-
-  .back-btn {
-    min-height: 48px;
-    min-width: 110px;
-    font-size: 18px;
-  }
-
-  .selected-employee-box {
-    padding: 8px 12px;
-  }
-
-  .selected-employee-label {
-    display: none;
-  }
-
-  .selected-employee-name {
-    font-size: 24px;
-  }
-
-  .selected-fiscal-year {
-    font-size: 11px;
-  }
-
-  .request-section {
-    margin-top: 10px;
-    padding: 10px;
-  }
-
-  .request-section-title {
-    font-size: 18px;
-    margin-bottom: 8px;
-  }
-
-  .calendar-ui-card {
-    padding: 10px;
-  }
-
-  .calendar-ui-header {
-    margin-bottom: 6px;
-  }
-
-  .calendar-nav-btn {
-    width: 42px;
-    height: 42px;
-    font-size: 28px;
-  }
-
-  .calendar-month-label {
-    font-size: 22px;
-  }
-
-  .calendar-help-text,
-  .calendar-legend {
-    display: none;
-  }
-
-  .calendar-week-row,
-  .request-calendar-grid {
-    gap: 5px;
-  }
-
-  .calendar-day {
-    min-height: 60px;
-    border-radius: 10px;
-    gap: 2px;
-  }
-
-  .calendar-day-number {
-    font-size: 21px;
-  }
-
-  .calendar-day-label {
-    font-size: 9px;
-  }
-
-  .tablet-type-grid {
-    gap: 8px;
-  }
-
-  .tablet-type-grid .type-btn {
-    min-height: 56px;
-    font-size: 20px;
-  }
-
-  .field label {
-    font-size: 14px;
-  }
-
-  .field select,
-  .field textarea,
-  .field input {
-    font-size: 17px;
-    padding: 10px 12px;
-  }
-
-  .submit-btn {
-    min-height: 64px;
-    font-size: 24px;
-  }
-
-  .submit-area {
-    margin-top: 16px;
-    padding-bottom: 120px;
-  }
-
-  .history-section {
-    margin-top: 10px;
-    max-height: 170px;
-    overflow-y: auto;
-  }
-
-  .history-row {
-    padding: 8px 10px;
-    font-size: 13px;
-  }
-
-  .history-title {
-    font-size: 16px;
-  }
-
-  .history-subtitle {
-    font-size: 12px;
-  }
-}
-
-/* =========================
-   タブレット縦・スマホ
+   タブレット
 ========================= */
 @media (max-width: 1000px) {
+
   .tablet-request-layout {
     grid-template-columns: 1fr;
   }
@@ -3516,614 +749,76 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .request-topbar {
-    flex-direction: column;
-  }
-
   .multi-day-grid {
     grid-template-columns: 1fr;
-  }
-
-  .submit-btn {
-    width: 100%;
-  }
-}
-
-@media (max-width: 900px) {
-  .kana-tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .employee-grid {
-    grid-template-columns: 1fr;
-    grid-auto-rows: 104px;
-  }
-
-  .employee-btn {
-    height: 104px;
-    padding: 10px 12px;
-  }
-
-  .employee-name {
-    font-size: 26px;
-  }
-
-  .employee-right {
-    width: 86px;
-    min-width: 86px;
-    max-width: 86px;
-  }
-
-  .employee-days {
-    font-size: 14px;
-  }
-
-  .employee-days-sub {
-    font-size: 11px;
-  }
-
-  .selected-employee-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .selected-employee-mini-info {
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    align-items: flex-start;
-  }
-
-  .mini-info-line,
-  .mini-five-wrap,
-  .mini-five-message {
-    justify-content: flex-start;
-    text-align: left;
-    width: auto;
-  }
-
-  .menu-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .employee-form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-employee-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .modal-overlay {
-    align-items: flex-start;
-    padding: 14px;
-  }
-
-  .modal-card {
-    width: 100%;
-    max-height: 94vh;
-    padding: 16px;
-  }
-
-  .modal-title {
-    font-size: 24px;
-  }
-
-  .modal-actions {
-    flex-direction: column;
-  }
-
-  .history-row {
-    grid-template-columns: 1fr 0.8fr;
-    font-size: 13px;
-  }
-
-  .history-status {
-    text-align: left;
-  }
-}
-
-@media (max-width: 700px) {
-  .app-shell {
-    padding: 12px 10px 120px;
-  }
-
-  .calendar-ui-card {
-    padding: 12px;
-  }
-
-  .calendar-week-row,
-  .request-calendar-grid {
-    gap: 5px;
-  }
-
-  .calendar-day {
-    min-height: 58px;
-    border-radius: 11px;
-  }
-
-  .calendar-day-number {
-    font-size: 18px;
-  }
-
-  .calendar-day-label {
-    font-size: 10px;
-  }
-
-  .calendar-month-label {
-    font-size: 22px;
   }
 }
 
 /* =========================
-   スマホ個人ページ用
-   追加CSS
-========================= */
-.personal-page-notice {
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: 999px;
-  background: #fff7d6;
-  border: 1px solid #f0d98a;
-  color: #7a5a00;
-  font-size: 14px;
-  font-weight: 900;
-  text-align: center;
-}
-
-/* 個人QRページでは社員選択を隠す */
-body.personal-page-mode #employeeScreen {
-  display: none !important;
-}
-
-body.personal-page-mode #requestScreen {
-  display: block !important;
-}
-
-/* スマホ全体調整 */
-@media (max-width: 700px) {
-  body {
-    background: #f3f9fb;
-  }
-
-  .app-shell {
-    padding: 8px 8px 96px;
-  }
-
-  .app-header {
-    padding: 14px 12px;
-    margin-bottom: 10px;
-    border-radius: 18px;
-  }
-
-  .app-title {
-    font-size: 26px;
-  }
-
-  .app-subtitle {
-    font-size: 13px;
-  }
-
-  .screen-card {
-    padding: 10px;
-    border-radius: 18px;
-  }
-
-  #requestScreen .screen-card {
-    padding: 10px 10px 96px;
-  }
-
-  .request-topbar {
-    gap: 10px;
-    margin-bottom: 10px;
-  }
-
-  .selected-employee-box {
-    padding: 12px;
-    border-radius: 16px;
-  }
-
-  .selected-employee-label {
-    font-size: 12px;
-  }
-
-  .selected-employee-name {
-    font-size: 25px;
-  }
-
-  .selected-fiscal-year {
-    font-size: 12px;
-  }
-
-  .selected-employee-header {
-    gap: 10px;
-  }
-
-  .selected-employee-mini-info {
-    gap: 6px;
-  }
-
-  .mini-info-value {
-    font-size: 18px;
-  }
-
-  .mini-five-bar {
-    width: 88px;
-    height: 9px;
-  }
-
-  .mini-five-count,
-  .mini-five-message {
-    font-size: 13px;
-  }
-
-  .tablet-request-layout {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  /* スマホではカレンダーを先に表示 */
-  .tablet-calendar-column {
-    order: 1;
-  }
-
-  .tablet-side-column {
-    order: 2;
-    padding-bottom: 0;
-  }
-
-  .request-section {
-    margin-top: 12px;
-    padding: 12px;
-    border-radius: 16px;
-  }
-
-  .request-section-title {
-    font-size: 20px;
-    margin-bottom: 10px;
-  }
-
-  .tablet-type-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-  }
-
-  .tablet-type-grid .type-btn {
-    min-height: 62px;
-    font-size: 19px;
-    border-radius: 16px;
-  }
-
-  .calendar-ui-card {
-    padding: 10px;
-    border-radius: 18px;
-  }
-
-  .calendar-ui-header {
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .calendar-nav-btn {
-    width: 44px;
-    height: 44px;
-    font-size: 28px;
-  }
-
-  .calendar-month-label {
-    font-size: 21px;
-  }
-
-  .calendar-help-text {
-    font-size: 11px;
-  }
-
-  .calendar-legend {
-    gap: 6px 10px;
-    font-size: 11px;
-    margin: 8px 0 10px;
-  }
-
-  .calendar-week-row,
-  .request-calendar-grid {
-    gap: 4px;
-  }
-
-  .calendar-week-row div {
-    font-size: 12px;
-  }
-
-  .calendar-day {
-    min-height: 52px;
-    border-radius: 10px;
-    gap: 1px;
-    padding: 2px;
-  }
-
-  .calendar-day-number {
-    font-size: 17px;
-  }
-
-  .calendar-day-label {
-    font-size: 8px;
-  }
-
-  .calendar-selected-status {
-    font-size: 13px;
-    padding: 10px;
-    margin-bottom: 10px;
-  }
-
-  .field label {
-    font-size: 15px;
-  }
-
-  .field input,
-  .field select,
-  .field textarea {
-    font-size: 18px;
-    padding: 12px;
-    border-radius: 13px;
-  }
-
-  .multi-day-grid {
-    gap: 10px;
-  }
-
-  .submit-area {
-    margin-top: 16px;
-    padding-bottom: 0;
-  }
-
-  .submit-btn {
-    min-height: 68px;
-    font-size: 24px;
-    border-radius: 18px;
-  }
-
-  .history-toggle-btn {
-    width: 100%;
-    padding: 12px;
-    font-size: 15px;
-  }
-
-  .history-section {
-    padding: 10px;
-  }
-
-  .history-title {
-    font-size: 18px;
-  }
-
-  .history-subtitle {
-    font-size: 12px;
-  }
-
-  .history-row {
-    grid-template-columns: 1fr 0.8fr;
-    gap: 6px;
-    padding: 10px;
-    font-size: 12px;
-  }
-}
-
-/* さらに小さいスマホ用 */
-@media (max-width: 420px) {
-  .app-title {
-    font-size: 24px;
-  }
-
-  .selected-employee-name {
-    font-size: 23px;
-  }
-
-  .request-section-title {
-    font-size: 18px;
-  }
-
-  .tablet-type-grid .type-btn {
-    min-height: 58px;
-    font-size: 17px;
-  }
-
-  .calendar-day {
-    min-height: 47px;
-  }
-
-  .calendar-day-number {
-    font-size: 16px;
-  }
-
-  .calendar-day-label {
-    display: none;
-  }
-
-  .calendar-legend {
-    display: none;
-  }
-
-  .submit-btn {
-    font-size: 22px;
-  }
-}
-
-/* =========================
-   スマホ個人ページ 最終調整
+   スマホ
 ========================= */
 @media (max-width: 700px) {
 
-  html,
-  body {
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
-  }
-
-  body {
-    margin: 0;
-  }
-
   .app-shell {
-    width: 100%;
     max-width: 430px;
-    margin: 0 auto;
     padding: 8px 10px 80px;
-    overflow-x: hidden;
   }
 
-  .screen-card,
-  #requestScreen .screen-card {
-    width: 100%;
-    max-width: 100%;
-    margin: 0 auto;
+  .screen-card {
     padding: 10px 10px 80px;
-    overflow-x: hidden;
   }
 
-  .request-topbar,
-  .tablet-request-layout,
-  .tablet-side-column,
-  .tablet-calendar-column,
-  .request-section,
-  .calendar-ui-card,
-  .selected-employee-box,
-  .submit-area {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    margin-left: auto;
-    margin-right: auto;
+  .app-title {
+    font-size: 26px;
+  }
+
+  .app-subtitle {
+    font-size: 13px;
+  }
+
+  .kana-tabs {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .employee-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-name {
+    font-size: 24px;
   }
 
   .request-topbar {
-    display: block;
-    margin-bottom: 12px;
+    flex-direction: column;
+    gap: 10px;
   }
 
-  .selected-employee-box {
-    padding: 12px;
-  }
-
-  /* =========================
-     名前 + 残日数 横並び
-  ========================= */
-  .selected-employee-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
+  .selected-employee-top-cards {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) 132px;
+    gap: 8px;
   }
 
   .selected-employee-name {
-    flex: 1;
-    min-width: 0;
-    font-size: 24px;
-    line-height: 1.2;
-  }
-
-  .selected-fiscal-year {
-    font-size: 11px;
-    margin-top: 4px;
-  }
-
-  .selected-employee-mini-info {
-    width: auto;
-    min-width: 92px;
-    max-width: 120px;
-
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-
-    margin-top: 0;
-    gap: 4px;
-
-    flex-shrink: 0;
-  }
-
-  .mini-info-line {
-    justify-content: flex-end;
-    width: 100%;
-  }
-
-  .mini-five-wrap {
-    justify-content: flex-end;
-    width: 100%;
-  }
-
-  .mini-five-message {
-    text-align: right;
-    width: 100%;
-  }
-
-  .mini-info-value {
-    font-size: 18px;
+    font-size: 22px;
   }
 
   .mini-five-bar {
-    width: 72px;
-    height: 8px;
+    width: 64px;
   }
 
-  .mini-five-count {
-    font-size: 12px;
-  }
-
-  /* =========================
-     レイアウト順
-  ========================= */
   .tablet-request-layout {
-    display: flex !important;
+    display: flex;
     flex-direction: column;
     gap: 12px;
   }
 
-  .tablet-side-column {
-    display: contents;
-    padding-bottom: 0;
-  }
-
   .tablet-calendar-column {
-    display: contents;
-  }
-
-  /* 1. 申請区分 */
-  .tablet-side-column .request-section:nth-of-type(1) {
     order: 1;
   }
 
-  /* 2. カレンダー */
-  .tablet-calendar-column .calendar-main-section {
+  .tablet-side-column {
     order: 2;
-  }
-
-  /* 3. 理由 */
-  #multiDayArea {
-    order: 3;
-  }
-
-  .tablet-side-column .request-section:nth-of-type(3) {
-    order: 4;
-  }
-
-  /* 4. ボタン */
-  .submit-area {
-    order: 5;
-    padding-bottom: 0;
-    margin-top: 4px;
-  }
-
-  .request-section {
-    padding: 12px;
-    margin-top: 0;
-    border-radius: 18px;
-  }
-
-  .request-section-title {
-    font-size: 19px;
-    margin-bottom: 10px;
   }
 
   .tablet-type-grid {
@@ -4131,9 +826,9 @@ body.personal-page-mode #requestScreen {
     gap: 10px;
   }
 
-  .tablet-type-grid .type-btn {
+  .type-btn {
     min-height: 58px;
-    font-size: 17px;
+    font-size: 18px;
   }
 
   .calendar-ui-card {
@@ -4146,7 +841,6 @@ body.personal-page-mode #requestScreen {
   }
 
   .calendar-day {
-    min-width: 0;
     min-height: 44px;
     border-radius: 9px;
   }
@@ -4163,52 +857,68 @@ body.personal-page-mode #requestScreen {
   .field input,
   .field select,
   .field textarea {
-    max-width: 100%;
     font-size: 17px;
   }
 
   .submit-btn {
-    width: 100%;
     min-height: 64px;
     font-size: 22px;
   }
+
+  .history-row {
+    grid-template-columns: 1fr 0.8fr;
+    font-size: 12px;
+  }
 }
 
-.selected-employee-top-cards {
-  display: flex;
-  gap: 10px;
-  align-items: stretch;
+/* =========================
+   メニュー画面
+========================= */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 18px;
 }
 
-.selected-employee-name-card {
-  flex: 1;
+.menu-card {
+  display: block;
+  text-decoration: none;
   background: #ffffff;
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 12px;
+  border-radius: 20px;
+  padding: 26px 20px;
+  box-shadow: var(--shadow);
+  color: var(--text-main);
 }
 
-.selected-employee-balance-card {
-  width: 120px;
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 12px;
-
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+.menu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(47, 111, 134, 0.18);
 }
 
-.selected-employee-name {
+.menu-icon {
+  font-size: 42px;
+  margin-bottom: 12px;
+}
+
+.menu-title {
   font-size: 24px;
-  font-weight: bold;
+  font-weight: 900;
+  color: var(--primary-dark);
+  margin-bottom: 8px;
 }
 
-.selected-fiscal-year {
-  margin-top: 4px;
-  font-size: 12px;
+.menu-desc {
+  font-size: 15px;
   color: var(--text-sub);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .menu-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 </style>
