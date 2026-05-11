@@ -1532,12 +1532,10 @@ body {
 /* =========================
    タブレット縦・スマホ
 ========================= */
-@media (min-width: 1001px) and (max-width: 1199px) {
-  #requestScreen .tablet-request-layout {
-    grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.35fr);
-    gap: 12px;
+@media (max-width: 1000px) {
+  .tablet-request-layout {
+    grid-template-columns: 1fr;
   }
-}
 
   .tablet-type-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -1682,4 +1680,5 @@ body {
     font-size: 22px;
   }
 }
+
 </style>
