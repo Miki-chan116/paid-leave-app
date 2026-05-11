@@ -450,6 +450,28 @@ function isDateInSelectedRange(dateKey) {
   return dateKey >= selectedStartDateKey && dateKey <= selectedEndDateKey;
 }
 
+function countSelectableLeaveDays(startDateKey, endDateKey) {
+  if (!startDateKey || !endDateKey) return 0;
+
+  const start = new Date(startDateKey + "T00:00:00");
+  const end = new Date(endDateKey + "T00:00:00");
+
+  let count = 0;
+  let cursor = new Date(start);
+
+  while (cursor <= end) {
+    const type = getCalendarDayType(cursor);
+
+    if (type === "workday") {
+      count++;
+    }
+
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return count;
+}
+
 function updateCalendarStatus() {
   const box = document.getElementById("calendarStatus");
   if (!box) return;
