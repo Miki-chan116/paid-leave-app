@@ -1974,7 +1974,6 @@ body.personal-page-mode #requestScreen {
   }
 }
 
-<style>
 /* =========================
    基本設定
 ========================= */
@@ -3948,6 +3947,268 @@ body.personal-page-mode #requestScreen {
   .submit-btn {
     font-size: 22px;
   }
+}
+
+/* =========================
+   スマホ個人ページ 最終調整
+========================= */
+@media (max-width: 700px) {
+
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  .app-shell {
+    width: 100%;
+    max-width: 430px;
+    margin: 0 auto;
+    padding: 8px 10px 80px;
+    overflow-x: hidden;
+  }
+
+  .screen-card,
+  #requestScreen .screen-card {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 10px 10px 80px;
+    overflow-x: hidden;
+  }
+
+  .request-topbar,
+  .tablet-request-layout,
+  .tablet-side-column,
+  .tablet-calendar-column,
+  .request-section,
+  .calendar-ui-card,
+  .selected-employee-box,
+  .submit-area {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .request-topbar {
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .selected-employee-box {
+    padding: 12px;
+  }
+
+  /* =========================
+     名前 + 残日数 横並び
+  ========================= */
+  .selected-employee-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .selected-employee-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 24px;
+    line-height: 1.2;
+  }
+
+  .selected-fiscal-year {
+    font-size: 11px;
+    margin-top: 4px;
+  }
+
+  .selected-employee-mini-info {
+    width: auto;
+    min-width: 92px;
+    max-width: 120px;
+
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+
+    margin-top: 0;
+    gap: 4px;
+
+    flex-shrink: 0;
+  }
+
+  .mini-info-line {
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .mini-five-wrap {
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .mini-five-message {
+    text-align: right;
+    width: 100%;
+  }
+
+  .mini-info-value {
+    font-size: 18px;
+  }
+
+  .mini-five-bar {
+    width: 72px;
+    height: 8px;
+  }
+
+  .mini-five-count {
+    font-size: 12px;
+  }
+
+  /* =========================
+     レイアウト順
+  ========================= */
+  .tablet-request-layout {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tablet-side-column {
+    display: contents;
+    padding-bottom: 0;
+  }
+
+  .tablet-calendar-column {
+    display: contents;
+  }
+
+  /* 1. 申請区分 */
+  .tablet-side-column .request-section:nth-of-type(1) {
+    order: 1;
+  }
+
+  /* 2. カレンダー */
+  .tablet-calendar-column .calendar-main-section {
+    order: 2;
+  }
+
+  /* 3. 理由 */
+  #multiDayArea {
+    order: 3;
+  }
+
+  .tablet-side-column .request-section:nth-of-type(3) {
+    order: 4;
+  }
+
+  /* 4. ボタン */
+  .submit-area {
+    order: 5;
+    padding-bottom: 0;
+    margin-top: 4px;
+  }
+
+  .request-section {
+    padding: 12px;
+    margin-top: 0;
+    border-radius: 18px;
+  }
+
+  .request-section-title {
+    font-size: 19px;
+    margin-bottom: 10px;
+  }
+
+  .tablet-type-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .tablet-type-grid .type-btn {
+    min-height: 58px;
+    font-size: 17px;
+  }
+
+  .calendar-ui-card {
+    padding: 8px;
+  }
+
+  .calendar-week-row,
+  .request-calendar-grid {
+    gap: 3px;
+  }
+
+  .calendar-day {
+    min-width: 0;
+    min-height: 44px;
+    border-radius: 9px;
+  }
+
+  .calendar-day-number {
+    font-size: 16px;
+  }
+
+  .calendar-day-label,
+  .calendar-legend {
+    display: none;
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    max-width: 100%;
+    font-size: 17px;
+  }
+
+  .submit-btn {
+    width: 100%;
+    min-height: 64px;
+    font-size: 22px;
+  }
+}
+
+.selected-employee-top-cards {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.selected-employee-name-card {
+  flex: 1;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.selected-employee-balance-card {
+  width: 120px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.selected-employee-name {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.selected-fiscal-year {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-sub);
 }
 
 </style>
