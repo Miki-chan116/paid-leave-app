@@ -122,7 +122,7 @@
           <!-- 左側：申請操作 -->
           <div class="tablet-side-column">
 
-            <div class="request-section">
+            <div class="request-section request-type-section">
               <div class="request-section-title">1. 申請区分</div>
 
               <div class="request-type-grid tablet-type-grid">
@@ -134,7 +134,7 @@
             </div>
 
             <div id="multiDayArea"
-                 class="request-section"
+                 class="request-section multi-day-section"
                  style="display:none;">
 
               <div class="request-section-title">複数日申請</div>
@@ -156,7 +156,7 @@
               </div>
             </div>
 
-            <div class="request-section">
+            <div class="request-section reason-section">
               <div class="request-section-title">3. 理由</div>
 
               <div class="field">
@@ -190,7 +190,7 @@
           <!-- 右側：カレンダー -->
           <div class="tablet-calendar-column">
 
-            <div class="request-section calendar-main-section">
+            <div class="request-section calendar-main-section calendar-section">
 
               <div class="request-section-title">2. 希望日を選択</div>
 
@@ -219,13 +219,6 @@
                           onclick="moveCalendarMonth(1)">
                     ›
                   </button>
-                </div>
-
-                <div class="calendar-legend">
-                  <span><i class="legend-dot workday"></i>営業日</span>
-                  <span><i class="legend-dot holiday"></i>休日</span>
-                  <span><i class="legend-dot no-leave"></i>有給NG</span>
-                  <span><i class="legend-dot selected"></i>選択中</span>
                 </div>
 
                 <div class="calendar-week-row">

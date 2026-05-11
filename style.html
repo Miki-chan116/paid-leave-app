@@ -813,14 +813,6 @@ body.personal-page-mode #requestScreen {
     gap: 12px;
   }
 
-  .tablet-calendar-column {
-    order: 1;
-  }
-
-  .tablet-side-column {
-    order: 2;
-  }
-
   .tablet-type-grid {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
@@ -864,6 +856,128 @@ body.personal-page-mode #requestScreen {
     min-height: 64px;
     font-size: 22px;
   }
+
+  @media (max-width: 700px) {
+
+  .app-shell {
+    width: 100%;
+    max-width: 430px;
+    margin: 0 auto;
+    padding: 8px 10px 80px;
+  }
+
+  .screen-card {
+    width: 100%;
+    max-width: 410px;
+    margin: 0 auto;
+    padding: 10px;
+  }
+
+  .request-topbar {
+    width: 100%;
+    max-width: 390px;
+    margin: 0 auto 12px;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .selected-employee-top-cards {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) 132px;
+    gap: 8px;
+  }
+
+  .back-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .tablet-request-layout {
+    width: 100%;
+    max-width: 390px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tablet-side-column,
+  .tablet-calendar-column {
+    display: contents;
+  }
+
+  .request-type-section {
+    order: 1;
+  }
+
+  .multi-day-section {
+    order: 2;
+  }
+
+  .calendar-section {
+    order: 3;
+  }
+
+  .reason-section {
+    order: 4;
+  }
+
+  .submit-area {
+    order: 5;
+    width: 100%;
+  }
+
+  .request-section {
+    width: 100%;
+    margin-top: 0;
+  }
+
+  .tablet-type-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .type-btn {
+    min-height: 54px;
+    font-size: 13px;
+    padding: 6px 3px;
+    border-radius: 12px;
+  }
+
+  .calendar-ui-card {
+    width: 100%;
+    padding: 8px;
+  }
+
+  .calendar-month-label {
+    font-size: 22px;
+  }
+
+  .calendar-nav-btn {
+    width: 46px;
+    height: 46px;
+    font-size: 28px;
+  }
+
+  .calendar-week-row,
+  .request-calendar-grid {
+    gap: 3px;
+  }
+
+  .calendar-day {
+    min-height: 44px;
+    border-radius: 9px;
+  }
+
+  .calendar-day-number {
+    font-size: 16px;
+  }
+
+  .calendar-day-label,
+  .calendar-legend {
+    display: none;
+  }
+}
 
   .history-row {
     grid-template-columns: 1fr 0.8fr;
