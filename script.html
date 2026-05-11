@@ -10,18 +10,58 @@ let companyCalendarMap = {};
 let selectedStartDateKey = "";
 let selectedEndDateKey = "";
 
+function isPersonalPageMode() {
+  return typeof INITIAL_EMPLOYEE_ID !== "undefined" && INITIAL_EMPLOYEE_ID;
+}
+
+function setupPersonalPageMode() {
+  if (!isPersonalPageMode()) return;
+
+  document.body.classList.add("personal-page-mode");
+
+  const notice = document.getElementById("personalPageNotice");
+  if (notice) {
+    notice.style.display = "block";
+  }
+
+  const backBtn = document.getElementById("backBtn");
+  if (backBtn) {
+    backBtn.style.display = "none";
+  }
+
+  const appSubtitle = document.getElementById("appSubtitle");
+  if (appSubtitle) {
+    appSubtitle.textContent = "自分専用ページから申請できます";
+  }
+}
+
 /* =========================
    初期化
 ========================= */
 function initPage() {
+  setupPersonalPageMode();
+
   google.script.run
     .withSuccessHandler(data => {
       employees = data || [];
       currentGroup = getFirstAvailableGroup();
+
       render();
       updateGroupTabs();
       initReasonOptions();
       loadCompanyCalendarForRequest();
+
+      if (isPersonalPageMode()) {
+        const targetEmployee = employees.find(emp => {
+          return String(emp.employee_id || "").trim() === String(INITIAL_EMPLOYEE_ID || "").trim();
+        });
+
+        if (targetEmployee) {
+          selectEmployee(targetEmployee);
+        } else {
+          alert("専用ページの社員情報が見つかりません。事務所へ確認してください。");
+        }
+      }
     })
     .withFailureHandler(err => {
       console.error(err);
@@ -29,8 +69,6 @@ function initPage() {
     })
     .getEmployeesForRequest();
 }
-
-window.addEventListener("DOMContentLoaded", initPage);
 
 /* =========================
    会社カレンダー取得
@@ -262,6 +300,10 @@ function selectEmployee(emp) {
    戻る
 ========================= */
 function backToEmployeeList() {
+  if (isPersonalPageMode()) {
+    return;
+  }
+
   document.getElementById("requestScreen").classList.remove("active");
   document.getElementById("employeeScreen").classList.add("active");
 }
@@ -694,14 +736,62 @@ function submitRequest() {
         .getEmployeesForRequest();
 
       setTimeout(() => {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "申請する";
-          submitBtn.classList.remove("submitted");
-        }
 
-        backToEmployeeList();
-      }, 2500);
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "申請する";
+    submitBtn.classList.remove("submitted");
+  }
+
+  // 個人スマホページの場合
+  if (isPersonalPageMode()) {
+
+    currentRequestType = "";
+
+    // 区分ボタン解除
+    document.querySelectorAll(".type-btn").forEach(btn => {
+      btn.classList.remove("active");
+    });
+
+    // 複数日エリア閉じる
+    const multiDayArea = document.getElementById("multiDayArea");
+    if (multiDayArea) {
+      multiDayArea.style.display = "none";
+    }
+
+    // 日付リセット
+    resetSelectedDates();
+
+    // 理由リセット
+    const reasonType = document.getElementById("reasonType");
+    if (reasonType) {
+      reasonType.value = "";
+    }
+
+    // 詳細リセット
+    const reasonDetail = document.getElementById("reasonDetail");
+    if (reasonDetail) {
+      reasonDetail.value = "";
+    }
+
+    // 詳細欄閉じる
+    const reasonDetailWrap = document.getElementById("reasonDetailWrap");
+    if (reasonDetailWrap) {
+      reasonDetailWrap.style.display = "none";
+    }
+
+    updateHiddenDateInputs();
+    updateCalendarStatus();
+    renderRequestCalendar();
+
+  } else {
+
+    // 共用タブレット版
+    backToEmployeeList();
+
+  }
+
+}, 2500);
     })
     .withFailureHandler(err => {
       console.error("submitLeaveRequest error:", err);

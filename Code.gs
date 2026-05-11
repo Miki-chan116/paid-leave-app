@@ -74,6 +74,35 @@ function getAppTimeZone() {
    画面表示
 ========================= */
 function doGet(e) {
+  const p = e && e.parameter && e.parameter.p ? e.parameter.p : "";
+
+  if (p === "manifest") {
+    const manifest = {
+      name: "有給申請システム",
+      short_name: "有給申請",
+      start_url: ".",
+      display: "standalone",
+      background_color: "#f3f9fb",
+      theme_color: "#4f9fba",
+      icons: [
+        {
+          src: "ここにicon192.pngの画像URL",
+          sizes: "192x192",
+          type: "image/png"
+        },
+        {
+          src: "ここにicon512.pngの画像URL",
+          sizes: "512x512",
+          type: "image/png"
+        }
+      ]
+    };
+
+    return ContentService
+      .createTextOutput(JSON.stringify(manifest))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   const page = e && e.parameter && e.parameter.page ? e.parameter.page : "menu";
 
   return HtmlService.createTemplateFromFile(page).evaluate()

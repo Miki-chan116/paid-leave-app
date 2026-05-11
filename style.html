@@ -1681,4 +1681,297 @@ body {
   }
 }
 
+/* =========================
+   スマホ個人ページ用
+   追加CSS
+========================= */
+.personal-page-notice {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 999px;
+  background: #fff7d6;
+  border: 1px solid #f0d98a;
+  color: #7a5a00;
+  font-size: 14px;
+  font-weight: 900;
+  text-align: center;
+}
+
+/* 個人QRページでは社員選択を隠す */
+body.personal-page-mode #employeeScreen {
+  display: none !important;
+}
+
+body.personal-page-mode #requestScreen {
+  display: block !important;
+}
+
+/* スマホ全体調整 */
+@media (max-width: 700px) {
+  body {
+    background: #f3f9fb;
+  }
+
+  .app-shell {
+    padding: 8px 8px 96px;
+  }
+
+  .app-header {
+    padding: 14px 12px;
+    margin-bottom: 10px;
+    border-radius: 18px;
+  }
+
+  .app-title {
+    font-size: 26px;
+  }
+
+  .app-subtitle {
+    font-size: 13px;
+  }
+
+  .screen-card {
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  #requestScreen .screen-card {
+    padding: 10px 10px 96px;
+  }
+
+  .request-topbar {
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .selected-employee-box {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .selected-employee-label {
+    font-size: 12px;
+  }
+
+  .selected-employee-name {
+    font-size: 25px;
+  }
+
+  .selected-fiscal-year {
+    font-size: 12px;
+  }
+
+  .selected-employee-header {
+    gap: 10px;
+  }
+
+  .selected-employee-mini-info {
+    gap: 6px;
+  }
+
+  .mini-info-value {
+    font-size: 18px;
+  }
+
+  .mini-five-bar {
+    width: 88px;
+    height: 9px;
+  }
+
+  .mini-five-count,
+  .mini-five-message {
+    font-size: 13px;
+  }
+
+  .tablet-request-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* スマホではカレンダーを先に表示 */
+  .tablet-calendar-column {
+    order: 1;
+  }
+
+  .tablet-side-column {
+    order: 2;
+    padding-bottom: 0;
+  }
+
+  .request-section {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .request-section-title {
+    font-size: 20px;
+    margin-bottom: 10px;
+  }
+
+  .tablet-type-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .tablet-type-grid .type-btn {
+    min-height: 62px;
+    font-size: 19px;
+    border-radius: 16px;
+  }
+
+  .calendar-ui-card {
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .calendar-ui-header {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .calendar-nav-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 28px;
+  }
+
+  .calendar-month-label {
+    font-size: 21px;
+  }
+
+  .calendar-help-text {
+    font-size: 11px;
+  }
+
+  .calendar-legend {
+    gap: 6px 10px;
+    font-size: 11px;
+    margin: 8px 0 10px;
+  }
+
+  .calendar-week-row,
+  .request-calendar-grid {
+    gap: 4px;
+  }
+
+  .calendar-week-row div {
+    font-size: 12px;
+  }
+
+  .calendar-day {
+    min-height: 52px;
+    border-radius: 10px;
+    gap: 1px;
+    padding: 2px;
+  }
+
+  .calendar-day-number {
+    font-size: 17px;
+  }
+
+  .calendar-day-label {
+    font-size: 8px;
+  }
+
+  .calendar-selected-status {
+    font-size: 13px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+
+  .field label {
+    font-size: 15px;
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    font-size: 18px;
+    padding: 12px;
+    border-radius: 13px;
+  }
+
+  .multi-day-grid {
+    gap: 10px;
+  }
+
+  .submit-area {
+    margin-top: 16px;
+    padding-bottom: 0;
+  }
+
+  .submit-btn {
+    min-height: 68px;
+    font-size: 24px;
+    border-radius: 18px;
+  }
+
+  .history-toggle-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+  }
+
+  .history-section {
+    padding: 10px;
+  }
+
+  .history-title {
+    font-size: 18px;
+  }
+
+  .history-subtitle {
+    font-size: 12px;
+  }
+
+  .history-row {
+    grid-template-columns: 1fr 0.8fr;
+    gap: 6px;
+    padding: 10px;
+    font-size: 12px;
+  }
+}
+
+/* さらに小さいスマホ用 */
+@media (max-width: 420px) {
+  .app-title {
+    font-size: 24px;
+  }
+
+  .selected-employee-name {
+    font-size: 23px;
+  }
+
+  .request-section-title {
+    font-size: 18px;
+  }
+
+  .tablet-type-grid .type-btn {
+    min-height: 58px;
+    font-size: 17px;
+  }
+
+  .calendar-day {
+    min-height: 47px;
+  }
+
+  .calendar-day-number {
+    font-size: 16px;
+  }
+
+  .calendar-day-label {
+    display: none;
+  }
+
+  .calendar-legend {
+    display: none;
+  }
+
+  .submit-btn {
+    font-size: 22px;
+  }
+}
+
 </style>
