@@ -378,6 +378,13 @@ function selectCalendarDate(dateKey) {
     return;
   }
 
+  const date = new Date(dateKey + "T00:00:00");
+
+  if (date.getDay() === 0) {
+    alert("日曜日は有給申請できません");
+    return;
+  }
+
   const type = getCalendarDayTypeByKey(dateKey);
 
   if (type !== "workday") {
@@ -424,6 +431,10 @@ function getCalendarDayTypeByKey(dateKey) {
 }
 
 function getCalendarDayType(date) {
+  if (date.getDay() === 0) {
+    return "holiday";
+  }
+
   const dateKey = toDateKeyLocal(date);
   return getCalendarDayTypeByKey(dateKey);
 }

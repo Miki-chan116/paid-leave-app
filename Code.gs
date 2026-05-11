@@ -394,14 +394,19 @@ function getCompanyCalendarMap() {
 }
 
 function getCalendarTypeForDate(dateValue, calendarMap) {
-  const key = toDateKey(dateValue);
+  const date = parseLocalDate(dateValue);
+
+  if (date.getDay() === 0) {
+    return CALENDAR_TYPE.HOLIDAY;
+  }
+
+  const key = toDateKey(date);
 
   if (calendarMap && key in calendarMap) {
     return calendarMap[key];
   }
 
-  const date = parseLocalDate(dateValue);
-  return date.getDay() === 0 ? CALENDAR_TYPE.HOLIDAY : CALENDAR_TYPE.WORKDAY;
+  return CALENDAR_TYPE.WORKDAY;
 }
 
 function isLeaveAllowedDate(dateValue, calendarMap) {
