@@ -427,26 +427,36 @@ function validateLeaveRequestDates(startDateValue, endDateValue, halfDayValue) {
   const end = parseLocalDate(endDateValue);
   const normalizedHalfDay = norm(halfDayValue);
 
-  if (normalizedHalfDay) {
+  // 半休・1日申請は、その日が営業日でないとNG
+  if (normalizedHalfDay || toDateKey(start) === toDateKey(end)) {
     const type = getCalendarTypeForDate(start, calendarMap);
+
     if (type !== CALENDAR_TYPE.WORKDAY) {
       throw new Error(
         formatDateValue(start) + " は " + getCalendarLabel(type) + " のため有給申請できません"
       );
     }
+
     return;
   }
 
+  // 複数日申請は、日曜日・休日・有給NG日を飛ばしてOK
+  // ただし、期間内に1日も申請可能日がない場合はNG
   let cursor = new Date(start);
+  let allowedCount = 0;
 
   while (cursor <= end) {
     const type = getCalendarTypeForDate(cursor, calendarMap);
-    if (type !== CALENDAR_TYPE.WORKDAY) {
-      throw new Error(
-        formatDateValue(cursor) + " は " + getCalendarLabel(type) + " のため有給申請できません"
-      );
+
+    if (type === CALENDAR_TYPE.WORKDAY) {
+      allowedCount++;
     }
+
     cursor.setDate(cursor.getDate() + 1);
+  }
+
+  if (allowedCount === 0) {
+    throw new Error("選択した期間に有給申請できる日がありません");
   }
 }
 
