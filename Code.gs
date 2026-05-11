@@ -103,10 +103,20 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  const page = e && e.parameter && e.parameter.page ? e.parameter.page : "menu";
+  const page = e && e.parameter && e.parameter.page
+    ? e.parameter.page
+    : "menu";
 
-  return HtmlService.createTemplateFromFile(page).evaluate()
-    .setTitle("有給管理システム");
+  const template = HtmlService.createTemplateFromFile(page);
+
+  template.initialEmployeeId =
+    e && e.parameter && e.parameter.employee_id
+      ? String(e.parameter.employee_id).trim()
+      : "";
+
+  return template.evaluate()
+    .setTitle("有給管理システム")
+    .addMetaTag("viewport", "width=device-width, initial-scale=1");
 }
 
 /* =========================

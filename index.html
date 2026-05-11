@@ -16,8 +16,8 @@
 
   <!-- 個人QRページ用 -->
   <script>
-    const INITIAL_EMPLOYEE_ID = "<?= initialEmployeeId ?>";
-  </script>
+  const INITIAL_EMPLOYEE_ID = "<?!= typeof initialEmployeeId !== 'undefined' ? initialEmployeeId : '' ?>";
+  </script> 
 
   <div class="app-shell">
 
