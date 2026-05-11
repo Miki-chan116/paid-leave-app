@@ -367,6 +367,28 @@ function formatDateLabel(dateKey) {
   return `${y}/${m}/${d}`;
 }
 
+function countSelectableLeaveDays(startDateKey, endDateKey) {
+  if (!startDateKey || !endDateKey) return 0;
+
+  const start = new Date(startDateKey + "T00:00:00");
+  const end = new Date(endDateKey + "T00:00:00");
+
+  let count = 0;
+  let cursor = new Date(start);
+
+  while (cursor <= end) {
+    const type = getCalendarDayType(cursor);
+
+    if (type === "workday") {
+      count++;
+    }
+
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return count;
+}
+
 function moveCalendarMonth(diff) {
   calendarDisplayDate.setMonth(calendarDisplayDate.getMonth() + diff);
   renderRequestCalendar();
@@ -450,28 +472,6 @@ function isDateInSelectedRange(dateKey) {
   return dateKey >= selectedStartDateKey && dateKey <= selectedEndDateKey;
 }
 
-function countSelectableLeaveDays(startDateKey, endDateKey) {
-  if (!startDateKey || !endDateKey) return 0;
-
-  const start = new Date(startDateKey + "T00:00:00");
-  const end = new Date(endDateKey + "T00:00:00");
-
-  let count = 0;
-  let cursor = new Date(start);
-
-  while (cursor <= end) {
-    const type = getCalendarDayType(cursor);
-
-    if (type === "workday") {
-      count++;
-    }
-
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  return count;
-}
-
 function updateCalendarStatus() {
   const box = document.getElementById("calendarStatus");
   if (!box) return;
@@ -494,8 +494,11 @@ function updateCalendarStatus() {
       return;
     }
 
+    const leaveDays = countSelectableLeaveDays(selectedStartDateKey, selectedEndDateKey);
+
     box.classList.add("ok");
-    box.textContent = `${formatDateLabel(selectedStartDateKey)} 〜 ${formatDateLabel(selectedEndDateKey)} を選択中`;
+    box.textContent =
+     `${formatDateLabel(selectedStartDateKey)} 〜 ${formatDateLabel(selectedEndDateKey)}（${leaveDays}日間）選択中`;
     return;
   }
 
@@ -644,14 +647,14 @@ function submitRequest() {
   }
 
   if (statusBox) {
-    statusBox.className = "status-box ok";
+    statusBox.className = "calendar-selected-status ok";
     statusBox.textContent = "申請を送信しています...";
   }
 
   google.script.run
     .withSuccessHandler(() => {
       if (statusBox) {
-        statusBox.className = "status-box success";
+        statusBox.className = "calendar-selected-status success";
         statusBox.textContent = "送信完了！申請を受け付けました。";
       }
 
@@ -704,7 +707,7 @@ function submitRequest() {
       }
 
       if (statusBox) {
-        statusBox.className = "status-box error";
+        statusBox.className = "calendar-selected-status error";
         statusBox.textContent = message;
       }
 
