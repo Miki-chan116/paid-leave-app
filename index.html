@@ -13,15 +13,29 @@
 </head>
 
 <body>
+
+  <!-- 個人QRページ用 -->
+  <script>
+    const INITIAL_EMPLOYEE_ID = "<?= initialEmployeeId ?>";
+  </script>
+
   <div class="app-shell">
+
     <header class="app-header">
       <h1 id="appTitle" class="app-title">有給申請</h1>
-      <p id="appSubtitle" class="app-subtitle">名前を選んで申請してください</p>
+      <p id="appSubtitle" class="app-subtitle">
+        名前を選んで申請してください
+      </p>
     </header>
 
+    <!-- =========================
+         社員選択画面
+    ========================== -->
     <section id="employeeScreen" class="screen active">
+
       <div class="sticky-tabs-wrap">
         <div class="kana-tabs" id="kanaTabs">
+
           <button type="button" data-group="a" onclick="changeGroup('a')">あ行</button>
           <button type="button" data-group="k" onclick="changeGroup('k')">か行</button>
           <button type="button" data-group="s" onclick="changeGroup('s')">さ行</button>
@@ -32,133 +46,288 @@
           <button type="button" data-group="y" onclick="changeGroup('y')">や行</button>
           <button type="button" data-group="r" onclick="changeGroup('r')">ら行</button>
           <button type="button" data-group="w" onclick="changeGroup('w')">わ行</button>
-          <button type="button" data-group="trainee" onclick="changeGroup('trainee')">研修生</button>
+          <button type="button" data-group="trainee" onclick="changeGroup('trainee')">
+            研修生
+          </button>
+
         </div>
       </div>
 
       <div class="screen-card">
+
         <div class="group-header">
           <div>
             <div class="section-title" id="groupTitle">あ行</div>
-            <div class="section-subtitle">名前を押すと申請画面へ進みます</div>
+            <div class="section-subtitle">
+              名前を押すと申請画面へ進みます
+            </div>
           </div>
         </div>
 
         <div id="employeeSwipeArea" class="employee-grid"></div>
+
       </div>
     </section>
 
+    <!-- =========================
+         申請画面
+    ========================== -->
     <section id="requestScreen" class="screen">
+
       <div class="screen-card">
 
+        <!-- 上部 -->
         <div class="request-topbar">
+
           <div class="selected-employee-box">
-            <div class="selected-employee-label">選択中の社員</div>
+
+            <div class="selected-employee-label">
+              選択中の社員
+            </div>
 
             <div class="selected-employee-header">
+
               <div>
-                <div id="selectedEmployeeName" class="selected-employee-name"></div>
-                <div id="selectedFiscalYear" class="selected-fiscal-year"></div>
+                <div id="selectedEmployeeName"
+                     class="selected-employee-name"></div>
+
+                <div id="selectedFiscalYear"
+                     class="selected-fiscal-year"></div>
               </div>
 
               <div class="selected-employee-mini-info">
+
                 <div class="mini-info-line">
                   <span class="mini-info-label">残</span>
-                  <span id="selectedRemainingDays" class="mini-info-value">0日</span>
+                  <span id="selectedRemainingDays"
+                        class="mini-info-value">0日</span>
                 </div>
 
                 <div class="mini-five-wrap">
+
                   <span class="mini-info-label">5日</span>
+
                   <div class="mini-five-bar">
-                    <div id="fiveDayBarFill" class="mini-five-bar-fill"></div>
+                    <div id="fiveDayBarFill"
+                         class="mini-five-bar-fill"></div>
                   </div>
-                  <span id="fiveDayCount" class="mini-five-count">0/5</span>
+
+                  <span id="fiveDayCount"
+                        class="mini-five-count">0/5</span>
+
                 </div>
 
-                <div id="fiveDayMessage" class="mini-five-message">あと5日</div>
+                <div id="fiveDayMessage"
+                     class="mini-five-message">
+                  あと5日
+                </div>
+
               </div>
+
             </div>
+
           </div>
 
-          <button id="backBtn" class="back-btn" type="button" onclick="backToEmployeeList()">
+          <button id="backBtn"
+                  class="back-btn"
+                  type="button"
+                  onclick="backToEmployeeList()">
+
             ← 戻る
+
           </button>
+
         </div>
 
+        <!-- 本体 -->
         <div class="tablet-request-layout">
 
-          <!-- 左側：申請操作 -->
+          <!-- 左 -->
           <div class="tablet-side-column">
+
+            <!-- 申請区分 -->
             <div class="request-section">
-              <div class="request-section-title">1. 申請区分</div>
+
+              <div class="request-section-title">
+                1. 申請区分
+              </div>
 
               <div class="request-type-grid tablet-type-grid">
-                <button class="type-btn" id="typeOneDay" type="button" onclick="selectRequestType('one_day')">1日</button>
-                <button class="type-btn" id="typeHalfAm" type="button" onclick="selectRequestType('half_am')">半日 AM</button>
-                <button class="type-btn" id="typeHalfPm" type="button" onclick="selectRequestType('half_pm')">半日 PM</button>
-                <button class="type-btn" id="typeMultiDay" type="button" onclick="selectRequestType('multi_day')">複数日</button>
+
+                <button class="type-btn"
+                        id="typeOneDay"
+                        type="button"
+                        onclick="selectRequestType('one_day')">
+                  1日
+                </button>
+
+                <button class="type-btn"
+                        id="typeHalfAm"
+                        type="button"
+                        onclick="selectRequestType('half_am')">
+                  半日 AM
+                </button>
+
+                <button class="type-btn"
+                        id="typeHalfPm"
+                        type="button"
+                        onclick="selectRequestType('half_pm')">
+                  半日 PM
+                </button>
+
+                <button class="type-btn"
+                        id="typeMultiDay"
+                        type="button"
+                        onclick="selectRequestType('multi_day')">
+                  複数日
+                </button>
+
               </div>
+
             </div>
 
-            <div id="multiDayArea" class="request-section" style="display:none;">
-              <div class="request-section-title">複数日申請</div>
+            <!-- 複数日 -->
+            <div id="multiDayArea"
+                 class="request-section"
+                 style="display:none;">
+
+              <div class="request-section-title">
+                複数日申請
+              </div>
 
               <div class="multi-day-grid">
+
                 <div class="field">
                   <label for="rangeStartDate">開始日</label>
-                  <input type="date" id="rangeStartDate" onchange="handleRequestTypeChange()">
+
+                  <input type="date"
+                         id="rangeStartDate"
+                         onchange="handleRequestTypeChange()">
                 </div>
 
                 <div class="field">
                   <label for="rangeEndDate">終了日</label>
-                  <input type="date" id="rangeEndDate" onchange="handleRequestTypeChange()">
+
+                  <input type="date"
+                         id="rangeEndDate"
+                         onchange="handleRequestTypeChange()">
                 </div>
+
               </div>
+
             </div>
 
+            <!-- 理由 -->
             <div class="request-section">
-              <div class="request-section-title">3. 理由</div>
+
+              <div class="request-section-title">
+                3. 理由
+              </div>
 
               <div class="field">
                 <label for="reasonType">申請理由</label>
-                <select id="reasonType" onchange="handleReasonTypeChange()"></select>
+
+                <select id="reasonType"
+                        onchange="handleReasonTypeChange()"></select>
               </div>
 
-              <div class="field full-width" id="reasonDetailWrap" style="display:none;">
+              <div class="field full-width"
+                   id="reasonDetailWrap"
+                   style="display:none;">
+
                 <label for="reasonDetail">理由詳細</label>
-                <textarea id="reasonDetail" rows="3" placeholder="特記事項がある場合のみ入力してください"></textarea>
+
+                <textarea id="reasonDetail"
+                          rows="3"
+                          placeholder="特記事項がある場合のみ入力してください"></textarea>
+
               </div>
+
             </div>
 
+            <!-- 送信 -->
             <div class="submit-area">
-              <button id="submitBtn" class="submit-btn" type="button" onclick="submitRequest()">申請する</button>
+
+              <button id="submitBtn"
+                      class="submit-btn"
+                      type="button"
+                      onclick="submitRequest()">
+
+                申請する
+
+              </button>
+
             </div>
+
           </div>
 
-          <!-- 右側：カレンダー -->
+          <!-- 右 -->
           <div class="tablet-calendar-column">
+
             <div class="request-section calendar-main-section">
-              <div class="request-section-title">2. 希望日を選択</div>
+
+              <div class="request-section-title">
+                2. 希望日を選択
+              </div>
 
               <div class="calendar-ui-card">
+
+                <!-- カレンダーヘッダー -->
                 <div class="calendar-ui-header">
-                  <button class="calendar-nav-btn" type="button" onclick="moveCalendarMonth(-1)">‹</button>
+
+                  <button class="calendar-nav-btn"
+                          type="button"
+                          onclick="moveCalendarMonth(-1)">
+                    ‹
+                  </button>
 
                   <div>
-                    <div id="calendarMonthLabel" class="calendar-month-label">----</div>
-                    <div class="calendar-help-text">希望日をタップしてください</div>
+
+                    <div id="calendarMonthLabel"
+                         class="calendar-month-label">
+                      ----
+                    </div>
+
+                    <div class="calendar-help-text">
+                      希望日をタップしてください
+                    </div>
+
                   </div>
 
-                  <button class="calendar-nav-btn" type="button" onclick="moveCalendarMonth(1)">›</button>
+                  <button class="calendar-nav-btn"
+                          type="button"
+                          onclick="moveCalendarMonth(1)">
+                    ›
+                  </button>
+
                 </div>
 
+                <!-- 凡例 -->
                 <div class="calendar-legend">
-                  <span><i class="legend-dot workday"></i>営業日</span>
-                  <span><i class="legend-dot holiday"></i>休日</span>
-                  <span><i class="legend-dot no-leave"></i>有給NG</span>
-                  <span><i class="legend-dot selected"></i>選択中</span>
+
+                  <span>
+                    <i class="legend-dot workday"></i>
+                    営業日
+                  </span>
+
+                  <span>
+                    <i class="legend-dot holiday"></i>
+                    休日
+                  </span>
+
+                  <span>
+                    <i class="legend-dot no-leave"></i>
+                    有給NG
+                  </span>
+
+                  <span>
+                    <i class="legend-dot selected"></i>
+                    選択中
+                  </span>
+
                 </div>
 
+                <!-- 曜日 -->
                 <div class="calendar-week-row">
                   <div>日</div>
                   <div>月</div>
@@ -169,50 +338,89 @@
                   <div>土</div>
                 </div>
 
-                <div id="requestCalendarGrid" class="request-calendar-grid"></div>
+                <!-- カレンダー -->
+                <div id="requestCalendarGrid"
+                     class="request-calendar-grid"></div>
 
-                <div id="calendarStatus" class="calendar-selected-status">
+                <!-- 状態 -->
+                <div id="calendarStatus"
+                     class="calendar-selected-status">
+
                   申請区分を選択してください。
+
                 </div>
+
               </div>
 
+              <!-- 履歴 -->
               <div class="history-toggle-area">
-                <button
-                  id="historyToggleBtn"
-                  class="history-toggle-btn"
-                  type="button"
-                  onclick="toggleHistorySection()"
-                >
+
+                <button id="historyToggleBtn"
+                        class="history-toggle-btn"
+                        type="button"
+                        onclick="toggleHistorySection()">
+
                   申請履歴を見る
+
                 </button>
+
               </div>
 
+              <!-- hidden -->
               <div class="field single-date-field hidden-date-field">
+
                 <label for="singleDate">希望日</label>
-                <input type="date" id="singleDate" onchange="handleRequestTypeChange(); syncCalendarFromInput();">
+
+                <input type="date"
+                       id="singleDate"
+                       onchange="handleRequestTypeChange(); syncCalendarFromInput();">
+
               </div>
+
             </div>
+
           </div>
 
         </div>
 
-        <div id="historySection" class="history-section history-collapsed">
+        <!-- 履歴 -->
+        <div id="historySection"
+             class="history-section history-collapsed">
+
           <div class="history-header">
+
             <div>
-              <div class="history-title">今年度の申請履歴</div>
-              <div class="history-subtitle">承認済み・承認待ち・否認を確認できます</div>
+
+              <div class="history-title">
+                今年度の申請履歴
+              </div>
+
+              <div class="history-subtitle">
+                承認済み・承認待ち・否認を確認できます
+              </div>
+
             </div>
+
           </div>
 
-          <div id="leaveHistoryList" class="history-list">
-            <div class="history-empty">社員を選択すると履歴が表示されます。</div>
+          <div id="leaveHistoryList"
+               class="history-list">
+
+            <div class="history-empty">
+              社員を選択すると履歴が表示されます。
+            </div>
+
           </div>
+
         </div>
 
       </div>
+
     </section>
+
   </div>
 
   <?!= include('script'); ?>
+
 </body>
 </html>

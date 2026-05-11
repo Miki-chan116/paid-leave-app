@@ -11,7 +11,21 @@ let selectedStartDateKey = "";
 let selectedEndDateKey = "";
 
 function isPersonalPageMode() {
-  return typeof INITIAL_EMPLOYEE_ID !== "undefined" && INITIAL_EMPLOYEE_ID;
+  if (typeof INITIAL_EMPLOYEE_ID === "undefined") {
+    return false;
+  }
+
+  const id = String(INITIAL_EMPLOYEE_ID || "").trim();
+
+  if (!id) {
+    return false;
+  }
+
+  if (id === "undefined" || id === "null") {
+    return false;
+  }
+
+  return true;
 }
 
 function setupPersonalPageMode() {
@@ -896,4 +910,6 @@ function renderEmployeeLeaveHistory(data) {
     list.appendChild(row);
   });
 }
+
+window.addEventListener("DOMContentLoaded", initPage);
 </script>
