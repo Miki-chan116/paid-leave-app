@@ -80,63 +80,7 @@
 
         <div class="tablet-request-layout">
 
-          <div class="tablet-calendar-column">
-            <div class="request-section calendar-main-section">
-              <div class="request-section-title">2. 希望日を選択</div>
-
-              <div class="calendar-ui-card">
-                <div class="calendar-ui-header">
-                  <button class="calendar-nav-btn" type="button" onclick="moveCalendarMonth(-1)">‹</button>
-
-                  <div>
-                    <div id="calendarMonthLabel" class="calendar-month-label">----</div>
-                    <div class="calendar-help-text">希望日をタップしてください</div>
-                  </div>
-
-                  <button class="calendar-nav-btn" type="button" onclick="moveCalendarMonth(1)">›</button>
-                </div>
-
-                <div class="calendar-legend">
-                  <span><i class="legend-dot workday"></i>営業日</span>
-                  <span><i class="legend-dot holiday"></i>休日</span>
-                  <span><i class="legend-dot no-leave"></i>有給NG</span>
-                  <span><i class="legend-dot selected"></i>選択中</span>
-                </div>
-
-                <div class="calendar-week-row">
-                  <div>日</div>
-                  <div>月</div>
-                  <div>火</div>
-                  <div>水</div>
-                  <div>木</div>
-                  <div>金</div>
-                  <div>土</div>
-                </div>
-
-                <div id="requestCalendarGrid" class="request-calendar-grid"></div>
-                  <div id="calendarStatus" class="calendar-selected-status">
-                    申請区分を選択してください。
-                  </div>
-              </div>
-
-              <div class="history-toggle-area">
-                <button
-                  id="historyToggleBtn"
-                  class="history-toggle-btn"
-                  type="button"
-                  onclick="toggleHistorySection()"
-                >
-                  申請履歴を見る
-                </button>
-              </div>
-
-              <div class="field single-date-field hidden-date-field">
-                <label for="singleDate">希望日</label>
-                <input type="date" id="singleDate" onchange="handleRequestTypeChange(); syncCalendarFromInput();">
-              </div>
-            </div>
-          </div>
-
+          <!-- 左側：申請操作 -->
           <div class="tablet-side-column">
             <div class="request-section">
               <div class="request-section-title">1. 申請区分</div>
@@ -181,6 +125,65 @@
 
             <div class="submit-area">
               <button id="submitBtn" class="submit-btn" type="button" onclick="submitRequest()">申請する</button>
+            </div>
+          </div>
+
+          <!-- 右側：カレンダー -->
+          <div class="tablet-calendar-column">
+            <div class="request-section calendar-main-section">
+              <div class="request-section-title">2. 希望日を選択</div>
+
+              <div class="calendar-ui-card">
+                <div class="calendar-ui-header">
+                  <button class="calendar-nav-btn" type="button" onclick="moveCalendarMonth(-1)">‹</button>
+
+                  <div>
+                    <div id="calendarMonthLabel" class="calendar-month-label">----</div>
+                    <div class="calendar-help-text">希望日をタップしてください</div>
+                  </div>
+
+                  <button class="calendar-nav-btn" type="button" onclick="moveCalendarMonth(1)">›</button>
+                </div>
+
+                <div class="calendar-legend">
+                  <span><i class="legend-dot workday"></i>営業日</span>
+                  <span><i class="legend-dot holiday"></i>休日</span>
+                  <span><i class="legend-dot no-leave"></i>有給NG</span>
+                  <span><i class="legend-dot selected"></i>選択中</span>
+                </div>
+
+                <div class="calendar-week-row">
+                  <div>日</div>
+                  <div>月</div>
+                  <div>火</div>
+                  <div>水</div>
+                  <div>木</div>
+                  <div>金</div>
+                  <div>土</div>
+                </div>
+
+                <div id="requestCalendarGrid" class="request-calendar-grid"></div>
+
+                <div id="calendarStatus" class="calendar-selected-status">
+                  申請区分を選択してください。
+                </div>
+              </div>
+
+              <div class="history-toggle-area">
+                <button
+                  id="historyToggleBtn"
+                  class="history-toggle-btn"
+                  type="button"
+                  onclick="toggleHistorySection()"
+                >
+                  申請履歴を見る
+                </button>
+              </div>
+
+              <div class="field single-date-field hidden-date-field">
+                <label for="singleDate">希望日</label>
+                <input type="date" id="singleDate" onchange="handleRequestTypeChange(); syncCalendarFromInput();">
+              </div>
             </div>
           </div>
 

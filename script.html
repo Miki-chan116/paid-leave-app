@@ -210,6 +210,20 @@ function escapeHtml(str) {
 function selectEmployee(emp) {
   selectedEmployee = emp;
 
+  // 前の人の申請区分・選択状態をリセット
+  currentRequestType = "";
+
+  document.querySelectorAll(".type-btn").forEach(btn => {
+    btn.classList.remove("active");
+  });
+
+  const multiDayArea = document.getElementById("multiDayArea");
+  if (multiDayArea) {
+    multiDayArea.style.display = "none";
+  }
+
+  resetSelectedDates();
+
   document.getElementById("employeeScreen").classList.remove("active");
   document.getElementById("requestScreen").classList.add("active");
 
@@ -234,8 +248,6 @@ function selectEmployee(emp) {
 
   document.getElementById("fiveDayMessage").textContent =
     emp.five_day_completed ? "達成済み" : `あと${remain}日`;
-
-  resetSelectedDates();
 
   calendarDisplayDate = new Date();
   renderRequestCalendar();

@@ -421,7 +421,7 @@ body {
 
 .tablet-request-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.8fr);
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.35fr);
   gap: 18px;
   align-items: start;
   min-height: auto;
@@ -1368,7 +1368,7 @@ body {
   }
 
   #requestScreen .tablet-request-layout {
-    grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.8fr);
+    grid-template-columns: minmax(360px, 0.8fr) minmax(0, 1.35fr);
   }
 }
 
@@ -1532,10 +1532,12 @@ body {
 /* =========================
    タブレット縦・スマホ
 ========================= */
-@media (max-width: 1000px) {
-  .tablet-request-layout {
-    grid-template-columns: 1fr;
+@media (min-width: 1001px) and (max-width: 1199px) {
+  #requestScreen .tablet-request-layout {
+    grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.35fr);
+    gap: 12px;
   }
+}
 
   .tablet-type-grid {
     grid-template-columns: repeat(2, 1fr);
