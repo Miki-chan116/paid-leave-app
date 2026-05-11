@@ -88,6 +88,44 @@
     </div>
 
     <!-- ================= 申請一覧 ================= -->
+     <!-- 一括操作バー -->
+<div id="bulkActionBar"
+     class="bulk-action-bar"
+     style="display:none;">
+
+  <div class="bulk-left">
+
+    <label class="bulk-check-label">
+      <input type="checkbox"
+             id="bulkSelectAll"
+             onchange="toggleSelectAllRequests(this.checked)">
+      全選択
+    </label>
+
+    <button class="btn btn-reset"
+            type="button"
+            onclick="clearSelectedRequests()">
+      選択解除
+    </button>
+
+  </div>
+
+  <div class="bulk-right">
+
+    <span id="selectedCountLabel"
+          class="selected-count-label">
+      0件選択
+    </span>
+
+    <button class="btn btn-approve"
+            type="button"
+            onclick="approveSelectedRequests()">
+      選択した申請を承認
+    </button>
+
+  </div>
+
+</div>
     <div class="panel">
       <div id="requestView" class="card-container"></div>
       <div id="logView" style="display:none;"></div>

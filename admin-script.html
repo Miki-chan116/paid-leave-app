@@ -2,6 +2,8 @@
 let currentStatus = "pending";
 let currentMode = "recent";
 
+const selectedRequestIds = new Set();
+
 window.addEventListener("DOMContentLoaded", () => {
   initAdminLogin();
 });
@@ -338,6 +340,18 @@ function resetSearch() {
 }
 
 function renderCards(data) {
+  const bulkBar = document.getElementById("bulkActionBar");
+
+  if (bulkBar) {
+    bulkBar.style.display =
+      currentStatus === "pending"
+        ? "flex"
+        : "none";
+  }
+
+  selectedRequestIds.clear();
+  updateSelectedCount();
+
   const container = document.getElementById("requestView");
   container.innerHTML = "";
 
@@ -371,24 +385,43 @@ function renderCards(data) {
       : (req.reason || "記載なし");
 
     card.innerHTML = `
-      <div class="compact-main">
-        <div class="compact-top">
-          <span class="compact-name">${escapeHtml(req.employee_name)}</span>
-          <span class="compact-id">${escapeHtml(req.employee_id || "")}</span>
-          <span class="status-badge ${escapeHtml(req.status)}">${escapeHtml(getStatusLabel(req.status))}</span>
+      <div class="compact-main-row">
+
+        ${
+          req.status === "pending"
+            ? `
+              <div class="request-checkbox-wrap">
+                <input
+                  type="checkbox"
+                  class="request-checkbox"
+                  data-request-id="${escapeHtml(req.request_id)}"
+                  onchange="toggleRequestSelection(this.dataset.requestId, this.checked)"
+                >
+              </div>
+            `
+            : ""
+        }
+
+        <div class="compact-main">
+          <div class="compact-top">
+            <span class="compact-name">${escapeHtml(req.employee_name)}</span>
+            <span class="compact-id">${escapeHtml(req.employee_id || "")}</span>
+            <span class="status-badge ${escapeHtml(req.status)}">${escapeHtml(getStatusLabel(req.status))}</span>
+          </div>
+
+          <div class="compact-meta">
+            <span class="mini-chip">日付 <strong>${escapeHtml(req.date_label || "")}</strong></span>
+            <span class="mini-chip">日数 <strong>${escapeHtml(formatDays(req.days))}</strong></span>
+            <span class="mini-chip">半日 <strong>${escapeHtml(req.half_day || "なし")}</strong></span>
+            <span class="mini-chip">残 <strong>${escapeHtml(formatDays(req.current_remaining_days))}</strong></span>
+            <span class="mini-chip">取得済 <strong>${escapeHtml(formatDays(req.used_days))}</strong></span>
+          </div>
+
+          <div class="compact-detail">
+            理由：${escapeHtml(reasonText)} ／ 申請ID：${escapeHtml(req.request_id)}
+          </div>
         </div>
 
-        <div class="compact-meta">
-          <span class="mini-chip">日付 <strong>${escapeHtml(req.date_label || "")}</strong></span>
-          <span class="mini-chip">日数 <strong>${escapeHtml(formatDays(req.days))}</strong></span>
-          <span class="mini-chip">半日 <strong>${escapeHtml(req.half_day || "なし")}</strong></span>
-          <span class="mini-chip">残 <strong>${escapeHtml(formatDays(req.current_remaining_days))}</strong></span>
-          <span class="mini-chip">取得済 <strong>${escapeHtml(formatDays(req.used_days))}</strong></span>
-        </div>
-
-        <div class="compact-detail">
-          理由：${escapeHtml(reasonText)} ／ 申請ID：${escapeHtml(req.request_id)}
-        </div>
       </div>
 
       <div class="compact-actions">
@@ -1050,6 +1083,106 @@ function closeSixMonthGrantList() {
   if (!area) return;
 
   area.innerHTML = "";
+}
+
+function toggleRequestSelection(requestId, checked) {
+  if (!requestId) return;
+
+  if (checked) {
+    selectedRequestIds.add(requestId);
+  } else {
+    selectedRequestIds.delete(requestId);
+  }
+
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const label = document.getElementById("selectedCountLabel");
+
+  if (label) {
+    label.textContent = `${selectedRequestIds.size}件選択`;
+  }
+}
+
+function toggleSelectAllRequests(checked) {
+  document.querySelectorAll(".request-checkbox")
+    .forEach(el => {
+      el.checked = checked;
+
+      const requestId = el.dataset.requestId;
+
+      if (!requestId) return;
+
+      if (checked) {
+        selectedRequestIds.add(requestId);
+      } else {
+        selectedRequestIds.delete(requestId);
+      }
+    });
+
+  updateSelectedCount();
+}
+
+function clearSelectedRequests() {
+  selectedRequestIds.clear();
+
+  document.querySelectorAll(".request-checkbox")
+    .forEach(el => {
+      el.checked = false;
+    });
+
+  const selectAll = document.getElementById("bulkSelectAll");
+
+  if (selectAll) {
+    selectAll.checked = false;
+  }
+
+  updateSelectedCount();
+}
+
+function approveSelectedRequests() {
+  const ids = Array.from(selectedRequestIds);
+
+  if (ids.length === 0) {
+    alert("承認する申請を選択してください");
+    return;
+  }
+
+  const ok = confirm(
+    `${ids.length}件の申請をまとめて承認しますか？`
+  );
+
+  if (!ok) return;
+
+  showLoading(
+    "requestView",
+    "一括承認を実行しています..."
+  );
+
+  google.script.run
+    .withSuccessHandler(() => {
+
+      alert(`${ids.length}件承認しました`);
+
+      clearSelectedRequests();
+
+      loadDashboardSummary();
+
+      reloadCurrentView();
+    })
+    .withFailureHandler(err => {
+      console.error("一括承認エラー:", err);
+
+      showError(
+        "requestView",
+        "一括承認でエラーが発生しました"
+      );
+    })
+    .approveRequestsBatch(
+      ids,
+      currentAdminUser
+    );
 }
 
 </script>

@@ -1099,6 +1099,22 @@ function searchRequests(filters) {
     });
 }
 
+function approveRequestsBatch(requestIds, adminUser) {
+
+  if (!Array.isArray(requestIds) || requestIds.length === 0) {
+    throw new Error("承認対象が選択されていません");
+  }
+
+  requestIds.forEach(requestId => {
+    approveRequest(requestId, adminUser);
+  });
+
+  return {
+    ok: true,
+    count: requestIds.length
+  };
+}
+
 /* =========================
    承認
 ========================= */
