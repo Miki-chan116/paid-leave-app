@@ -340,6 +340,11 @@ function objectToRow(obj, headers) {
   return headers.map(header => obj[String(header || "").trim()]);
 }
 
+function getDisplayName(employee) {
+  if (!employee) return "";
+  return String(employee.display_name || employee.name || "").trim();
+}
+
 function appendRowFast_(sheet, values) {
   const nextRow = sheet.getLastRow() + 1;
   sheet.getRange(nextRow, 1, 1, values.length).setValues([values]);
@@ -574,6 +579,7 @@ function getEmployees() {
       return {
        id: String(rowObj.employee_id || "").trim(),
        name: String(rowObj.name || rowObj.employee_id || "").trim(),
+       display_name: String(rowObj.display_name || "").trim(),
 
        company_code: String(rowObj.company_code || "").trim(),
        company_name: String(rowObj.company_name || "").trim(),
@@ -1031,7 +1037,7 @@ function searchRequests(filters) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
 
-  const employeeMap = getEmployeeMap();
+  const employeeMap = getEmployeeDetailMap();
   const targetStatus = norm(filters.status || "");
   const keyword = norm(filters.employeeKeyword || "");
 
@@ -1058,7 +1064,8 @@ function searchRequests(filters) {
       const rowObj = rowToObject(row, headerInfo.headers);
       const rowStatus = norm(rowObj.status);
       const employeeId = String(rowObj.employee_id || "").trim();
-      const employeeName = String(employeeMap[employeeId] || employeeId || "Unknown");
+      const employee = employeeMap[employeeId];
+      const employeeName = getDisplayName(employee) || employeeId || "Unknown";
 
       if (!rowObj.start_date || !rowObj.end_date) return null;
 
@@ -1067,7 +1074,11 @@ function searchRequests(filters) {
       }
 
       if (keyword) {
-        const targetText = norm(employeeId + employeeName);
+        const targetText = norm(
+          employeeId +
+          employeeName +
+          String(employee && employee.name ? employee.name : "")
+        );
         if (!targetText.includes(keyword)) return null;
       }
 
@@ -1384,7 +1395,7 @@ function searchUsageLogs(filters) {
   const startFilter = filters.start_date ? parseLocalDate(filters.start_date) : null;
   const endFilter = filters.end_date ? parseLocalDate(filters.end_date) : null;
 
-  const employeeMap = getEmployeeMap();
+  const employeeMap = getEmployeeDetailMap();
 
   return data.slice(1)
     .map(row => {
@@ -1400,12 +1411,14 @@ function searchUsageLogs(filters) {
       if (actionType && norm(rowActionType) !== actionType) return null;
 
       const requestId = String(rowObj.request_id || "");
-      const employeeName = employeeMap[requestId] || "";
+      const employee = employeeMap[requestId];
+      const employeeName = getDisplayName(employee) || "";
 
       if (keyword) {
         const targetText = norm(
           requestId +
           employeeName +
+          String(employee && employee.name ? employee.name : "") +
           String(rowObj.operator_id || "") +
           String(rowObj.operator_name || "") +
           String(rowObj.comment || "") +
@@ -1463,52 +1476,20 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth, companyCode) {
   outputSheet.clearContents();
 
   const values = [];
-  values.push(["月間有給取得一覧_" + code]);
-  values.push(["対象期間：" + formatDateValue(range.start) + " ～ " + formatDateValue(range.end)]);
-  values.push([]);
-  values.push(["社員ID", "表示ID", "氏名", "会社", "取得日", "取得日数"]);
+  values.push(["employee_id", "表示用氏名", "取得日", "取得日数"]);
 
   if (preview.detail_rows.length > 0) {
     preview.detail_rows.forEach(row => {
       values.push([
         row.employee_id,
-        row.display_employee_id,
         row.employee_name,
-        row.company_name,
         row.date,
         row.days
       ]);
     });
-  } else {
-    values.push(["該当データなし", "", "", "", "", ""]);
   }
 
-  values.push([]);
-  values.push(["月間合計"]);
-  values.push(["社員ID", "表示ID", "氏名", "会社", "月間合計取得日数"]);
-
-  if (preview.total_rows.length > 0) {
-    preview.total_rows.forEach(row => {
-      values.push([
-        row.employee_id,
-        row.display_employee_id,
-        row.employee_name,
-        row.company_name,
-        row.total_days
-      ]);
-    });
-  } else {
-    values.push(["該当データなし", "", "", "", ""]);
-  }
-
-  const maxLen = Math.max(...values.map(r => r.length || 1));
-  const normalizedValues = values.map(row => {
-    const newRow = row.slice();
-    while (newRow.length < maxLen) newRow.push("");
-    return newRow;
-  });
-
-  outputSheet.getRange(1, 1, normalizedValues.length, maxLen).setValues(normalizedValues);
+  outputSheet.getRange(1, 1, values.length, 4).setValues(values);
 
   return {
     ok: true,
@@ -1592,7 +1573,7 @@ function getMonthlyPaidLeaveReportPreview(filters) {
         detailRows.push({
           employee_id: employeeId,
           display_employee_id: emp.display_employee_id || "",
-          employee_name: emp.name || employeeId,
+          employee_name: getDisplayName(emp) || employeeId,
           company_code: empCompanyCode,
           company_name: empCompanyName,
           date: dateText,
@@ -1603,7 +1584,7 @@ function getMonthlyPaidLeaveReportPreview(filters) {
           totalMap[employeeId] = {
             employee_id: employeeId,
             display_employee_id: emp.display_employee_id || "",
-            employee_name: emp.name || employeeId,
+            employee_name: getDisplayName(emp) || employeeId,
             company_code: empCompanyCode,
             company_name: empCompanyName,
             total_days: 0
@@ -1684,7 +1665,7 @@ function exportYearlyPaidLeaveReport(fiscalYear, companyCode) {
 
       return [
         emp.id,
-        emp.name,
+        getDisplayName(emp) || emp.id,
         balance.carry_over_days,
         balance.grant_days,
         balance.used_days,
@@ -2104,6 +2085,7 @@ function addEmployeeFromAdmin(data) {
     "employee_id",
     "display_employee_id",
     "name",
+    "display_name",
     "name_kana",
     "company_code",
     "company_name",
@@ -2131,6 +2113,7 @@ function addEmployeeFromAdmin(data) {
   rowObj.employee_id = "";
   rowObj.display_employee_id = "";
   rowObj.name = String(data.name || "").trim();
+  rowObj.display_name = String(data.display_name || "").trim();
   rowObj.name_kana = String(data.name_kana || "").trim();
   rowObj.company_code = String(data.company_code || "").trim().toUpperCase();
   rowObj.company_name = String(data.company_name || "").trim();
@@ -2175,6 +2158,7 @@ function getEmployeesForAdmin() {
     "employee_id",
     "display_employee_id",
     "name",
+    "display_name",
     "name_kana",
     "company_code",
     "company_name",
@@ -2201,6 +2185,7 @@ function getEmployeesForAdmin() {
         employee_id: String(obj.employee_id || "").trim(),
         display_employee_id: String(obj.display_employee_id || "").trim(),
         name: String(obj.name || "").trim(),
+        display_name: String(obj.display_name || "").trim(),
         name_kana: String(obj.name_kana || "").trim(),
         company_code: String(obj.company_code || "").trim(),
         company_name: String(obj.company_name || "").trim(),
@@ -2224,6 +2209,7 @@ function getEmployeesForAdmin() {
 function buildEmployeeUpdateDiffComment(beforeObj, afterData) {
   const fields = [
     { key: "name", label: "氏名" },
+    { key: "display_name", label: "表示用氏名" },
     { key: "name_kana", label: "ふりがな" },
     { key: "company_code", label: "会社区分" },
     { key: "company_name", label: "会社名" },
@@ -2290,6 +2276,7 @@ function updateEmployeeFromAdmin(data) {
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
     "name",
+    "display_name",
     "name_kana",
     "company_code",
     "company_name",
@@ -2321,6 +2308,7 @@ function updateEmployeeFromAdmin(data) {
   const beforeObj = rowToObject(dataRange[rowIndex], headerInfo.headers);
 
   sheet.getRange(sheetRow, headerInfo.map.name + 1).setValue(String(data.name || "").trim());
+  sheet.getRange(sheetRow, headerInfo.map.display_name + 1).setValue(String(data.display_name || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.name_kana + 1).setValue(String(data.name_kana || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.company_code + 1).setValue(String(data.company_code || "").trim().toUpperCase());
   sheet.getRange(sheetRow, headerInfo.map.company_name + 1).setValue(String(data.company_name || "").trim());
@@ -2476,7 +2464,7 @@ function getYearlyPaidLeaveReportCsvData(fiscalYear, companyCode) {
 
       return [
         emp.id,
-        emp.name,
+        getDisplayName(emp) || emp.id,
         balance.carry_over_days,
         balance.grant_days,
         balance.used_days,
@@ -2543,7 +2531,7 @@ function getYearlyPaidLeaveReportPreview(filters) {
     return {
       employee_id: emp.employee_id,
       display_employee_id: emp.display_employee_id || "",
-      employee_name: emp.name || emp.employee_id,
+      employee_name: getDisplayName(emp) || emp.employee_id,
       company_code: emp.company_code || "",
       company_name: emp.company_name || "",
       carry_over_days: balance.carry_over_days,
@@ -2673,7 +2661,7 @@ function getSixMonthGrantCandidates() {
       return {
         employee_id: emp.employee_id,
         display_employee_id: emp.display_employee_id,
-        name: emp.name,
+        name: getDisplayName(emp) || emp.name,
         hire_date: emp.hire_date,
         grant_date: formatDateValue(grantDate),
         grant_days: grantDays,
@@ -2919,7 +2907,7 @@ function getYearlyGrantCandidates() {
       return {
         employee_id: emp.employee_id,
         display_employee_id: emp.display_employee_id,
-        name: emp.name,
+        name: getDisplayName(emp) || emp.name,
         hire_date: emp.hire_date,
         basis_date: formatDateValue(basisDate),
         months_worked: months,

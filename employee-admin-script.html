@@ -3,6 +3,10 @@ let adminEmployees = [];
 let editingEmployeeId = "";
 let retiringEmployeeId = "";
 
+function getDisplayName(emp) {
+  return String((emp && (emp.display_name || emp.name)) || "").trim();
+}
+
 /* =========================
    初期表示
 ========================= */
@@ -59,6 +63,7 @@ function handleEmployeeSearchInput() {
       emp.employee_id,
       emp.display_employee_id,
       emp.name,
+      emp.display_name,
       emp.name_kana,
       emp.company_name,
       emp.department,
@@ -109,7 +114,7 @@ function renderEmployeeList(data) {
       <div class="admin-employee-main">
         <div class="admin-employee-name-line">
           <button type="button" class="admin-employee-name-link">
-            ${escapeHtml(emp.name)}
+            ${escapeHtml(getDisplayName(emp))}
           </button>
         </div>
 
@@ -152,6 +157,7 @@ function openEditEmployeeModal(emp) {
   editingEmployeeId = emp.employee_id || "";
 
   setValue("editName", emp.name);
+  setValue("editDisplayName", emp.display_name);
   setValue("editNameKana", emp.name_kana);
   setValue("editCompanyCode", emp.company_code || "MAIN");
   setValue("editCompanyName", emp.company_name);
@@ -167,7 +173,7 @@ function openEditEmployeeModal(emp) {
 
   const subTitle = document.getElementById("editEmployeeSubTitle");
   if (subTitle) {
-    subTitle.textContent = `${emp.display_employee_id || ""} ／ ${emp.employee_id || ""}`;
+    subTitle.textContent = `${getDisplayName(emp)} ／ ${emp.display_employee_id || ""} ／ ${emp.employee_id || ""}`;
   }
 
   showEditStatus("内容を確認して保存してください。", "");
@@ -193,6 +199,7 @@ function submitEditEmployee() {
   const payload = {
     employee_id: editingEmployeeId,
     name: getValue("editName"),
+    display_name: getValue("editDisplayName"),
     name_kana: getValue("editNameKana"),
     company_code: getValue("editCompanyCode"),
     company_name: getValue("editCompanyName"),
@@ -239,7 +246,7 @@ function openRetireModal(emp) {
 
   const subTitle = document.getElementById("retireEmployeeSubTitle");
   if (subTitle) {
-    subTitle.textContent = `${emp.name || ""}（${emp.display_employee_id || emp.employee_id || ""}）`;
+    subTitle.textContent = `${getDisplayName(emp)}（${emp.display_employee_id || emp.employee_id || ""}）`;
   }
 
   setValue("retireDate", "");
@@ -323,6 +330,7 @@ function submitEmployee() {
 
   const payload = {
     name: getValue("name"),
+    display_name: getValue("displayName"),
     name_kana: getValue("nameKana"),
     company_code: getValue("companyCode"),
     company_name: getValue("companyName"),
@@ -478,6 +486,7 @@ function showRetireStatus(message, type) {
 
 function clearForm() {
   setValue("name", "");
+  setValue("displayName", "");
   setValue("nameKana", "");
   setValue("companyCode", "MAIN");
   setValue("companyName", "");

@@ -670,20 +670,13 @@ function downloadMonthlyReportCsv() {
   }
 
   const rows = [
-    ["月間有給取得一覧"],
-    ["対象期間", `${monthlyPreviewData.period_start}〜${monthlyPreviewData.period_end}`],
-    ["会社", getCompanyLabel(monthlyPreviewData.company_code, monthlyPreviewData.company_name)],
-    [],
-    ["表示ID", "社員ID", "氏名", "会社コード", "会社名", "取得日", "取得日数"]
+    ["employee_id", "表示用氏名", "取得日", "取得日数"]
   ];
 
   monthlyPreviewData.detail_rows.forEach(row => {
     rows.push([
-      row.display_employee_id || "",
       row.employee_id || "",
       row.employee_name || "",
-      row.company_code || "",
-      row.company_name || "",
       row.date || "",
       row.days || 0
     ]);
@@ -696,7 +689,8 @@ function downloadMonthlyReportCsv() {
 
   downloadCsvFile(
     rows,
-    `月間有給一覧_${monthlyPreviewData.target_year}_${monthlyPreviewData.target_month}_${companyPart}.csv`
+    `月間有給一覧_${monthlyPreviewData.target_year}_${monthlyPreviewData.target_month}_${companyPart}.csv`,
+    { quoteAll: false }
   );
 
   showExportMessage("月間CSVを保存しました。", "success");
@@ -821,9 +815,21 @@ function downloadYearlyReportCsv() {
   showExportMessage("年間CSVを保存しました。", "success");
 }
 
-function downloadCsvFile(rows, filename) {
+function downloadCsvFile(rows, filename, options) {
+  options = options || {};
+  const quoteAll = options.quoteAll !== false;
+
+  function formatCsvValue(value) {
+    const text = String(value == null ? "" : value);
+    const escaped = text.replace(/"/g, '""');
+    if (quoteAll || /[",\n\r]/.test(text)) {
+      return `"${escaped}"`;
+    }
+    return escaped;
+  }
+
   const csv = rows.map(row =>
-    row.map(value => `"${String(value == null ? "" : value).replace(/"/g, '""')}"`).join(",")
+    row.map(formatCsvValue).join(",")
   ).join("\n");
 
   const bom = "\uFEFF";
