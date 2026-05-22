@@ -31,6 +31,7 @@ function loadEmployees() {
       } else {
         const list = document.getElementById("employeeList");
         if (list) list.innerHTML = "";
+        updateEmployeeResultSummary(0, "", false);
         showStatus("検索条件を入力すると、ここに結果が表示されます。", "");
       }
     })
@@ -54,6 +55,7 @@ function handleEmployeeSearchInput() {
 
   if (!keyword && !statusFilter && !typeFilter) {
     list.innerHTML = "";
+    updateEmployeeResultSummary(0, "", false);
     showStatus("検索条件を入力すると、ここに結果が表示されます。", "");
     return;
   }
@@ -79,6 +81,7 @@ function handleEmployeeSearchInput() {
   });
 
   renderEmployeeList(filtered);
+  updateEmployeeResultSummary(filtered.length, getCurrentSearchConditionText(), true);
 
   showStatus(
     filtered.length > 0
@@ -111,19 +114,28 @@ function renderEmployeeList(data) {
       row.classList.add("retired");
     }
 
-    row.innerHTML = `
+      row.innerHTML = `
       <div class="admin-employee-main">
         <div class="admin-employee-name-line">
           <button type="button" class="admin-employee-name-link" data-action="edit" data-employee-id="${escapeHtml(emp.employee_id || "")}">
             ${escapeHtml(getDisplayName(emp))}
           </button>
+          <span class="employee-badge status-${escapeHtml(emp.employment_status || "unknown")}">
+            ${escapeHtml(getEmploymentStatusLabel(emp.employment_status))}
+          </span>
+          <span class="employee-badge ${emp.leave_management_target === true ? "leave-target" : "leave-excluded"}">
+            ${escapeHtml(getLeaveManagementTargetLabel(emp.leave_management_target))}
+          </span>
+          <span class="employee-badge company-${escapeHtml(String(emp.company_code || "main").toLowerCase())}">
+            ${escapeHtml(getCompanyCodeLabel(emp.company_code))}
+          </span>
         </div>
 
         <div class="admin-employee-meta">
           ${escapeHtml(emp.name_kana || "")}
           ／ ${escapeHtml(emp.display_employee_id || "")}
+          ／ ${escapeHtml(emp.employee_id || "")}
           ／ ${escapeHtml(getEmploymentTypeLabel(emp.employment_type))}
-          ／ ${escapeHtml(getEmploymentStatusLabel(emp.employment_status))}
           ${emp.company_name ? "／ " + escapeHtml(emp.company_name) : ""}
           ${emp.department ? "／ " + escapeHtml(emp.department) : ""}
         </div>
@@ -464,6 +476,47 @@ function getEmploymentStatusLabel(status) {
   if (status === "leave") return "休職";
   if (status === "retired") return "退職";
   return status || "";
+}
+
+function getLeaveManagementTargetLabel(value) {
+  return value === true ? "有給対象" : "有給対象外";
+}
+
+function getCompanyCodeLabel(companyCode) {
+  const code = String(companyCode || "").trim().toUpperCase();
+  if (code === "PARTNER") return "PARTNER";
+  if (code === "MAIN") return "MAIN";
+  return code || "MAIN";
+}
+
+function getCurrentSearchConditionText() {
+  const parts = [];
+  const keyword = getValue("employeeSearchKeyword");
+  const status = getValue("filterEmploymentStatus");
+  const type = getValue("filterEmploymentType");
+
+  if (keyword) parts.push(`キーワード: ${keyword}`);
+  if (status) parts.push(`在職状況: ${getEmploymentStatusLabel(status)}`);
+  if (type) parts.push(`雇用区分: ${getEmploymentTypeLabel(type)}`);
+
+  return parts.length > 0 ? parts.join(" / ") : "条件なし";
+}
+
+function updateEmployeeResultSummary(count, conditionText, visible) {
+  const summary = document.getElementById("employeeResultSummary");
+  if (!summary) return;
+
+  if (!visible) {
+    summary.style.display = "none";
+    summary.textContent = "";
+    return;
+  }
+
+  summary.style.display = "flex";
+  summary.innerHTML = `
+    <span class="employee-result-count">${escapeHtml(count)}件</span>
+    <span class="employee-result-condition">${escapeHtml(conditionText || "条件なし")}</span>
+  `;
 }
 
 /* =========================

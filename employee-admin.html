@@ -22,163 +22,52 @@
     <section class="screen active">
       <div class="screen-card">
 
-        <!-- ================= 社員検索 ================= -->
-        <div class="group-header">
-          <div>
-            <div class="section-title">社員検索</div>
-            <div class="section-subtitle">
-              氏名・ふりがな・社員番号・会社名で検索できます
-            </div>
-          </div>
-        </div>
-
-        <div class="employee-form-grid">
-
-          <div class="field full-width">
-            <label for="employeeSearchKeyword">検索キーワード</label>
-
-            <input
-              type="text"
-              id="employeeSearchKeyword"
-              placeholder="例：山田 / やまだ / W0001 / 友尚"
-              oninput="handleEmployeeSearchInput()"
-            >
-          </div>
-
-          <div class="field">
-            <label for="filterEmploymentStatus">在職状況</label>
-
-            <select
-              id="filterEmploymentStatus"
-              onchange="handleEmployeeSearchInput()"
-            >
-              <option value="">すべて</option>
-              <option value="active">在職</option>
-              <option value="leave">休職</option>
-              <option value="retired">退職</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label for="filterEmploymentType">雇用区分</label>
-
-            <select
-              id="filterEmploymentType"
-              onchange="handleEmployeeSearchInput()"
-            >
-              <option value="">すべて</option>
-              <option value="regular">正社員</option>
-              <option value="partner">協力企業</option>
-              <option value="part_time">パート</option>
-              <option value="trainee">研修生</option>
-              <option value="executive">役員</option>
-              <option value="other">その他</option>
-            </select>
-          </div>
-
-        </div>
-
-        <div id="employeeAdminStatus" class="status-box">
-          検索条件を入力すると、ここに結果が表示されます。
-        </div>
-
-        <div id="employeeList" class="history-list"></div>
-
-        <!-- ================= 社員追加ボタン ================= -->
-        <div
-          class="submit-area"
-          style="margin-top:24px; justify-content:flex-start;"
-        >
-          <button
-            id="toggleAddEmployeeBtn"
-            class="employee-add-toggle-btn"
-            type="button"
-            onclick="toggleAddEmployeeForm()"
-          >
-            ＋ 新しい社員を追加する
-          </button>
-        </div>
-
-        <!-- ================= 社員マスター整備 ================= -->
-        <div class="master-maintain-card">
-
-          <div class="master-maintain-title">
-            🔧 社員マスター整備
-          </div>
-
-          <div class="master-maintain-subtitle">
-            新しい社員追加後など、必要時のみ実行してください。
-          </div>
-
-          <button
-            class="master-maintain-btn"
-            type="button"
-            onclick="runMaintain()"
-          >
-            ID採番・並び順整理を実行
-          </button>
-
-        </div>
-
-        <!-- ================= 社員追加フォーム ================= -->
-        <div id="addEmployeeFormArea" style="display:none; margin-top:24px;">
-
-          <div class="group-header">
+        <section class="employee-admin-section employee-search-section">
+          <div class="employee-section-heading">
             <div>
-              <div class="section-title">社員追加</div>
-
+              <div class="employee-section-kicker">探す・確認する</div>
+              <div class="section-title">社員検索</div>
               <div class="section-subtitle">
-                employee_id・display_employee_id・display_order は自動で設定されます
+                氏名・ふりがな・社員番号・会社名で検索できます
               </div>
             </div>
           </div>
 
           <div class="employee-form-grid">
 
-            <div class="field">
-              <label for="name">氏名 *</label>
-              <input type="text" id="name" placeholder="例：山田 太郎">
-              <div class="field-help">※姓と名の間に半角スペースを入れてください</div>
+            <div class="field full-width">
+              <label for="employeeSearchKeyword">検索キーワード</label>
+
+              <input
+                type="text"
+                id="employeeSearchKeyword"
+                placeholder="例：山田 / やまだ / W0001 / 友尚"
+                oninput="handleEmployeeSearchInput()"
+              >
             </div>
 
             <div class="field">
-              <label for="displayName">表示用氏名</label>
-              <input type="text" id="displayName" placeholder="例：山田">
-            </div>
-
-            <div class="field">
-              <label for="nameKana">ふりがな *</label>
-              <input type="text" id="nameKana" placeholder="例：やまだ たろう">
-              <div class="field-help">※姓と名の間に半角スペースを入れてください</div>
-            </div>
-
-            <div class="field">
-              <label for="companyCode">会社区分 *</label>
+              <label for="filterEmploymentStatus">在職状況</label>
 
               <select
-                id="companyCode"
-                onchange="handleCompanyCodeChange()"
+                id="filterEmploymentStatus"
+                onchange="handleEmployeeSearchInput()"
               >
-                <option value="MAIN">MAIN（正社員・自社）</option>
-                <option value="PARTNER">PARTNER（協力企業）</option>
+                <option value="">すべて</option>
+                <option value="active">在職</option>
+                <option value="leave">休職</option>
+                <option value="retired">退職</option>
               </select>
             </div>
 
             <div class="field">
-              <label for="companyName">会社名</label>
-              <input type="text" id="companyName" placeholder="例：株式会社〇〇">
-            </div>
+              <label for="filterEmploymentType">雇用区分</label>
 
-            <div class="field">
-              <label for="department">部署</label>
-              <input type="text" id="department" placeholder="例：工事部">
-            </div>
-
-            <div class="field">
-              <label for="employmentType">雇用区分</label>
-
-              <select id="employmentType">
-                <option value="">選択してください</option>
+              <select
+                id="filterEmploymentType"
+                onchange="handleEmployeeSearchInput()"
+              >
+                <option value="">すべて</option>
                 <option value="regular">正社員</option>
                 <option value="partner">協力企業</option>
                 <option value="part_time">パート</option>
@@ -188,65 +77,184 @@
               </select>
             </div>
 
-            <div class="field">
-              <label for="employmentStatus">在職状況</label>
+          </div>
 
-              <select id="employmentStatus">
-                <option value="active">在職</option>
-                <option value="leave">休職</option>
-                <option value="retired">退職</option>
-              </select>
+          <div id="employeeAdminStatus" class="status-box">
+            検索条件を入力すると、ここに結果が表示されます。
+          </div>
+
+          <div id="employeeResultSummary" class="employee-result-summary" style="display:none;"></div>
+
+          <div id="employeeList" class="history-list employee-result-list"></div>
+        </section>
+
+        <section class="employee-admin-section employee-add-section">
+          <div class="employee-section-heading">
+            <div>
+              <div class="employee-section-kicker">登録する</div>
+              <div class="section-title">社員追加</div>
+              <div class="section-subtitle">
+                employee_id・display_employee_id・display_order は自動で設定されます
+              </div>
             </div>
 
-            <div class="field">
-              <label for="hireDate">入社日</label>
-              <input type="date" id="hireDate">
+            <button
+              id="toggleAddEmployeeBtn"
+              class="employee-add-toggle-btn"
+              type="button"
+              onclick="toggleAddEmployeeForm()"
+            >
+              ＋ 新しい社員を追加する
+            </button>
+          </div>
+
+          <div id="addEmployeeFormArea" style="display:none;">
+
+          <div class="employee-form-sections">
+
+            <div class="employee-form-section">
+              <div class="employee-form-section-title">基本情報</div>
+              <div class="employee-form-grid">
+                <div class="field">
+                  <label for="name">氏名 *</label>
+                  <input type="text" id="name" placeholder="例：山田 太郎">
+                  <div class="field-help">申請画面に表示される正式な氏名です。姓と名の間に半角スペースを入れてください。</div>
+                </div>
+
+                <div class="field">
+                  <label for="displayName">表示用氏名</label>
+                  <input type="text" id="displayName" placeholder="例：山田">
+                  <div class="field-help">管理・承認・出力画面で使う短い表示名です。空欄の場合は氏名を使います。</div>
+                </div>
+
+                <div class="field full-width">
+                  <label for="nameKana">ふりがな *</label>
+                  <input type="text" id="nameKana" placeholder="例：やまだ たろう">
+                  <div class="field-help">検索と並び順に使います。姓と名の間に半角スペースを入れてください。</div>
+                </div>
+              </div>
             </div>
 
-            <div class="field">
-              <label for="leaveDate">退職日</label>
-              <input type="date" id="leaveDate">
+            <div class="employee-form-section">
+              <div class="employee-form-section-title">所属・会社</div>
+              <div class="employee-form-grid">
+                <div class="field">
+                  <label for="companyCode">会社区分 *</label>
+
+                  <select
+                    id="companyCode"
+                    onchange="handleCompanyCodeChange()"
+                  >
+                    <option value="MAIN">MAIN（正社員・自社）</option>
+                    <option value="PARTNER">PARTNER（協力企業）</option>
+                  </select>
+                  <div class="field-help">PARTNERを選ぶと、雇用区分と有給管理対象が自動調整されます。</div>
+                </div>
+
+                <div class="field">
+                  <label for="companyName">会社名</label>
+                  <input type="text" id="companyName" placeholder="例：株式会社〇〇">
+                </div>
+
+                <div class="field full-width">
+                  <label for="department">部署</label>
+                  <input type="text" id="department" placeholder="例：工事部">
+                </div>
+              </div>
             </div>
 
-            <div class="field">
-              <label for="workDaysPerWeek">週所定労働日数</label>
+            <div class="employee-form-section">
+              <div class="employee-form-section-title">雇用・在職</div>
+              <div class="employee-form-grid">
+                <div class="field">
+                  <label for="employmentType">雇用区分</label>
 
-              <input
-                type="number"
-                id="workDaysPerWeek"
-                min="0"
-                max="7"
-                step="0.5"
-                placeholder="例：5"
-              >
+                  <select id="employmentType">
+                    <option value="">選択してください</option>
+                    <option value="regular">正社員</option>
+                    <option value="partner">協力企業</option>
+                    <option value="part_time">パート</option>
+                    <option value="trainee">研修生</option>
+                    <option value="executive">役員</option>
+                    <option value="other">その他</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="employmentStatus">在職状況</label>
+
+                  <select id="employmentStatus">
+                    <option value="active">在職</option>
+                    <option value="leave">休職</option>
+                    <option value="retired">退職</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="hireDate">入社日</label>
+                  <input type="date" id="hireDate">
+                </div>
+
+                <div class="field quiet-field">
+                  <label for="leaveDate">退職日</label>
+                  <input type="date" id="leaveDate">
+                  <div class="field-help">在職中は空欄にしてください。</div>
+                </div>
+              </div>
             </div>
 
-            <div class="field">
-              <label for="fiscalStartMonth">有給年度開始月</label>
+            <div class="employee-form-section">
+              <div class="employee-form-section-title">有給管理</div>
+              <div class="employee-form-grid">
+                <div class="field">
+                  <label for="workDaysPerWeek">週所定労働日数</label>
 
-              <select id="fiscalStartMonth">
-                <option value="4">4月開始</option>
-                <option value="7">7月開始</option>
-              </select>
+                  <input
+                    type="number"
+                    id="workDaysPerWeek"
+                    min="0"
+                    max="7"
+                    step="0.5"
+                    placeholder="例：5"
+                  >
+                  <div class="field-help">有給付与日数の判断に使います。通常は5です。</div>
+                </div>
+
+                <div class="field">
+                  <label for="fiscalStartMonth">有給年度開始月</label>
+
+                  <select id="fiscalStartMonth">
+                    <option value="4">4月開始</option>
+                    <option value="7">7月開始</option>
+                  </select>
+                  <div class="field-help">残日数や年度集計の基準月です。</div>
+                </div>
+
+                <div class="field full-width">
+                  <label for="leaveManagementTarget">有給管理対象</label>
+
+                  <select id="leaveManagementTarget">
+                    <option value="TRUE">対象</option>
+                    <option value="FALSE">対象外</option>
+                  </select>
+                  <div class="field-help">対象外にすると申請画面や付与候補から外れます。</div>
+                </div>
+              </div>
             </div>
 
-            <div class="field">
-              <label for="leaveManagementTarget">有給管理対象</label>
+            <div class="employee-form-section">
+              <div class="employee-form-section-title">備考</div>
+              <div class="employee-form-grid">
+                <div class="field full-width">
+                  <label for="notes">備考</label>
 
-              <select id="leaveManagementTarget">
-                <option value="TRUE">対象</option>
-                <option value="FALSE">対象外</option>
-              </select>
-            </div>
-
-            <div class="field full-width">
-              <label for="notes">備考</label>
-
-              <textarea
-                id="notes"
-                rows="3"
-                placeholder="メモがあれば入力してください"
-              ></textarea>
+                  <textarea
+                    id="notes"
+                    rows="3"
+                    placeholder="メモがあれば入力してください"
+                  ></textarea>
+                </div>
+              </div>
             </div>
 
           </div>
@@ -263,6 +271,29 @@
           </div>
 
         </div>
+        </section>
+
+        <section class="employee-admin-section employee-maintain-section">
+          <div class="master-maintain-card">
+
+            <div class="master-maintain-title">
+              社員マスター整備
+            </div>
+
+            <div class="master-maintain-subtitle">
+              ID採番・表示順整理が必要な時だけ実行してください。
+            </div>
+
+            <button
+              class="master-maintain-btn"
+              type="button"
+              onclick="runMaintain()"
+            >
+              ID採番・並び順整理を実行
+            </button>
+
+          </div>
+        </section>
 
       </div>
     </section>
@@ -291,111 +322,141 @@
 
       </div>
 
-      <div class="employee-form-grid">
+      <div class="employee-form-sections">
 
-        <div class="field">
-          <label for="editName">氏名 *</label>
-          <input type="text" id="editName">
-          <div class="field-help">※姓と名の間に半角スペースを入れてください</div>
+        <div class="employee-form-section">
+          <div class="employee-form-section-title">基本情報</div>
+          <div class="employee-form-grid">
+            <div class="field">
+              <label for="editName">氏名 *</label>
+              <input type="text" id="editName">
+              <div class="field-help">申請画面に表示される正式な氏名です。姓と名の間に半角スペースを入れてください。</div>
+            </div>
+
+            <div class="field">
+              <label for="editDisplayName">表示用氏名</label>
+              <input type="text" id="editDisplayName">
+              <div class="field-help">管理・承認・出力画面で使う短い表示名です。空欄の場合は氏名を使います。</div>
+            </div>
+
+            <div class="field full-width">
+              <label for="editNameKana">ふりがな *</label>
+              <input type="text" id="editNameKana">
+              <div class="field-help">検索と並び順に使います。姓と名の間に半角スペースを入れてください。</div>
+            </div>
+          </div>
         </div>
 
-        <div class="field">
-          <label for="editDisplayName">表示用氏名</label>
-          <input type="text" id="editDisplayName">
+        <div class="employee-form-section">
+          <div class="employee-form-section-title">所属・会社</div>
+          <div class="employee-form-grid">
+            <div class="field">
+              <label for="editCompanyCode">会社区分 *</label>
+
+              <select id="editCompanyCode">
+                <option value="MAIN">MAIN（正社員・自社）</option>
+                <option value="PARTNER">PARTNER（協力企業）</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="editCompanyName">会社名</label>
+              <input type="text" id="editCompanyName">
+            </div>
+
+            <div class="field full-width">
+              <label for="editDepartment">部署</label>
+              <input type="text" id="editDepartment">
+            </div>
+          </div>
         </div>
 
-        <div class="field">
-          <label for="editNameKana">ふりがな *</label>
-          <input type="text" id="editNameKana">
-          <div class="field-help">※姓と名の間に半角スペースを入れてください</div>
+        <div class="employee-form-section">
+          <div class="employee-form-section-title">雇用・在職</div>
+          <div class="employee-form-grid">
+            <div class="field">
+              <label for="editEmploymentType">雇用区分</label>
+
+              <select id="editEmploymentType">
+                <option value="">選択してください</option>
+                <option value="regular">正社員</option>
+                <option value="partner">協力企業</option>
+                <option value="part_time">パート</option>
+                <option value="trainee">研修生</option>
+                <option value="executive">役員</option>
+                <option value="other">その他</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="editEmploymentStatus">在職状況</label>
+
+              <select id="editEmploymentStatus">
+                <option value="active">在職</option>
+                <option value="leave">休職</option>
+                <option value="retired">退職</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="editHireDate">入社日</label>
+              <input type="date" id="editHireDate">
+            </div>
+
+            <div class="field quiet-field">
+              <label for="editLeaveDate">退職日</label>
+              <input type="date" id="editLeaveDate">
+              <div class="field-help">在職中は空欄にしてください。</div>
+            </div>
+          </div>
         </div>
 
-        <div class="field">
-          <label for="editCompanyCode">会社区分 *</label>
+        <div class="employee-form-section">
+          <div class="employee-form-section-title">有給管理</div>
+          <div class="employee-form-grid">
+            <div class="field">
+              <label for="editWorkDaysPerWeek">週所定労働日数</label>
 
-          <select id="editCompanyCode">
-            <option value="MAIN">MAIN（正社員・自社）</option>
-            <option value="PARTNER">PARTNER（協力企業）</option>
-          </select>
+              <input
+                type="number"
+                id="editWorkDaysPerWeek"
+                min="0"
+                max="7"
+                step="0.5"
+              >
+              <div class="field-help">有給付与日数の判断に使います。通常は5です。</div>
+            </div>
+
+            <div class="field">
+              <label for="editFiscalStartMonth">有給年度開始月</label>
+
+              <select id="editFiscalStartMonth">
+                <option value="4">4月開始</option>
+                <option value="7">7月開始</option>
+              </select>
+              <div class="field-help">残日数や年度集計の基準月です。</div>
+            </div>
+
+            <div class="field full-width">
+              <label for="editLeaveManagementTarget">有給管理対象</label>
+
+              <select id="editLeaveManagementTarget">
+                <option value="TRUE">対象</option>
+                <option value="FALSE">対象外</option>
+              </select>
+              <div class="field-help">対象外にすると申請画面や付与候補から外れます。</div>
+            </div>
+          </div>
         </div>
 
-        <div class="field">
-          <label for="editCompanyName">会社名</label>
-          <input type="text" id="editCompanyName">
-        </div>
-
-        <div class="field">
-          <label for="editDepartment">部署</label>
-          <input type="text" id="editDepartment">
-        </div>
-
-        <div class="field">
-          <label for="editEmploymentType">雇用区分</label>
-
-          <select id="editEmploymentType">
-            <option value="">選択してください</option>
-            <option value="regular">正社員</option>
-            <option value="partner">協力企業</option>
-            <option value="part_time">パート</option>
-            <option value="trainee">研修生</option>
-            <option value="executive">役員</option>
-            <option value="other">その他</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="editEmploymentStatus">在職状況</label>
-
-          <select id="editEmploymentStatus">
-            <option value="active">在職</option>
-            <option value="leave">休職</option>
-            <option value="retired">退職</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="editHireDate">入社日</label>
-          <input type="date" id="editHireDate">
-        </div>
-
-        <div class="field">
-          <label for="editLeaveDate">退職日</label>
-          <input type="date" id="editLeaveDate">
-        </div>
-
-        <div class="field">
-          <label for="editWorkDaysPerWeek">週所定労働日数</label>
-
-          <input
-            type="number"
-            id="editWorkDaysPerWeek"
-            min="0"
-            max="7"
-            step="0.5"
-          >
-        </div>
-
-        <div class="field">
-          <label for="editFiscalStartMonth">有給年度開始月</label>
-
-          <select id="editFiscalStartMonth">
-            <option value="4">4月開始</option>
-            <option value="7">7月開始</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="editLeaveManagementTarget">有給管理対象</label>
-
-          <select id="editLeaveManagementTarget">
-            <option value="TRUE">対象</option>
-            <option value="FALSE">対象外</option>
-          </select>
-        </div>
-
-        <div class="field full-width">
-          <label for="editNotes">備考</label>
-          <textarea id="editNotes" rows="3"></textarea>
+        <div class="employee-form-section">
+          <div class="employee-form-section-title">備考</div>
+          <div class="employee-form-grid">
+            <div class="field full-width">
+              <label for="editNotes">備考</label>
+              <textarea id="editNotes" rows="3"></textarea>
+            </div>
+          </div>
         </div>
 
       </div>

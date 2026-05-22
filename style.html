@@ -1028,11 +1028,63 @@ body.personal-page-mode #requestScreen {
 /* =========================
    社員マスター管理
 ========================= */
+.employee-admin-section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #dceff5;
+}
+
+.employee-admin-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.employee-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.employee-section-kicker {
+  display: inline-block;
+  margin-bottom: 5px;
+  padding: 4px 9px;
+  border: 1px solid #d8edf4;
+  border-radius: 999px;
+  background: #eef8fb;
+  color: var(--accent-blue);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .employee-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   align-items: start;
+}
+
+.employee-form-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.employee-form-section {
+  padding: 14px;
+  border: 1px solid #e3f1f6;
+  border-radius: 16px;
+  background: #f8fcfe;
+}
+
+.employee-form-section-title {
+  margin-bottom: 12px;
+  color: var(--primary-dark);
+  font-size: 17px;
+  font-weight: 900;
 }
 
 .field.full-width {
@@ -1043,6 +1095,14 @@ body.personal-page-mode #requestScreen {
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-sub);
+}
+
+.quiet-field {
+  opacity: 0.82;
+}
+
+.quiet-field:focus-within {
+  opacity: 1;
 }
 
 .status-box {
@@ -1087,7 +1147,6 @@ body.personal-page-mode #requestScreen {
 }
 
 .master-maintain-card {
-  margin-top: 18px;
   padding: 16px;
   border: 1px solid #d7e8ff;
   border-radius: 16px;
@@ -1119,6 +1178,30 @@ body.personal-page-mode #requestScreen {
   background: #ffffff;
 }
 
+.employee-result-summary {
+  margin-top: 14px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e3f1f6;
+  border-radius: 14px;
+  background: #f8fcfe;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.employee-result-count {
+  color: var(--primary-dark);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.employee-result-condition {
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .admin-employee-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1144,6 +1227,7 @@ body.personal-page-mode #requestScreen {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .admin-employee-name-link {
@@ -1167,6 +1251,51 @@ body.personal-page-mode #requestScreen {
   font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
+}
+
+.employee-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #e3f1f6;
+  background: #f5fbfd;
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.employee-badge.status-active,
+.employee-badge.leave-target {
+  background: #eefaf3;
+  border-color: #cdebd8;
+  color: #216b3a;
+}
+
+.employee-badge.status-leave {
+  background: #fff8ec;
+  border-color: #f2ddb8;
+  color: #9a651c;
+}
+
+.employee-badge.status-retired,
+.employee-badge.leave-excluded {
+  background: #f7f8f9;
+  border-color: #d9e1e5;
+  color: #6c7c84;
+}
+
+.employee-badge.company-main {
+  background: #f1f7ff;
+  border-color: #d6e8ff;
+  color: #1f4f7a;
+}
+
+.employee-badge.company-partner {
+  background: #fff8ec;
+  border-color: #f2ddb8;
+  color: #9a651c;
 }
 
 .admin-employee-actions {
@@ -1253,6 +1382,11 @@ body.personal-page-mode #requestScreen {
 }
 
 @media (max-width: 700px) {
+  .employee-section-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .employee-form-grid,
   .admin-employee-row {
     grid-template-columns: 1fr;
