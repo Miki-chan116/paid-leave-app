@@ -927,11 +927,39 @@ function renderSixMonthGrantCandidates(data) {
           <span class="grant-basis-badge">${escapeHtml(emp.fiscal_start_month || 4)}月基準</span>
         </div>
 
-        <div class="six-month-meta">
-          入社日：${escapeHtml(emp.hire_date || "")}
-          ／ 初回付与予定日：${escapeHtml(emp.grant_date || "")}
-          ／ 付与日数：${escapeHtml(emp.grant_days)}日
-          ／ 会社：${escapeHtml(emp.company_name || emp.company_code || "")}
+        <div class="grant-detail-grid">
+          <div class="grant-detail-item">
+            <span>入社日</span>
+            <strong>${escapeHtml(emp.hire_date || "")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>入社6か月</span>
+            <strong>${escapeHtml(emp.six_month_date || "")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>会社基準日</span>
+            <strong>${escapeHtml(emp.company_basis_date || "")}</strong>
+          </div>
+          <div class="grant-detail-item highlight">
+            <span>初回付与予定日</span>
+            <strong>${escapeHtml(emp.grant_date || "")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>付与日数</span>
+            <strong>${escapeHtml(emp.grant_days)}日</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>会社</span>
+            <strong>${escapeHtml(emp.company_name || emp.company_code || "")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>部署</span>
+            <strong>${escapeHtml(emp.department || "-")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>判定</span>
+            <strong>${escapeHtml(getInitialGrantReasonLabel(emp.grant_reason))}</strong>
+          </div>
         </div>
       </div>
 
@@ -990,6 +1018,11 @@ function grantSixMonthPaidLeaveAction(employeeId, name, grantDays) {
     .grantSixMonthPaidLeave(employeeId, currentAdminUser);
 }
 
+function getInitialGrantReasonLabel(reason) {
+  if (reason === "company_basis") return "会社基準日を優先";
+  return "入社6か月到達";
+}
+
 /* =========================
    年次付与候補読み込み
 ========================= */
@@ -1043,12 +1076,35 @@ function renderYearlyGrantCandidates(data) {
           <span class="grant-basis-badge">${escapeHtml(item.fiscal_start_month || 4)}月基準</span>
         </div>
 
-        <div class="yearly-grant-meta">
-          入社日：${escapeHtml(item.hire_date || "")}
-          ／ 基準日：${escapeHtml(item.basis_date || "")}
-          ／ 勤続：${escapeHtml(item.months_worked)}か月
-          ／ 付与日数：${escapeHtml(item.grant_days)}日
-          ／ 会社：${escapeHtml(item.company_name || item.company_code || "")}
+        <div class="grant-detail-grid">
+          <div class="grant-detail-item">
+            <span>基準日</span>
+            <strong>${escapeHtml(item.basis_date || "")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>年度開始月</span>
+            <strong>${escapeHtml(item.fiscal_start_month || 4)}月</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>会社</span>
+            <strong>${escapeHtml(item.company_name || item.company_code || "")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>部署</span>
+            <strong>${escapeHtml(item.department || "-")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>入社日</span>
+            <strong>${escapeHtml(item.hire_date || "")}</strong>
+          </div>
+          <div class="grant-detail-item">
+            <span>勤続</span>
+            <strong>${escapeHtml(item.months_worked)}か月</strong>
+          </div>
+          <div class="grant-detail-item highlight">
+            <span>付与日数</span>
+            <strong>${escapeHtml(item.grant_days)}日</strong>
+          </div>
         </div>
       </div>
 

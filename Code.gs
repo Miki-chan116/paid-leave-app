@@ -2742,11 +2742,11 @@ function getSixMonthGrantCandidates() {
       if (!emp.hire_date) return false;
       if (grantedMap[emp.employee_id]) return false;
 
-      const grantDate = addMonthsLocal_(parseLocalDate(emp.hire_date), 6);
-      return grantDate <= today;
+      const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
+      return grantInfo.grant_date <= today;
     })
     .map(emp => {
-      const grantDate = addMonthsLocal_(parseLocalDate(emp.hire_date), 6);
+      const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
       const grantDays = getSixMonthGrantDays_(emp.work_days_per_week);
 
       return {
@@ -2754,11 +2754,15 @@ function getSixMonthGrantCandidates() {
         display_employee_id: emp.display_employee_id,
         name: getDisplayName(emp) || emp.name,
         hire_date: emp.hire_date,
-        grant_date: formatDateValue(grantDate),
+        six_month_date: formatDateValue(grantInfo.six_month_date),
+        company_basis_date: formatDateValue(grantInfo.company_basis_date),
+        grant_date: formatDateValue(grantInfo.grant_date),
+        grant_reason: grantInfo.grant_reason,
         grant_days: grantDays,
         work_days_per_week: emp.work_days_per_week || "",
         company_code: emp.company_code || "",
         company_name: emp.company_name || "",
+        department: emp.department || "",
         fiscal_start_month: Number(emp.fiscal_start_month || 4)
       };
     });
@@ -2781,7 +2785,8 @@ function grantSixMonthPaidLeave(employeeId, adminUser) {
     throw new Error("この社員にはすでに6か月付与が登録されています");
   }
 
-  const grantDate = addMonthsLocal_(parseLocalDate(emp.hire_date), 6);
+  const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
+  const grantDate = grantInfo.grant_date;
   const grantDays = getSixMonthGrantDays_(emp.work_days_per_week);
   const now = new Date();
 
@@ -2812,7 +2817,9 @@ function grantSixMonthPaidLeave(employeeId, adminUser) {
   rowObj.valid_to = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
   rowObj.grant_type = "six_month";
   rowObj.year = getFiscalYearFromDateWithStart(grantDate, Number(emp.fiscal_start_month || 4));
-  rowObj.notes = "入社6か月到達による初回付与";
+  rowObj.notes = grantInfo.grant_reason === "company_basis"
+    ? "会社基準日による初回付与"
+    : "入社6か月到達による初回付与";
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
@@ -2840,6 +2847,44 @@ function grantSixMonthPaidLeave(employeeId, adminUser) {
     name: emp.name,
     grant_date: formatDateValue(grantDate),
     grant_days: grantDays
+  };
+}
+
+/* =========================
+   初回付与予定日
+========================= */
+function getInitialPaidLeaveGrantInfo_(emp) {
+  const hireDate = parseLocalDate(emp.hire_date);
+  const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+  const sixMonthDate = addMonthsLocal_(hireDate, 6);
+  let companyBasisDate = new Date(
+    hireDate.getFullYear(),
+    fiscalStartMonth - 1,
+    1
+  );
+
+  if (companyBasisDate < hireDate) {
+    companyBasisDate = new Date(
+      hireDate.getFullYear() + 1,
+      fiscalStartMonth - 1,
+      1
+    );
+  }
+
+  if (companyBasisDate < sixMonthDate) {
+    return {
+      grant_date: companyBasisDate,
+      six_month_date: sixMonthDate,
+      company_basis_date: companyBasisDate,
+      grant_reason: "company_basis"
+    };
+  }
+
+  return {
+    grant_date: sixMonthDate,
+    six_month_date: sixMonthDate,
+    company_basis_date: companyBasisDate,
+    grant_reason: "six_month"
   };
 }
 
@@ -3006,6 +3051,7 @@ function getYearlyGrantCandidates() {
         fiscal_year: fiscalYear,
         company_code: emp.company_code,
         company_name: emp.company_name,
+        department: emp.department || "",
         fiscal_start_month: fiscalStartMonth
       };
     });
