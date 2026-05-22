@@ -12,10 +12,17 @@ function setDefaultReportValues() {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
+  const fiscalYear = month >= 4 ? year : year - 1;
 
   document.getElementById("monthlyYear").value = year;
   document.getElementById("monthlyMonth").value = month;
-  document.getElementById("yearlyFiscalYear").value = month >= 4 ? year : year - 1;
+  document.getElementById("yearlyFiscalYear").value = fiscalYear;
+
+  const fifoFiscalYear = document.getElementById("fifoFiscalYear");
+  const fifoAsOfDate = document.getElementById("fifoAsOfDate");
+
+  if (fifoFiscalYear) fifoFiscalYear.value = fiscalYear;
+  if (fifoAsOfDate) fifoAsOfDate.value = toInputDate(now);
 }
 
 function setDefaultSearchDates() {
@@ -1297,6 +1304,135 @@ function approveSelectedRequests() {
       ids,
       currentAdminUser
     );
+}
+
+/* =========================
+   FIFO残日数 試算
+========================= */
+function loadFifoTrialDifferences() {
+  const fiscalYear = document.getElementById("fifoFiscalYear").value;
+  const asOfDate = document.getElementById("fifoAsOfDate").value;
+  const results = document.getElementById("fifoTrialResults");
+  const summary = document.getElementById("fifoTrialSummary");
+
+  if (!fiscalYear) {
+    if (summary) summary.innerHTML = `<div class="message error">対象年度を入力してください。</div>`;
+    return;
+  }
+
+  if (!asOfDate) {
+    if (summary) summary.innerHTML = `<div class="message error">試算基準日を入力してください。</div>`;
+    return;
+  }
+
+  if (summary) summary.innerHTML = "";
+  if (results) {
+    results.innerHTML = `<div class="message">FIFO残日数を試算しています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(renderFifoTrialDifferences)
+    .withFailureHandler(err => {
+      console.error("FIFO試算エラー:", err);
+      if (results) {
+        results.innerHTML = `<div class="message error">FIFO残日数の試算でエラーが発生しました。</div>`;
+      }
+    })
+    .compareFifoBalanceDifferencesOnly(Number(fiscalYear), asOfDate);
+}
+
+function renderFifoTrialDifferences(rows) {
+  const results = document.getElementById("fifoTrialResults");
+  const summary = document.getElementById("fifoTrialSummary");
+
+  if (!results) return;
+
+  const data = Array.isArray(rows) ? rows : [];
+
+  if (summary) {
+    summary.innerHTML = `
+      <div class="fifo-trial-count">
+        差分あり：<strong>${escapeHtml(data.length)}</strong>件
+      </div>
+    `;
+  }
+
+  if (data.length === 0) {
+    results.innerHTML = `
+      <div class="empty-message">
+        旧計算とFIFO試算の差分はありません。
+      </div>
+    `;
+    return;
+  }
+
+  results.innerHTML = data.map(row => {
+    const difference = Number(row.remaining_difference || 0);
+    const differenceClass = difference > 0 ? "plus" : difference < 0 ? "minus" : "zero";
+
+    return `
+      <div class="fifo-trial-row">
+        <div class="fifo-trial-main">
+          <div class="fifo-trial-name-line">
+            <span class="fifo-trial-name">${escapeHtml(row.display_name || row.name || row.employee_id)}</span>
+            <span class="fifo-trial-id">${escapeHtml(row.employee_id || "")}</span>
+            ${renderFifoDifferenceReasonBadge(row.difference_reason)}
+          </div>
+
+          <div class="fifo-trial-meta">
+            会社：${escapeHtml(row.company_code || "-")}
+            ／ 部署：${escapeHtml(row.department || "-")}
+          </div>
+        </div>
+
+        <div class="fifo-trial-numbers">
+          <div class="fifo-number-item">
+            <span>旧残日数</span>
+            <strong>${escapeHtml(formatDays(row.legacy_current_remaining_days))}</strong>
+          </div>
+          <div class="fifo-number-item">
+            <span>FIFO残日数</span>
+            <strong>${escapeHtml(formatDays(row.fifo_current_remaining_days))}</strong>
+          </div>
+          <div class="fifo-number-item difference ${differenceClass}">
+            <span>差分</span>
+            <strong>${escapeHtml(formatSignedDays(difference))}</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderFifoDifferenceReasonBadge(reason) {
+  const text = reason || "要確認";
+  let cls = "needs-check";
+
+  if (text.includes("未来")) cls = "future";
+  if (text.includes("期限切れ")) cls = "expired";
+  if (text.includes("fiscal_start_month")) cls = "fiscal";
+
+  return `<span class="fifo-reason-badge ${cls}">${escapeHtml(text)}</span>`;
+}
+
+function formatSignedDays(value) {
+  const num = Number(value || 0);
+  const sign = num > 0 ? "+" : "";
+  return `${sign}${num}日`;
+}
+
+function clearFifoTrialResults() {
+  const results = document.getElementById("fifoTrialResults");
+  const summary = document.getElementById("fifoTrialSummary");
+
+  if (summary) summary.innerHTML = "";
+  if (results) {
+    results.innerHTML = `
+      <div class="empty-message">
+        対象年度と試算基準日を確認して「試算する」を押してください
+      </div>
+    `;
+  }
 }
 
 </script>

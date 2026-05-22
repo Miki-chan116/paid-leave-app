@@ -259,6 +259,55 @@
       </div>
     </section>
 
+    <!-- ================= FIFO試算 ================= -->
+    <section class="admin-section fifo-trial-section">
+      <div class="section-heading-row">
+        <div>
+          <div class="section-kicker">試算</div>
+          <h2 class="section-heading">FIFO残日数 試算</h2>
+          <p class="section-description">
+            本番表示には反映せず、旧計算とFIFO計算の差分だけを確認します。
+          </p>
+        </div>
+      </div>
+
+      <div class="search-card fifo-trial-card">
+        <div class="search-card-header">
+          <div>
+            <div class="search-title">差分確認</div>
+            <p class="subtitle">差分がある社員だけを表示します。</p>
+          </div>
+        </div>
+
+        <div class="fifo-trial-controls">
+          <div class="field">
+            <label for="fifoFiscalYear">対象年度</label>
+            <input type="number" id="fifoFiscalYear" placeholder="例: 2026">
+          </div>
+
+          <div class="field">
+            <label for="fifoAsOfDate">試算基準日</label>
+            <input type="date" id="fifoAsOfDate">
+          </div>
+        </div>
+
+        <div class="search-actions">
+          <button class="btn btn-search" type="button" onclick="loadFifoTrialDifferences()">
+            試算する
+          </button>
+
+          <button class="btn btn-reset" type="button" onclick="clearFifoTrialResults()">
+            クリア
+          </button>
+        </div>
+
+        <div id="fifoTrialSummary" class="fifo-trial-summary"></div>
+        <div id="fifoTrialResults" class="fifo-trial-results">
+          <div class="empty-message">対象年度と試算基準日を確認して「試算する」を押してください</div>
+        </div>
+      </div>
+    </section>
+
     <!-- ================= 出力 ================= -->
 <section class="admin-section report-section">
 

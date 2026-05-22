@@ -682,6 +682,162 @@
   border-top: 1px solid #dceff5;
 }
 
+.fifo-trial-section {
+  padding-top: 8px;
+  border-top: 1px solid #dceff5;
+}
+
+.fifo-trial-card {
+  margin-bottom: 18px;
+}
+
+.fifo-trial-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(180px, 240px);
+  gap: 12px;
+  align-items: end;
+}
+
+.fifo-trial-summary {
+  margin-top: 12px;
+}
+
+.fifo-trial-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #dceff5;
+  background: #f5fbfd;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.fifo-trial-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.fifo-trial-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid #d7e8ff;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.fifo-trial-main {
+  min-width: 0;
+}
+
+.fifo-trial-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fifo-trial-name {
+  color: #24435f;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.fifo-trial-id {
+  color: #5d7488;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fifo-trial-meta {
+  margin-top: 6px;
+  color: #5d7488;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fifo-trial-numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  gap: 8px;
+}
+
+.fifo-number-item {
+  min-width: 86px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid #dceff5;
+  background: #ffffff;
+}
+
+.fifo-number-item span {
+  display: block;
+  margin-bottom: 3px;
+  color: #7a8d9d;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.fifo-number-item strong {
+  color: #24435f;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.fifo-number-item.difference.plus {
+  background: #eef8fb;
+  border-color: #b9e4ef;
+}
+
+.fifo-number-item.difference.minus {
+  background: #fff6f8;
+  border-color: #f2c8d4;
+}
+
+.fifo-reason-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #dceff5;
+  background: #ffffff;
+  color: #5d7488;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.fifo-reason-badge.future {
+  background: #eef8fb;
+  border-color: #b9e4ef;
+  color: var(--primary-dark);
+}
+
+.fifo-reason-badge.expired {
+  background: #fff8ec;
+  border-color: #f2ddb8;
+  color: #9a651c;
+}
+
+.fifo-reason-badge.fiscal {
+  background: #f1f7ff;
+  border-color: #d6e8ff;
+  color: #1f4f7a;
+}
+
+.fifo-reason-badge.needs-check {
+  background: #fff6f8;
+  border-color: #f2c8d4;
+  color: #9f2a2a;
+}
+
 @media (max-width: 900px) {
   .yearly-grant-item {
     flex-direction: column;
@@ -692,10 +848,19 @@
   .grant-check-grid {
     grid-template-columns: 1fr;
   }
+
+  .fifo-trial-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 520px) {
   .grant-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fifo-trial-controls,
+  .fifo-trial-numbers {
     grid-template-columns: 1fr;
   }
 }
