@@ -138,6 +138,7 @@
             <div class="field">
               <label for="name">氏名 *</label>
               <input type="text" id="name" placeholder="例：山田 太郎">
+              <div class="field-help">※姓と名の間に半角スペースを入れてください</div>
             </div>
 
             <div class="field">
@@ -148,6 +149,7 @@
             <div class="field">
               <label for="nameKana">ふりがな *</label>
               <input type="text" id="nameKana" placeholder="例：やまだ たろう">
+              <div class="field-help">※姓と名の間に半角スペースを入れてください</div>
             </div>
 
             <div class="field">
@@ -294,6 +296,7 @@
         <div class="field">
           <label for="editName">氏名 *</label>
           <input type="text" id="editName">
+          <div class="field-help">※姓と名の間に半角スペースを入れてください</div>
         </div>
 
         <div class="field">
@@ -304,6 +307,7 @@
         <div class="field">
           <label for="editNameKana">ふりがな *</label>
           <input type="text" id="editNameKana">
+          <div class="field-help">※姓と名の間に半角スペースを入れてください</div>
         </div>
 
         <div class="field">
@@ -462,6 +466,7 @@
       <div class="modal-actions">
 
         <button
+          type="button"
           class="admin-action-btn"
           onclick="submitRetire()"
         >
@@ -469,6 +474,7 @@
         </button>
 
         <button
+          type="button"
           class="admin-action-btn modal-cancel-btn"
           onclick="closeRetireModal()"
         >
@@ -484,4 +490,4 @@
   <?!= include('employee-admin-script'); ?>
 
 </body>
-</html>ß
+</html>

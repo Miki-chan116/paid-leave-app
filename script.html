@@ -9,6 +9,7 @@ let companyCalendarMap = {};
 
 let selectedStartDateKey = "";
 let selectedEndDateKey = "";
+let loadedHistoryEmployeeId = "";
 
 function isPersonalPageMode() {
   if (typeof INITIAL_EMPLOYEE_ID === "undefined") {
@@ -306,8 +307,7 @@ function selectEmployee(emp) {
   updateCalendarStatus();
 
   closeHistorySection();
-
-  loadEmployeeLeaveHistory(emp.employee_id);
+  resetEmployeeLeaveHistory();
 }
 
 /* =========================
@@ -865,24 +865,53 @@ function toggleHistorySection() {
   btn.textContent = isCollapsed
     ? "申請履歴を閉じる"
     : "申請履歴を見る";
+
+  if (isCollapsed && selectedEmployee) {
+    loadEmployeeLeaveHistory(selectedEmployee.employee_id);
+  }
 }
 
 /* =========================
    年度内の申請履歴表示
 ========================= */
+function resetEmployeeLeaveHistory() {
+  loadedHistoryEmployeeId = "";
+
+  const list = document.getElementById("leaveHistoryList");
+  if (!list) return;
+
+  list.innerHTML = `<div class="history-empty">申請履歴を見るボタンを押すと履歴が表示されます。</div>`;
+}
+
 function loadEmployeeLeaveHistory(employeeId) {
   const list = document.getElementById("leaveHistoryList");
   if (!list) return;
 
-  list.innerHTML = `<div class="history-empty">履歴を読み込み中です...</div>`;
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) {
+    list.innerHTML = `<div class="history-empty">申請履歴はまだありません。</div>`;
+    return;
+  }
+
+  if (loadedHistoryEmployeeId === targetEmployeeId && list.dataset.loaded === "true") {
+    return;
+  }
+
+  list.dataset.loaded = "false";
+  list.innerHTML = `<div class="history-empty">申請履歴を読み込んでいます...</div>`;
 
   google.script.run
-    .withSuccessHandler(renderEmployeeLeaveHistory)
+    .withSuccessHandler(data => {
+      loadedHistoryEmployeeId = targetEmployeeId;
+      list.dataset.loaded = "true";
+      renderEmployeeLeaveHistory(data);
+    })
     .withFailureHandler(err => {
       console.error(err);
-      list.innerHTML = `<div class="history-empty history-error">履歴の取得でエラーが発生しました。</div>`;
+      list.dataset.loaded = "false";
+      list.innerHTML = `<div class="history-empty history-error">申請履歴の取得に失敗しました。時間をおいて再度お試しください。</div>`;
     })
-    .getEmployeeLeaveHistoryForRequest(employeeId);
+    .getEmployeeLeaveHistoryForRequest(targetEmployeeId);
 }
 
 function renderEmployeeLeaveHistory(data) {
@@ -892,7 +921,7 @@ function renderEmployeeLeaveHistory(data) {
   list.innerHTML = "";
 
   if (!Array.isArray(data) || data.length === 0) {
-    list.innerHTML = `<div class="history-empty">今年度の申請履歴はありません。</div>`;
+    list.innerHTML = `<div class="history-empty">申請履歴はまだありません。</div>`;
     return;
   }
 

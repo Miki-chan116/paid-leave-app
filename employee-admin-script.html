@@ -105,6 +105,7 @@ function renderEmployeeList(data) {
   data.forEach(emp => {
     const row = document.createElement("div");
     row.className = "admin-employee-row";
+    row.dataset.employeeId = emp.employee_id || "";
 
     if (emp.employment_status === "retired") {
       row.classList.add("retired");
@@ -113,7 +114,7 @@ function renderEmployeeList(data) {
     row.innerHTML = `
       <div class="admin-employee-main">
         <div class="admin-employee-name-line">
-          <button type="button" class="admin-employee-name-link">
+          <button type="button" class="admin-employee-name-link" data-action="edit" data-employee-id="${escapeHtml(emp.employee_id || "")}">
             ${escapeHtml(getDisplayName(emp))}
           </button>
         </div>
@@ -129,26 +130,33 @@ function renderEmployeeList(data) {
       </div>
 
       <div class="admin-employee-actions">
-        <button type="button" class="admin-action-btn edit-btn">✏️ 編集</button>
-        <button type="button" class="admin-action-btn retire-btn">⚠️ 退職</button>
+        <button type="button" class="admin-action-btn edit-btn" data-action="edit" data-employee-id="${escapeHtml(emp.employee_id || "")}">✏️ 編集</button>
+        <button type="button" class="admin-action-btn retire-btn" data-action="retire" data-employee-id="${escapeHtml(emp.employee_id || "")}">⚠️ 退職</button>
       </div>
     `;
-
-    row.querySelector(".admin-employee-name-link").addEventListener("click", () => {
-      openEditEmployeeModal(emp);
-    });
-
-    row.querySelector(".edit-btn").addEventListener("click", () => {
-      openEditEmployeeModal(emp);
-    });
-
-    row.querySelector(".retire-btn").addEventListener("click", () => {
-      openRetireModal(emp);
-    });
 
     list.appendChild(row);
   });
 }
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-action][data-employee-id]");
+  if (!button) return;
+
+  const employeeId = button.dataset.employeeId || "";
+  const emp = adminEmployees.find(item => String(item.employee_id || "") === employeeId);
+  if (!emp) return;
+
+  event.preventDefault();
+
+  if (button.dataset.action === "edit") {
+    openEditEmployeeModal(emp);
+  }
+
+  if (button.dataset.action === "retire") {
+    openRetireModal(emp);
+  }
+});
 
 /* =========================
    編集モーダルを開く
@@ -299,6 +307,24 @@ function submitRetire() {
       showRetireStatus("退職処理でエラーが発生しました。\n" + (err.message || err), "error");
     })
     .retireEmployeeFromAdmin(retiringEmployeeId, leaveDate);
+}
+
+/* =========================
+   社員マスター整備
+========================= */
+function runMaintain() {
+  showStatus("社員マスターを整備しています...", "");
+
+  google.script.run
+    .withSuccessHandler(result => {
+      showStatus((result && result.message) || "社員マスターを整備しました。", "ok");
+      loadEmployees();
+    })
+    .withFailureHandler(err => {
+      console.error(err);
+      showStatus("社員マスター整備でエラーが発生しました。\n" + (err.message || err), "error");
+    })
+    .runMaintainEmployeeMasterFromAdmin();
 }
 
 /* =========================

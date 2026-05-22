@@ -637,9 +637,7 @@ function renderMonthlyPreview(data) {
 
   const detailHtml = data.detail_rows.map(row => `
     <tr>
-      <td>${escapeHtml(row.display_employee_id || row.employee_id)}</td>
       <td>${escapeHtml(row.employee_name)}</td>
-      <td>${escapeHtml(row.company_name || row.company_code)}</td>
       <td>${escapeHtml(row.date)}</td>
       <td style="text-align:right;">${escapeHtml(row.days)}</td>
     </tr>
@@ -650,11 +648,9 @@ function renderMonthlyPreview(data) {
       <table class="preview-table">
         <thead>
           <tr>
-            <th>表示ID</th>
-            <th>氏名</th>
-            <th>会社</th>
+            <th>表示用氏名</th>
             <th>取得日</th>
-            <th>日数</th>
+            <th>取得日数</th>
           </tr>
         </thead>
         <tbody>${detailHtml}</tbody>
@@ -670,12 +666,11 @@ function downloadMonthlyReportCsv() {
   }
 
   const rows = [
-    ["employee_id", "表示用氏名", "取得日", "取得日数"]
+    ["表示用氏名", "取得日", "取得日数"]
   ];
 
   monthlyPreviewData.detail_rows.forEach(row => {
     rows.push([
-      row.employee_id || "",
       row.employee_name || "",
       row.date || "",
       row.days || 0

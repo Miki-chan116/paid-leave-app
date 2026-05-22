@@ -1132,6 +1132,98 @@ function searchRequests(filters) {
     });
 }
 
+/* =========================
+   個人ページ用：本人申請履歴
+========================= */
+function getEmployeeLeaveHistoryForRequest(employeeId, limit) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const maxRows = Math.max(1, Math.min(Number(limit || 50), 100));
+
+  if (!targetEmployeeId) {
+    return [];
+  }
+
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "status",
+    "created_at"
+  ]);
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  if (lastRow <= 1) {
+    return [];
+  }
+
+  const values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  const map = headerInfo.map;
+  const rows = [];
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const rowEmployeeId = String(row[map.employee_id] || "").trim();
+
+    if (rowEmployeeId !== targetEmployeeId) continue;
+    if (!row[map.start_date] || !row[map.end_date]) continue;
+
+    const startDate = new Date(row[map.start_date]);
+    const endDate = new Date(row[map.end_date]);
+    const createdAt = row[map.created_at] ? new Date(row[map.created_at]) : startDate;
+
+    rows.push({
+      startDate: startDate,
+      endDate: endDate,
+      createdAt: createdAt,
+      days: row[map.days] || 0,
+      halfDay: String(row[map.half_day] || ""),
+      status: norm(row[map.status] || STATUS.PENDING)
+    });
+  }
+
+  rows.sort((a, b) => {
+    const startDiff = b.startDate.getTime() - a.startDate.getTime();
+    if (startDiff !== 0) return startDiff;
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
+
+  return rows.slice(0, maxRows).map(row => {
+    const startText = formatDateValue(row.startDate);
+    const endText = formatDateValue(row.endDate);
+
+    return {
+      date_label: startText !== endText ? startText + " 〜 " + endText : startText,
+      leave_type_label: getRequestHistoryLeaveTypeLabel_(row.halfDay),
+      days: row.days,
+      status: row.status,
+      status_label: getRequestHistoryStatusLabel_(row.status)
+    };
+  });
+}
+
+function getRequestHistoryLeaveTypeLabel_(halfDay) {
+  const value = norm(halfDay);
+
+  if (value === "am") return "午前半休";
+  if (value === "pm") return "午後半休";
+
+  return "1日有給";
+}
+
+function getRequestHistoryStatusLabel_(status) {
+  const value = norm(status);
+
+  if (value === STATUS.APPROVED) return "承認済み";
+  if (value === STATUS.REJECTED) return "否認";
+
+  return "承認待ち";
+}
+
 function approveRequestsBatch(requestIds, adminUser) {
   if (!Array.isArray(requestIds) || requestIds.length === 0) {
     throw new Error("承認対象が選択されていません");
@@ -1476,12 +1568,11 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth, companyCode) {
   outputSheet.clearContents();
 
   const values = [];
-  values.push(["employee_id", "表示用氏名", "取得日", "取得日数"]);
+  values.push(["表示用氏名", "取得日", "取得日数"]);
 
   if (preview.detail_rows.length > 0) {
     preview.detail_rows.forEach(row => {
       values.push([
-        row.employee_id,
         row.employee_name,
         row.date,
         row.days
@@ -1489,7 +1580,7 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth, companyCode) {
     });
   }
 
-  outputSheet.getRange(1, 1, values.length, 4).setValues(values);
+  outputSheet.getRange(1, 1, values.length, 3).setValues(values);
 
   return {
     ok: true,
