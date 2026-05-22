@@ -825,6 +825,638 @@ function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
 }
 
 /* =========================
+   FIFO残日数計算（試験実装）
+   既存表示には未接続
+========================= */
+function calculateFifoPaidLeaveBalance(employeeId, asOfDateValue) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+
+  const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
+  const grants = getFifoPaidLeaveGrantRows_(targetEmployeeId, asOfDate);
+  const usedRows = getFifoApprovedLeaveUseRows_(targetEmployeeId, asOfDate);
+  const allocations = [];
+
+  usedRows.forEach(useRow => {
+    let remainingUseDays = Number(useRow.days || 0);
+
+    grants.forEach(grant => {
+      if (remainingUseDays <= 0) return;
+      if (grant.remaining_days <= 0) return;
+      if (useRow.use_date < grant.valid_from_date) return;
+      if (useRow.use_date > grant.valid_to_date) return;
+
+      const consumedDays = Math.min(grant.remaining_days, remainingUseDays);
+      grant.remaining_days -= consumedDays;
+      grant.used_days += consumedDays;
+      remainingUseDays -= consumedDays;
+
+      allocations.push({
+        request_id: useRow.request_id,
+        use_date: formatDateValue(useRow.use_date),
+        grant_id: grant.grant_id,
+        consumed_days: consumedDays
+      });
+    });
+
+    useRow.unallocated_days = remainingUseDays > 0 ? remainingUseDays : 0;
+  });
+
+  grants.forEach(grant => {
+    const isExpired = grant.valid_to_date < asOfDate;
+    grant.is_expired = isExpired;
+    grant.expired_days = isExpired ? grant.remaining_days : 0;
+    grant.active_remaining_days = isExpired ? 0 : grant.remaining_days;
+  });
+
+  const totalGrantedDays = grants.reduce((sum, grant) => sum + grant.total_days, 0);
+  const usedDays = usedRows.reduce((sum, row) => sum + Number(row.days || 0), 0);
+  const allocatedUsedDays = allocations.reduce((sum, row) => sum + Number(row.consumed_days || 0), 0);
+  const unallocatedUsedDays = usedRows.reduce((sum, row) => sum + Number(row.unallocated_days || 0), 0);
+  const expiredDays = grants.reduce((sum, grant) => sum + grant.expired_days, 0);
+  const currentRemainingDays = grants.reduce((sum, grant) => sum + grant.active_remaining_days, 0);
+
+  return {
+    employee_id: targetEmployeeId,
+    as_of_date: formatDateValue(asOfDate),
+    current_remaining_days: currentRemainingDays,
+    total_granted_days: totalGrantedDays,
+    used_days: usedDays,
+    allocated_used_days: allocatedUsedDays,
+    unallocated_used_days: unallocatedUsedDays,
+    expired_days: expiredDays,
+    grant_details: grants.map(grant => ({
+      grant_id: grant.grant_id,
+      grant_date: formatDateValue(grant.grant_date),
+      valid_from: formatDateValue(grant.valid_from_date),
+      valid_to: formatDateValue(grant.valid_to_date),
+      grant_type: grant.grant_type,
+      year: grant.year,
+      grant_days: grant.grant_days,
+      carry_over_days: grant.carry_over_days,
+      total_days: grant.total_days,
+      used_days: grant.used_days,
+      remaining_days: grant.remaining_days,
+      active_remaining_days: grant.active_remaining_days,
+      expired_days: grant.expired_days,
+      is_expired: grant.is_expired
+    })),
+    used_details: usedRows.map(row => ({
+      request_id: row.request_id,
+      use_date: formatDateValue(row.use_date),
+      days: row.days,
+      unallocated_days: row.unallocated_days || 0
+    })),
+    allocations: allocations
+  };
+}
+
+function compareFifoBalanceWithBuildBalance(employeeId, fiscalYear, asOfDateValue) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+
+  const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
+  const employeeMap = getEmployeeDetailMap();
+  const fiscalStartMonth = getFiscalStartMonthByEmployeeId(targetEmployeeId, employeeMap);
+  const targetFiscalYear = Number(
+    fiscalYear || getFiscalYearFromDateWithStart(asOfDate, fiscalStartMonth)
+  );
+  const legacyBalance = calculateYearlyBalanceByEmployee(targetEmployeeId, targetFiscalYear);
+  const fifoBalance = calculateFifoPaidLeaveBalance(targetEmployeeId, asOfDate);
+
+  return {
+    employee_id: targetEmployeeId,
+    fiscal_year: targetFiscalYear,
+    fiscal_start_month: fiscalStartMonth,
+    as_of_date: formatDateValue(asOfDate),
+    legacy_balance: legacyBalance,
+    fifo_balance: fifoBalance,
+    difference: {
+      current_remaining_days:
+        Number(fifoBalance.current_remaining_days || 0) -
+        Number(legacyBalance.current_remaining_days || 0),
+      used_days:
+        Number(fifoBalance.used_days || 0) -
+        Number(legacyBalance.used_days || 0),
+      expired_days:
+        Number(fifoBalance.expired_days || 0) -
+        Number(legacyBalance.expired_days || 0)
+    }
+  };
+}
+
+/* =========================
+   FIFO残日数比較（検証用）
+   既存表示には未接続
+========================= */
+function compareFifoBalanceForAllEmployees(fiscalYear, asOfDateValue) {
+  const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
+  const rows = getFifoBalanceComparisonRows_(fiscalYear, asOfDate);
+
+  logFifoBalanceComparisonRows_(
+    "FIFO残日数比較（全対象社員）",
+    rows,
+    fiscalYear,
+    asOfDate
+  );
+
+  return rows;
+}
+
+/* =========================
+   FIFO残日数比較（検証用・差分ありのみ）
+   既存表示には未接続
+========================= */
+function compareFifoBalanceDifferencesOnly(fiscalYear, asOfDateValue) {
+  const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
+  const rows = getFifoBalanceComparisonRows_(fiscalYear, asOfDate)
+    .filter(row => row.has_difference === true);
+
+  logFifoBalanceComparisonRows_(
+    "FIFO残日数比較（差分ありのみ）",
+    rows,
+    fiscalYear,
+    asOfDate
+  );
+
+  return rows;
+}
+
+function getFifoBalanceComparisonRows_(fiscalYear, asOfDate) {
+  const employees = getEmployeesForAdmin()
+    .filter(emp => isFifoBalanceCompareTargetEmployee_(emp));
+
+  return employees.map(emp => {
+    const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+    const targetFiscalYear = Number(
+      fiscalYear || getFiscalYearFromDateWithStart(asOfDate, fiscalStartMonth)
+    );
+
+    return buildFifoBalanceComparisonRow_(emp, targetFiscalYear, asOfDate);
+  });
+}
+
+function buildFifoBalanceComparisonRow_(emp, fiscalYear, asOfDate) {
+  const employeeId = String(emp.employee_id || "").trim();
+  const comparison = compareFifoBalanceWithBuildBalance(
+    employeeId,
+    fiscalYear,
+    asOfDate
+  );
+  const legacyBalance = comparison.legacy_balance || {};
+  const fifoBalance = comparison.fifo_balance || {};
+  const remainingDifference = Number(comparison.difference.current_remaining_days || 0);
+  const usedDifference = Number(comparison.difference.used_days || 0);
+  const expiredDifference = Number(comparison.difference.expired_days || 0);
+  const futureInfo = getFutureApprovedUsedInfoForFifoComparison_(
+    employeeId,
+    fiscalYear,
+    asOfDate
+  );
+  const futureApprovedUsedDays = Number(futureInfo.future_approved_used_days || 0);
+  const adjustedLegacyUsedDays = Number(legacyBalance.used_days || 0) - futureApprovedUsedDays;
+  const adjustedLegacyRemainingDays =
+    Number(legacyBalance.current_remaining_days || 0) + futureApprovedUsedDays;
+  const adjustedRemainingDifference =
+    Number(fifoBalance.current_remaining_days || 0) - adjustedLegacyRemainingDays;
+  const approvedRequestIds = {};
+
+  (fifoBalance.used_details || []).forEach(row => {
+    if (row.request_id) approvedRequestIds[String(row.request_id)] = true;
+  });
+
+  return {
+    employee_id: employeeId,
+    name: String(emp.name || ""),
+    display_name: String(emp.display_name || ""),
+    company_code: String(emp.company_code || ""),
+    department: String(emp.department || ""),
+    fiscal_start_month: Number(emp.fiscal_start_month || 4),
+    legacy_current_remaining_days: Number(legacyBalance.current_remaining_days || 0),
+    fifo_current_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+    remaining_difference: remainingDifference,
+    legacy_used_days: Number(legacyBalance.used_days || 0),
+    fifo_used_days: Number(fifoBalance.used_days || 0),
+    used_difference: usedDifference,
+    future_approved_used_days: futureApprovedUsedDays,
+    future_approved_request_count: futureInfo.future_approved_request_count,
+    adjusted_legacy_used_days: adjustedLegacyUsedDays,
+    adjusted_legacy_remaining_days: adjustedLegacyRemainingDays,
+    adjusted_remaining_difference: adjustedRemainingDifference,
+    legacy_expired_days: Number(legacyBalance.expired_days || 0),
+    fifo_expired_days: Number(fifoBalance.expired_days || 0),
+    expired_difference: expiredDifference,
+    grant_count: (fifoBalance.grant_details || []).length,
+    approved_request_count: Object.keys(approvedRequestIds).length,
+    difference_reason: getFifoComparisonDifferenceReason_({
+      remaining_difference: remainingDifference,
+      adjusted_remaining_difference: adjustedRemainingDifference,
+      future_approved_used_days: futureApprovedUsedDays,
+      expired_difference: expiredDifference,
+      fiscal_start_month: Number(emp.fiscal_start_month || 4)
+    }),
+    has_difference:
+      remainingDifference !== 0 ||
+      usedDifference !== 0 ||
+      expiredDifference !== 0
+  };
+}
+
+function getFutureApprovedUsedInfoForFifoComparison_(employeeId, fiscalYear, asOfDate) {
+  const debugRows = getFifoApprovedLeaveUseDebugRows_(
+    employeeId,
+    fiscalYear,
+    asOfDate
+  );
+  const futureRequestIds = {};
+  let futureUsedDays = 0;
+
+  debugRows.forEach(row => {
+    if (!row.is_same_employee) return;
+    if (!row.is_approved) return;
+    if (!row.is_paid_leave_type) return;
+
+    (row.daily_rows || []).forEach(dailyRow => {
+      if (!dailyRow.is_in_fiscal_year) return;
+      if (dailyRow.is_before_as_of_date) return;
+
+      futureUsedDays += Number(dailyRow.days || 0);
+      if (row.request_id) futureRequestIds[String(row.request_id)] = true;
+    });
+  });
+
+  return {
+    future_approved_used_days: futureUsedDays,
+    future_approved_request_count: Object.keys(futureRequestIds).length
+  };
+}
+
+function getFifoComparisonDifferenceReason_(info) {
+  const remainingDifference = Number(info.remaining_difference || 0);
+  const adjustedRemainingDifference = Number(info.adjusted_remaining_difference || 0);
+  const futureApprovedUsedDays = Number(info.future_approved_used_days || 0);
+  const expiredDifference = Number(info.expired_difference || 0);
+  const fiscalStartMonth = Number(info.fiscal_start_month || 4);
+
+  if (remainingDifference === 0 && expiredDifference === 0) return "";
+
+  if (
+    futureApprovedUsedDays > 0 &&
+    Math.abs(adjustedRemainingDifference) < Math.abs(remainingDifference)
+  ) {
+    return "未来の承認済み申請による差分";
+  }
+
+  if (expiredDifference !== 0) {
+    return "期限切れ計算方式の違い";
+  }
+
+  if (fiscalStartMonth !== 4) {
+    return "fiscal_start_month / 年度範囲の違い";
+  }
+
+  return "要確認";
+}
+
+function isFifoBalanceCompareTargetEmployee_(emp) {
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+  const isActive = status === "active" || status === "在職";
+  return isActive && emp.leave_management_target === true;
+}
+
+function logFifoBalanceComparisonRows_(title, rows, fiscalYear, asOfDate) {
+  const header = [
+    "employee_id",
+    "name",
+    "display_name",
+    "company_code",
+    "department",
+    "fiscal_start_month",
+    "legacy_current_remaining_days",
+    "fifo_current_remaining_days",
+    "remaining_difference",
+    "legacy_used_days",
+    "fifo_used_days",
+    "used_difference",
+    "future_approved_used_days",
+    "future_approved_request_count",
+    "adjusted_legacy_used_days",
+    "adjusted_legacy_remaining_days",
+    "adjusted_remaining_difference",
+    "legacy_expired_days",
+    "fifo_expired_days",
+    "expired_difference",
+    "grant_count",
+    "approved_request_count",
+    "difference_reason",
+    "has_difference"
+  ];
+
+  Logger.log(
+    title +
+    " / fiscalYear=" + (fiscalYear || "社員ごとの基準日") +
+    " / asOfDate=" + formatDateValue(asOfDate) +
+    " / count=" + rows.length
+  );
+  Logger.log(header.join("\t"));
+
+  rows.forEach(row => {
+    Logger.log(header.map(key => row[key]).join("\t"));
+  });
+}
+
+function getFifoPaidLeaveGrantRows_(employeeId, asOfDate) {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "grant_id",
+    "employee_id",
+    "grant_date",
+    "grant_days",
+    "carry_over_days",
+    "valid_from",
+    "valid_to",
+    "grant_type",
+    "year"
+  ]);
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+
+  return data.slice(1)
+    .map(row => rowToObject(row, headerInfo.headers))
+    .filter(rowObj => {
+      if (String(rowObj.employee_id || "").trim() !== String(employeeId)) return false;
+      if (!rowObj.grant_date) return false;
+
+      const validFromDate = rowObj.valid_from
+        ? parseLocalDate(rowObj.valid_from)
+        : parseLocalDate(rowObj.grant_date);
+      if (validFromDate > asOfDate) return false;
+
+      const finalizedValue = String(rowObj.is_finalized == null ? "" : rowObj.is_finalized)
+        .trim()
+        .toUpperCase();
+
+      return finalizedValue !== "FALSE";
+    })
+    .map(rowObj => {
+      const grantDate = parseLocalDate(rowObj.grant_date);
+      const validFromDate = rowObj.valid_from ? parseLocalDate(rowObj.valid_from) : grantDate;
+      const validToDate = rowObj.valid_to
+        ? parseLocalDate(rowObj.valid_to)
+        : addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
+      const grantDays = Number(rowObj.grant_days || 0);
+      const carryOverDays = Number(rowObj.carry_over_days || 0);
+      const totalDays = grantDays + carryOverDays;
+
+      return {
+        grant_id: String(rowObj.grant_id || ""),
+        grant_date: grantDate,
+        valid_from_date: validFromDate,
+        valid_to_date: validToDate,
+        grant_type: String(rowObj.grant_type || ""),
+        year: rowObj.year || "",
+        grant_days: grantDays,
+        carry_over_days: carryOverDays,
+        total_days: totalDays,
+        used_days: 0,
+        remaining_days: totalDays,
+        active_remaining_days: 0,
+        expired_days: 0,
+        is_expired: false
+      };
+    })
+    .sort((a, b) => {
+      if (a.grant_date.getTime() !== b.grant_date.getTime()) {
+        return a.grant_date - b.grant_date;
+      }
+      return String(a.grant_id).localeCompare(String(b.grant_id));
+    });
+}
+
+function getFifoApprovedLeaveUseRows_(employeeId, asOfDate) {
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id",
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "status"
+  ]);
+  const data = sheet.getDataRange().getValues();
+  const calendarMap = getCompanyCalendarMap();
+  const result = [];
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const targetEmployeeId = String(rowObj.employee_id || "").trim();
+    const status = norm(rowObj.status);
+    const requestType = String(rowObj.type || "paid_leave").trim();
+
+    if (targetEmployeeId !== String(employeeId)) return;
+    if (status !== STATUS.APPROVED) return;
+    if (requestType && requestType !== "paid_leave") return;
+    if (!rowObj.start_date || !rowObj.end_date) return;
+
+    const dailyRows = expandLeaveRequestToDailyRows(
+      rowObj.start_date,
+      rowObj.end_date,
+      rowObj.days,
+      rowObj.half_day,
+      calendarMap
+    );
+
+    dailyRows.forEach(item => {
+      const useDate = parseLocalDate(item.date);
+      if (useDate > asOfDate) return;
+
+      result.push({
+        request_id: String(rowObj.request_id || ""),
+        use_date: useDate,
+        days: Number(item.days || 0),
+        unallocated_days: 0
+      });
+    });
+  });
+
+  return result.sort((a, b) => {
+    if (a.use_date.getTime() !== b.use_date.getTime()) {
+      return a.use_date - b.use_date;
+    }
+    return String(a.request_id).localeCompare(String(b.request_id));
+  });
+}
+
+/* =========================
+   FIFO使用日数取得デバッグ（検証用）
+   既存表示には未接続
+========================= */
+function debugFifoApprovedLeaveUseRows(employeeId, fiscalYear, asOfDateValue) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+
+  const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
+  const employeeMap = getEmployeeDetailMap();
+  const fiscalStartMonth = getFiscalStartMonthByEmployeeId(targetEmployeeId, employeeMap);
+  const targetFiscalYear = Number(
+    fiscalYear || getFiscalYearFromDateWithStart(asOfDate, fiscalStartMonth)
+  );
+  const rows = getFifoApprovedLeaveUseDebugRows_(
+    targetEmployeeId,
+    targetFiscalYear,
+    asOfDate
+  );
+
+  logFifoApprovedLeaveUseDebugRows_(
+    targetEmployeeId,
+    targetFiscalYear,
+    asOfDate,
+    rows
+  );
+
+  return rows;
+}
+
+function getFifoApprovedLeaveUseDebugRows_(employeeId, fiscalYear, asOfDate) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const employeeMap = getEmployeeDetailMap();
+  const fiscalStartMonth = getFiscalStartMonthByEmployeeId(targetEmployeeId, employeeMap);
+  const targetFiscalYear = Number(
+    fiscalYear || getFiscalYearFromDateWithStart(asOfDate, fiscalStartMonth)
+  );
+  const fiscalRange = getFiscalYearRangeWithStart(targetFiscalYear, fiscalStartMonth);
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id",
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "status"
+  ]);
+  const data = sheet.getDataRange().getValues();
+  const calendarMap = getCompanyCalendarMap();
+
+  if (data.length <= 1) return [];
+
+  return data.slice(1)
+    .map(row => {
+      const rowObj = rowToObject(row, headerInfo.headers);
+      const rowEmployeeId = String(rowObj.employee_id || "").trim();
+      const status = norm(rowObj.status);
+      const requestType = String(rowObj.type || "paid_leave").trim();
+      const hasDates = !!(rowObj.start_date && rowObj.end_date);
+      const isSameEmployee = rowEmployeeId === targetEmployeeId;
+      const isApproved = status === STATUS.APPROVED;
+      const isPaidLeaveType = !requestType || requestType === "paid_leave";
+      let dailyRows = [];
+      let isInFiscalYear = false;
+      let isBeforeAsOfDate = false;
+
+      if (hasDates) {
+        dailyRows = expandLeaveRequestToDailyRows(
+          rowObj.start_date,
+          rowObj.end_date,
+          rowObj.days,
+          rowObj.half_day,
+          calendarMap
+        ).map(item => {
+          const useDate = parseLocalDate(item.date);
+          const inFiscalYear = isDateInRange(useDate, fiscalRange.start, fiscalRange.end);
+          const beforeAsOfDate = useDate <= asOfDate;
+
+          if (inFiscalYear) isInFiscalYear = true;
+          if (beforeAsOfDate) isBeforeAsOfDate = true;
+
+          return {
+            use_date: formatDateValue(useDate),
+            days: Number(item.days || 0),
+            is_in_fiscal_year: inFiscalYear,
+            is_before_as_of_date: beforeAsOfDate
+          };
+        });
+      }
+
+      return {
+        request_id: String(rowObj.request_id || ""),
+        employee_id: rowEmployeeId,
+        start_date: formatDateValue(rowObj.start_date),
+        end_date: formatDateValue(rowObj.end_date),
+        days: rowObj.days || 0,
+        half_day: String(rowObj.half_day || ""),
+        type: requestType || "",
+        status: String(rowObj.status || ""),
+        fiscal_year: targetFiscalYear,
+        is_same_employee: isSameEmployee,
+        is_approved: isApproved,
+        is_paid_leave_type: isPaidLeaveType,
+        is_in_fiscal_year: isInFiscalYear,
+        is_before_as_of_date: isBeforeAsOfDate,
+        daily_rows: dailyRows,
+        excluded_reason: getFifoDebugExcludedReason_({
+          has_dates: hasDates,
+          is_same_employee: isSameEmployee,
+          is_approved: isApproved,
+          is_paid_leave_type: isPaidLeaveType,
+          is_in_fiscal_year: isInFiscalYear,
+          is_before_as_of_date: isBeforeAsOfDate
+        })
+      };
+    })
+    .filter(row => row.is_same_employee || row.employee_id === targetEmployeeId);
+}
+
+function getFifoDebugExcludedReason_(flags) {
+  const reasons = [];
+
+  if (!flags.is_same_employee) reasons.push("employee_id不一致");
+  if (!flags.is_approved) reasons.push("statusがapprovedではない");
+  if (!flags.is_paid_leave_type) reasons.push("typeがpaid_leaveではない");
+  if (!flags.has_dates) reasons.push("start_date/end_date不足");
+  if (!flags.is_in_fiscal_year) reasons.push("年度範囲外");
+  if (!flags.is_before_as_of_date) reasons.push("asOfDateより後");
+
+  return reasons.length > 0 ? reasons.join(" / ") : "";
+}
+
+function logFifoApprovedLeaveUseDebugRows_(employeeId, fiscalYear, asOfDate, rows) {
+  const header = [
+    "request_id",
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "half_day",
+    "type",
+    "status",
+    "fiscal_year",
+    "is_same_employee",
+    "is_approved",
+    "is_paid_leave_type",
+    "is_in_fiscal_year",
+    "is_before_as_of_date",
+    "excluded_reason"
+  ];
+
+  Logger.log(
+    "FIFO使用日数取得デバッグ" +
+    " / employee_id=" + employeeId +
+    " / fiscalYear=" + fiscalYear +
+    " / asOfDate=" + formatDateValue(asOfDate) +
+    " / count=" + rows.length
+  );
+  Logger.log(header.join("\t"));
+
+  rows.forEach(row => {
+    Logger.log(header.map(key => row[key]).join("\t"));
+  });
+}
+
+/* =========================
    有給日数計算
 ========================= */
 function calculateLeaveDays(startDate, endDate) {
@@ -3206,4 +3838,23 @@ function hasYearlyGrantForFiscalYear_(
         Number(fiscalYear)
     );
   });
+}
+
+function testDebugFifoUseRows() {
+  Logger.log(JSON.stringify(
+    debugFifoApprovedLeaveUseRows("EMP0046", 2026, "2026-05-23"),
+    null,
+    2
+  ));
+
+  Logger.log(JSON.stringify(
+    debugFifoApprovedLeaveUseRows("EMP0049", 2026, "2026-05-23"),
+    null,
+    2
+  ));
+}
+
+function testCompareFifoDiffOnly() {
+  const result = compareFifoBalanceDifferencesOnly(2026, "2026-05-23");
+  Logger.log(JSON.stringify(result, null, 2));
 }
