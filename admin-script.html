@@ -44,6 +44,11 @@ function updateCurrentRangeText(text) {
   if (el) el.textContent = text;
 }
 
+function updateSearchHint(text) {
+  const el = document.getElementById("searchHint");
+  if (el) el.textContent = text || "前月＋当月";
+}
+
 function setActiveTab(tabName) {
   ["pending", "approved", "rejected", "logs"].forEach(name => {
     const el = document.getElementById("tab-" + name);
@@ -55,13 +60,23 @@ function setActiveTab(tabName) {
 function showLoading(targetId, text) {
   const el = document.getElementById(targetId);
   if (!el) return;
-  el.innerHTML = `<div class="message">${escapeHtml(text || "読み込み中...")}</div>`;
+  el.innerHTML = `
+    <div class="state-message loading-state">
+      <div class="state-title">${escapeHtml(text || "読み込み中...")}</div>
+      <div class="state-sub">少しお待ちください。</div>
+    </div>
+  `;
 }
 
 function showError(targetId, text) {
   const el = document.getElementById(targetId);
   if (!el) return;
-  el.innerHTML = `<div class="message error">${escapeHtml(text || "エラーが発生しました")}</div>`;
+  el.innerHTML = `
+    <div class="state-message error-state">
+      <div class="state-title">${escapeHtml(text || "エラーが発生しました")}</div>
+      <div class="state-sub">時間をおいて再度お試しください。</div>
+    </div>
+  `;
 }
 
 function showExportMessage(message, type) {
@@ -81,15 +96,34 @@ function escapeHtml(str) {
 }
 
 function getStatusLabel(status) {
+  if (status === "all") return "すべて";
   if (status === "pending") return "承認待ち";
   if (status === "approved") return "承認済み";
   if (status === "rejected") return "否認";
   return status || "";
 }
 
+function getRequestTypeLabel(halfDay, days) {
+  const value = String(halfDay || "").trim().toLowerCase();
+  if (value === "am") return "午前半休";
+  if (value === "pm") return "午後半休";
+  if (value) return "半日有給";
+  if (Number(days || 0) > 1) return "複数日有給";
+  return "1日有給";
+}
+
 function formatDays(value) {
   const num = Number(value || 0);
   return `${num}日`;
+}
+
+function renderEmptyState(title, subText) {
+  return `
+    <div class="state-message empty-state">
+      <div class="state-title">${escapeHtml(title)}</div>
+      <div class="state-sub">${escapeHtml(subText || "")}</div>
+    </div>
+  `;
 }
 
 /* =========================
@@ -273,6 +307,8 @@ function loadRequests(status) {
 
   setActiveTab(status);
   setDefaultSearchDates();
+  document.getElementById("searchKeyword").value = "";
+  document.getElementById("searchStatus").value = status;
   loadDashboardSummary();
 
   const start = document.getElementById("searchStartDate").value;
@@ -281,6 +317,7 @@ function loadRequests(status) {
   updateCurrentRangeText(
     `現在表示中：${getStatusLabel(status)} / 前月＋当月（${formatDisplayDate(start)} ～ ${formatDisplayDate(end)}）`
   );
+  updateSearchHint(`${getStatusLabel(status)} / 前月＋当月`);
 
   showLoading("requestView", "申請データを読み込み中です...");
 
@@ -309,6 +346,9 @@ function searchRequestList() {
 
   updateCurrentRangeText(
     `現在表示中：検索結果 / ${formatDisplayDate(start) || "開始日なし"} ～ ${formatDisplayDate(end) || "終了日なし"}`
+  );
+  updateSearchHint(
+    `検索中：${getStatusLabel(status) || "すべて"} / ${formatDisplayDate(start) || "開始日なし"} ～ ${formatDisplayDate(end) || "終了日なし"}`
   );
 
   showLoading("requestView", "検索しています...");
@@ -356,12 +396,17 @@ function renderCards(data) {
   container.innerHTML = "";
 
   if (!Array.isArray(data)) {
-    container.innerHTML = `<div class="message error">配列ではないデータを受信しました</div>`;
+    container.innerHTML = renderEmptyState(
+      "申請データを表示できませんでした。",
+      "受信データの形式を確認してください。"
+    );
     return;
   }
 
   if (data.length === 0) {
-    container.innerHTML = `<div class="message">該当する申請はありません。</div>`;
+    container.innerHTML = currentMode === "search"
+      ? renderEmptyState("検索条件に一致する申請はありません。", "条件を変えるか、前月＋当月に戻してください。")
+      : renderEmptyState("現在表示できる申請はありません。", "別のステータスを確認するか、検索条件を変更してください。");
     return;
   }
 
@@ -370,19 +415,20 @@ function renderCards(data) {
     card.className = "compact-card " + escapeHtml(req.status || "pending");
 
     let buttonsHtml = `
-      <button class="btn btn-refresh" type="button" onclick="reloadCurrentView()">再読込</button>
+      <button class="btn btn-refresh btn-card-action" type="button" onclick="reloadCurrentView()">再読込</button>
     `;
 
     if (req.status === "pending") {
       buttonsHtml = `
-        <button class="btn btn-approve" type="button" onclick="approveRequestAction('${escapeHtml(req.request_id)}')">承認</button>
-        <button class="btn btn-reject" type="button" onclick="rejectRequestAction('${escapeHtml(req.request_id)}')">否認</button>
+        <button class="btn btn-approve btn-card-action" type="button" onclick="approveRequestAction('${escapeHtml(req.request_id)}')">承認</button>
+        <button class="btn btn-reject btn-card-action" type="button" onclick="rejectRequestAction('${escapeHtml(req.request_id)}')">否認</button>
       `;
     }
 
     const reasonText = req.reason_detail
       ? `${req.reason || "記載なし"} / ${req.reason_detail}`
       : (req.reason || "記載なし");
+    const requestType = getRequestTypeLabel(req.half_day, req.days);
 
     card.innerHTML = `
       <div class="compact-main-row">
@@ -404,21 +450,27 @@ function renderCards(data) {
 
         <div class="compact-main">
           <div class="compact-top">
-            <span class="compact-name">${escapeHtml(req.employee_name)}</span>
-            <span class="compact-id">${escapeHtml(req.employee_id || "")}</span>
+            <div>
+              <span class="compact-name">${escapeHtml(req.employee_name)}</span>
+              <span class="compact-id">${escapeHtml(req.employee_id || "")}</span>
+            </div>
             <span class="status-badge ${escapeHtml(req.status)}">${escapeHtml(getStatusLabel(req.status))}</span>
           </div>
 
           <div class="compact-meta">
-            <span class="mini-chip">日付 <strong>${escapeHtml(req.date_label || "")}</strong></span>
+            <span class="mini-chip important-chip">取得希望日 <strong>${escapeHtml(req.date_label || "")}</strong></span>
             <span class="mini-chip">日数 <strong>${escapeHtml(formatDays(req.days))}</strong></span>
-            <span class="mini-chip">半日 <strong>${escapeHtml(req.half_day || "なし")}</strong></span>
-            <span class="mini-chip">残 <strong>${escapeHtml(formatDays(req.current_remaining_days))}</strong></span>
-            <span class="mini-chip">取得済 <strong>${escapeHtml(formatDays(req.used_days))}</strong></span>
+            <span class="mini-chip">申請種別 <strong>${escapeHtml(requestType)}</strong></span>
+            <span class="mini-chip">残日数 <strong>${escapeHtml(formatDays(req.current_remaining_days))}</strong></span>
           </div>
 
           <div class="compact-detail">
-            理由：${escapeHtml(reasonText)} ／ 申請ID：${escapeHtml(req.request_id)}
+            <span class="detail-label">理由</span>
+            <span>${escapeHtml(reasonText)}</span>
+          </div>
+
+          <div class="compact-sub-detail">
+            取得済：${escapeHtml(formatDays(req.used_days))} ／ 申請ID：${escapeHtml(req.request_id)}
           </div>
         </div>
 
@@ -490,6 +542,7 @@ function loadLogs() {
 
   setActiveTab("logs");
   setDefaultSearchDates();
+  updateSearchHint("ログ / 前月＋当月");
 
   const start = document.getElementById("searchStartDate").value;
   const end = document.getElementById("searchEndDate").value;
@@ -1074,7 +1127,7 @@ function closeYearlyGrantList() {
 
   container.innerHTML = `
     <div class="empty-message">
-      「候補確認」を押してください
+      「付与対象者を確認する」を押してください
     </div>
   `;
 }
@@ -1083,7 +1136,11 @@ function closeSixMonthGrantList() {
   const area = document.getElementById("sixMonthGrantArea");
   if (!area) return;
 
-  area.innerHTML = "";
+  area.innerHTML = `
+    <div class="empty-message">
+      「付与対象者を確認する」を押してください
+    </div>
+  `;
 }
 
 function toggleRequestSelection(requestId, checked) {

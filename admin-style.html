@@ -23,7 +23,7 @@
 
   * { box-sizing:border-box; }
   body { margin:0; font-family:sans-serif; background:var(--bg-main); color:var(--text-main); }
-  .page { max-width:1200px; margin:0 auto; padding:20px 16px 40px; }
+  .page { max-width:1200px; margin:0 auto; padding:20px 16px 48px; }
 
   .header,.search-card,.tool-card,.current-range-box,.compact-card {
     background:#fff; border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow);
@@ -38,12 +38,68 @@
     color:var(--primary-dark); background:#f8fbf7; border-left:7px solid var(--primary);
   }
 
+  .admin-section {
+    margin-top: 18px;
+  }
+
+  .section-heading-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .section-kicker {
+    display: inline-block;
+    margin-bottom: 5px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #eef8fb;
+    border: 1px solid #d8edf4;
+    color: var(--accent-blue);
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .section-heading {
+    margin: 0;
+    font-size: 22px;
+    color: var(--primary-dark);
+  }
+
+  .section-description {
+    margin: 4px 0 0;
+    color: var(--text-sub);
+    font-size: 14px;
+  }
+
   .search-card,.tool-card { padding:14px; }
   .search-card { margin-bottom:18px; }
   .search-title,.tool-title { font-size:16px; font-weight:bold; color:var(--primary-dark); margin-bottom:10px; }
 
   .search-grid { display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr; gap:10px; }
   .search-actions { display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .search-actions-spread { justify-content:flex-end; }
+  .request-search-card { margin-bottom:14px; }
+  .search-card-header {
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    align-items:flex-start;
+    margin-bottom:10px;
+  }
+  .search-card-header .search-title { margin-bottom:4px; }
+  .search-hint {
+    flex-shrink:0;
+    border-radius:999px;
+    padding:7px 11px;
+    background:#f5fbfd;
+    border:1px solid #e3f1f6;
+    color:var(--primary-dark);
+    font-size:12px;
+    font-weight:900;
+  }
 
   .toolbar { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; }
 
@@ -68,14 +124,45 @@
   .message.error { border-left:6px solid var(--accent-red); color:var(--accent-red); font-weight:bold; }
   .message.success { border-left:6px solid var(--primary); color:var(--primary-dark); font-weight:bold; }
 
+  .state-message {
+    width:100%;
+    padding:22px 18px;
+    border:1px solid var(--border);
+    border-radius:16px;
+    background:#ffffff;
+    box-shadow:var(--shadow);
+    text-align:center;
+  }
+  .state-title {
+    font-size:16px;
+    font-weight:900;
+    color:var(--primary-dark);
+  }
+  .state-sub {
+    margin-top:6px;
+    font-size:13px;
+    color:var(--text-sub);
+  }
+  .loading-state {
+    background:#f8fcfe;
+    border-color:#dceff5;
+  }
+  .error-state {
+    background:#fff7f8;
+    border-color:#f1c6d2;
+  }
+  .error-state .state-title {
+    color:var(--accent-red);
+  }
+
   .card-container { display:flex; flex-direction:column; gap:10px; }
 
   /* compact request card */
   .compact-card {
-    padding:12px 14px;
+    padding:14px 16px;
     display:grid;
-    grid-template-columns: 1fr auto;
-    gap:12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap:14px;
     align-items:center;
   }
   .compact-card.pending { border-left:7px solid var(--accent-blue); }
@@ -84,10 +171,10 @@
 
   .compact-main { min-width:0; }
   .compact-top {
-    display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-bottom:6px;
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; margin-bottom:8px;
   }
-  .compact-name { font-size:18px; font-weight:bold; color:var(--text-main); }
-  .compact-id { font-size:12px; color:var(--text-sub); }
+  .compact-name { font-size:19px; font-weight:900; color:var(--text-main); }
+  .compact-id { margin-left:8px; font-size:12px; color:var(--text-sub); font-weight:700; }
   .compact-date { font-size:15px; font-weight:bold; color:var(--primary-dark); }
   .compact-meta {
     display:flex; flex-wrap:wrap; gap:6px;
@@ -98,13 +185,29 @@
     border:1px solid #eee8dc; background:#faf9f6; border-radius:999px;
     padding:4px 9px;
   }
+  .important-chip {
+    border-color:#d7e8ff;
+    background:#f8fbff;
+  }
   .mini-chip strong { color:var(--text-main); }
 
   .compact-detail {
-    margin-top:6px;
-    font-size:12px;
+    display:flex;
+    gap:7px;
+    margin-top:9px;
+    font-size:13px;
     color:var(--text-sub);
     word-break:break-all;
+  }
+  .detail-label {
+    flex-shrink:0;
+    color:var(--primary-dark);
+    font-weight:900;
+  }
+  .compact-sub-detail {
+    margin-top:4px;
+    font-size:12px;
+    color:var(--text-sub);
   }
 
   .status-badge {
@@ -120,12 +223,17 @@
     gap:8px;
     align-items:center;
     justify-content:flex-end;
-    min-width:190px;
+    min-width:168px;
   }
 
   .btn {
     border:none; border-radius:10px; padding:10px 12px;
     font-size:13px; font-weight:bold; cursor:pointer; color:#fff;
+  }
+  .btn-card-action {
+    min-width:76px;
+    min-height:44px;
+    font-size:15px;
   }
   .btn-approve { background:var(--primary); }
   .btn-reject { background:var(--accent-red); }
@@ -407,7 +515,7 @@
 ========================= */
 
 .six-month-card {
-  margin-top: 24px;
+  margin-top: 0;
 }
 
 .six-month-grant-area {
@@ -470,7 +578,7 @@
 ========================= */
 
 .yearly-grant-card {
-  margin-top: 24px;
+  margin-top: 0;
 }
 
 .yearly-grant-list {
@@ -525,7 +633,13 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  margin-bottom: 18px;
+  margin-bottom: 0;
+}
+
+.grant-work-section,
+.report-section {
+  padding-top: 8px;
+  border-top: 1px solid #dceff5;
 }
 
 @media (max-width: 900px) {
@@ -547,6 +661,7 @@
   border-radius: 18px;
   background: #f8fcfe;
   border: 1px solid var(--border);
+  border-left: 7px solid var(--primary);
 
   box-shadow: var(--shadow);
 }
@@ -600,6 +715,31 @@
   width: 22px;
   height: 22px;
   cursor: pointer;
+}
+
+@media (max-width:760px) {
+  .section-heading-row,
+  .search-card-header {
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .search-actions-spread {
+    justify-content:flex-start;
+  }
+
+  .compact-top {
+    align-items:flex-start;
+  }
+
+  .compact-actions {
+    justify-content:flex-start;
+    min-width:0;
+  }
+
+  .btn-card-action {
+    min-width:92px;
+  }
 }
 
 </style>

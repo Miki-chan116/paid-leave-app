@@ -79,176 +79,194 @@
       </div>
     </div>
 
-    <!-- ================= タブ ================= -->
-    <div class="tabs">
-      <button id="tab-pending" class="tab-btn" type="button" onclick="loadRequests('pending')">承認待ち</button>
-      <button id="tab-approved" class="tab-btn" type="button" onclick="loadRequests('approved')">承認済み</button>
-      <button id="tab-rejected" class="tab-btn" type="button" onclick="loadRequests('rejected')">否認</button>
-      <button id="tab-logs" class="tab-btn" type="button" onclick="loadLogs()">ログ</button>
-    </div>
+    <!-- ================= 申請確認 ================= -->
+    <section class="admin-section request-work-section">
+      <div class="section-heading-row">
+        <div>
+          <div class="section-kicker">毎日の確認</div>
+          <h2 class="section-heading">申請確認</h2>
+          <p class="section-description">承認待ちを中心に、期間や社員名で申請を探せます。</p>
+        </div>
+      </div>
 
-    <!-- ================= 申請一覧 ================= -->
-     <!-- 一括操作バー -->
-<div id="bulkActionBar"
-     class="bulk-action-bar"
-     style="display:none;">
+      <div class="tabs">
+        <button id="tab-pending" class="tab-btn" type="button" onclick="loadRequests('pending')">承認待ち</button>
+        <button id="tab-approved" class="tab-btn" type="button" onclick="loadRequests('approved')">承認済み</button>
+        <button id="tab-rejected" class="tab-btn" type="button" onclick="loadRequests('rejected')">否認</button>
+        <button id="tab-logs" class="tab-btn" type="button" onclick="loadLogs()">ログ</button>
+      </div>
 
-  <div class="bulk-left">
+      <div class="search-card request-search-card">
+        <div class="search-card-header">
+          <div>
+            <div class="search-title">検索条件</div>
+            <p class="subtitle">何も入力しない場合は、前月＋当月の申請を表示します。</p>
+          </div>
+          <div id="searchHint" class="search-hint">前月＋当月</div>
+        </div>
 
-    <label class="bulk-check-label">
-      <input type="checkbox"
-             id="bulkSelectAll"
-             onchange="toggleSelectAllRequests(this.checked)">
-      全選択
-    </label>
+        <div class="search-grid">
+          <div class="field">
+            <label for="searchKeyword">社員ID・氏名</label>
+            <input type="text" id="searchKeyword" placeholder="例：EMP0001 / 山田">
+          </div>
 
-    <button class="btn btn-reset"
-            type="button"
-            onclick="clearSelectedRequests()">
-      選択解除
-    </button>
+          <div class="field">
+            <label for="searchStatus">ステータス</label>
+            <select id="searchStatus">
+              <option value="all">すべて</option>
+              <option value="pending">承認待ち</option>
+              <option value="approved">承認済み</option>
+              <option value="rejected">否認</option>
+            </select>
+          </div>
 
-  </div>
+          <div class="field">
+            <label for="searchStartDate">開始日</label>
+            <input type="date" id="searchStartDate">
+          </div>
 
-  <div class="bulk-right">
+          <div class="field">
+            <label for="searchEndDate">終了日</label>
+            <input type="date" id="searchEndDate">
+          </div>
+        </div>
 
-    <span id="selectedCountLabel"
-          class="selected-count-label">
-      0件選択
-    </span>
+        <div class="search-actions search-actions-spread">
+          <button class="btn btn-search" type="button" onclick="searchRequestList()">
+            検索する
+          </button>
 
-    <button class="btn btn-approve"
-            type="button"
-            onclick="approveSelectedRequests()">
-      選択した申請を承認
-    </button>
+          <button class="btn btn-reset" type="button" onclick="resetSearch()">
+            前月＋当月に戻す
+          </button>
+        </div>
+      </div>
 
-  </div>
+      <div id="bulkActionBar"
+           class="bulk-action-bar"
+           style="display:none;">
 
-</div>
-    <div class="panel">
-      <div id="requestView" class="card-container"></div>
-      <div id="logView" style="display:none;"></div>
-    </div>
+        <div class="bulk-left">
+          <label class="bulk-check-label">
+            <input type="checkbox"
+                   id="bulkSelectAll"
+                   onchange="toggleSelectAllRequests(this.checked)">
+            全選択
+          </label>
+
+          <button class="btn btn-reset"
+                  type="button"
+                  onclick="clearSelectedRequests()">
+            選択解除
+          </button>
+        </div>
+
+        <div class="bulk-right">
+          <span id="selectedCountLabel"
+                class="selected-count-label">
+            0件選択
+          </span>
+
+          <button class="btn btn-approve"
+                  type="button"
+                  onclick="approveSelectedRequests()">
+            選択した申請を承認
+          </button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div id="requestView" class="card-container"></div>
+        <div id="logView" style="display:none;"></div>
+      </div>
+    </section>
 
     <!-- ================= 付与チェック ================= -->
-<div class="grant-check-grid">
-
-  <!-- 年次有給付与 -->
-  <div class="search-card yearly-grant-card">
-    <div class="search-title">年次有給付与チェック</div>
-    <p class="subtitle">
-      基準日を迎えた社員を確認して、有給を付与できます。
-    </p>
-
-    <div class="search-actions">
-      <button
-        class="btn btn-search"
-        type="button"
-        onclick="loadYearlyGrantCandidates()"
-      >
-        付与対象者を確認する
-      </button>
-
-      <button
-        class="btn btn-reset"
-        type="button"
-        onclick="closeYearlyGrantList()"
-      >
-        閉じる
-      </button>
-    </div>
-
-    <div id="yearlyGrantList" class="yearly-grant-list">
-      <div class="empty-message">
-        「付与対象者を確認する」を押してください
-      </div>
-    </div>
-  </div>
-
-  <!-- 6か月付与 -->
-  <div class="search-card six-month-card">
-    <div class="search-title">6か月到達 有給付与チェック</div>
-    <p class="subtitle">
-      入社から6か月経過した社員を確認して、初回有給を付与できます。
-    </p>
-
-    <div class="search-actions">
-      <button
-        class="btn btn-search"
-        type="button"
-        onclick="loadSixMonthGrantCandidates()"
-      >
-        付与対象者を確認する
-      </button>
-
-      <button
-        class="btn btn-reset"
-        type="button"
-        onclick="closeSixMonthGrantList()"
-      >
-        閉じる
-      </button>
-    </div>
-
-    <div id="sixMonthGrantArea" class="six-month-grant-area">
-      <div class="empty-message">
-        「付与対象者を確認する」を押してください
-      </div>
-    </div>
-  </div>
-
-</div>
-
-    <!-- ================= 検索 ================= -->
-    <div class="search-card">
-      <div class="search-title">検索</div>
-
-      <div class="search-grid">
-        <div class="field">
-          <label for="searchKeyword">社員ID・氏名</label>
-          <input type="text" id="searchKeyword" placeholder="例：EMP0001 / 山田">
-        </div>
-
-        <div class="field">
-          <label for="searchStatus">ステータス</label>
-          <select id="searchStatus">
-            <option value="all">すべて</option>
-            <option value="pending">承認待ち</option>
-            <option value="approved">承認済み</option>
-            <option value="rejected">否認</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="searchStartDate">開始日</label>
-          <input type="date" id="searchStartDate">
-        </div>
-
-        <div class="field">
-          <label for="searchEndDate">終了日</label>
-          <input type="date" id="searchEndDate">
+    <section class="admin-section grant-work-section">
+      <div class="section-heading-row">
+        <div>
+          <div class="section-kicker">必要時のみ</div>
+          <h2 class="section-heading">有給付与チェック</h2>
+          <p class="section-description">日常の承認作業とは分けて、対象者がいる時だけ確認します。</p>
         </div>
       </div>
 
-      <div class="search-actions">
-        <button class="btn btn-search" type="button" onclick="searchRequestList()">
-          検索する
-        </button>
+      <div class="grant-check-grid">
 
-        <button class="btn btn-reset" type="button" onclick="resetSearch()">
-          前月＋当月に戻す
-        </button>
+        <div class="search-card yearly-grant-card">
+          <div class="search-title">年次有給付与チェック</div>
+          <p class="subtitle">
+            基準日を迎えた社員を確認して、有給を付与できます。
+          </p>
+
+          <div class="search-actions">
+            <button
+              class="btn btn-search"
+              type="button"
+              onclick="loadYearlyGrantCandidates()"
+            >
+              付与対象者を確認する
+            </button>
+
+            <button
+              class="btn btn-reset"
+              type="button"
+              onclick="closeYearlyGrantList()"
+            >
+              閉じる
+            </button>
+          </div>
+
+          <div id="yearlyGrantList" class="yearly-grant-list">
+            <div class="empty-message">
+              「付与対象者を確認する」を押してください
+            </div>
+          </div>
+        </div>
+
+        <div class="search-card six-month-card">
+          <div class="search-title">6か月到達 有給付与チェック</div>
+          <p class="subtitle">
+            入社から6か月経過した社員を確認して、初回有給を付与できます。
+          </p>
+
+          <div class="search-actions">
+            <button
+              class="btn btn-search"
+              type="button"
+              onclick="loadSixMonthGrantCandidates()"
+            >
+              付与対象者を確認する
+            </button>
+
+            <button
+              class="btn btn-reset"
+              type="button"
+              onclick="closeSixMonthGrantList()"
+            >
+              閉じる
+            </button>
+          </div>
+
+          <div id="sixMonthGrantArea" class="six-month-grant-area">
+            <div class="empty-message">
+              「付与対象者を確認する」を押してください
+            </div>
+          </div>
+        </div>
+
       </div>
-    </div>
+    </section>
 
     <!-- ================= 出力 ================= -->
-<div class="report-section">
+<section class="admin-section report-section">
 
-  <div class="report-section-header">
+  <div class="section-heading-row report-section-header">
     <div>
-      <div class="search-title">有給一覧の確認・CSV保存</div>
-      <p class="subtitle">
+      <div class="section-kicker">月次・年次</div>
+      <h2 class="section-heading">有給一覧の確認・CSV保存</h2>
+      <p class="section-description">
         月間・年間の有給取得状況を確認し、CSVとして保存できます。
       </p>
     </div>
@@ -338,9 +356,8 @@
   <div class="search-title">年間有給一覧プレビュー</div>
   <div id="yearlyPreviewSummary" class="subtitle" style="margin-top:0;"></div>
   <div id="yearlyPreviewTable"></div>
-</div>
-
-</div>
+  </div>
+</section>
    
   </div>
 
