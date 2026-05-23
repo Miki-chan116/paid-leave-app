@@ -973,16 +973,28 @@ function renderSixMonthGrantCandidates(data) {
         </div>
       </div>
 
-      <button
-        class="btn btn-approve"
-        type="button"
-        data-employee-id="${escapeHtml(emp.employee_id)}"
-        data-name="${escapeHtml(emp.name)}"
-        data-grant-days="${escapeHtml(emp.grant_days)}"
-        onclick="grantSixMonthPaidLeaveActionFromButton(this)"
-      >
-        付与する
-      </button>
+      <div class="six-month-actions">
+        <button
+          class="btn btn-approve"
+          type="button"
+          data-employee-id="${escapeHtml(emp.employee_id)}"
+          data-name="${escapeHtml(emp.name)}"
+          data-grant-days="${escapeHtml(emp.grant_days)}"
+          onclick="grantSixMonthPaidLeaveActionFromButton(this)"
+        >
+          付与
+        </button>
+
+        <button
+          class="btn six-month-processed-btn"
+          type="button"
+          data-employee-id="${escapeHtml(emp.employee_id)}"
+          data-name="${escapeHtml(emp.name)}"
+          onclick="markSixMonthGrantProcessedActionFromButton(this)"
+        >
+          処理済
+        </button>
+      </div>
     </div>
   `).join("");
 }
@@ -992,6 +1004,13 @@ function grantSixMonthPaidLeaveActionFromButton(button) {
     button.dataset.employeeId,
     button.dataset.name,
     button.dataset.grantDays
+  );
+}
+
+function markSixMonthGrantProcessedActionFromButton(button) {
+  markSixMonthGrantProcessedAction(
+    button.dataset.employeeId,
+    button.dataset.name
   );
 }
 
@@ -1026,6 +1045,43 @@ function grantSixMonthPaidLeaveAction(employeeId, name, grantDays) {
       }
     })
     .grantSixMonthPaidLeave(employeeId, currentAdminUser);
+}
+
+function markSixMonthGrantProcessedAction(employeeId, name) {
+  if (!employeeId) return;
+
+  const ok = confirm(
+    "この社員を6ヶ月付与チェックの処理済みにします。有給日数は追加されません。よろしいですか？"
+  );
+
+  if (!ok) return;
+
+  const area = document.getElementById("sixMonthGrantArea");
+  if (area) {
+    area.innerHTML = `<div class="message">6か月付与チェックを処理済みにしています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(() => {
+      alert(`${name} さんを処理済みにしました`);
+      loadDashboardSummary();
+      loadSixMonthGrantCandidates();
+    })
+    .withFailureHandler(err => {
+      console.error("6か月付与チェック処理済みエラー:", err);
+      const message = err && err.message
+        ? err.message
+        : "6か月付与チェックの処理済み登録でエラーが発生しました。";
+
+      if (area) {
+        area.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+    })
+    .markSixMonthGrantCandidateProcessed(
+      employeeId,
+      "手動入力済みのため6ヶ月付与チェックを処理済みにした",
+      currentAdminUser
+    );
 }
 
 function getInitialGrantReasonLabel(reason) {

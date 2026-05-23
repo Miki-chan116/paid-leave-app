@@ -3757,7 +3757,7 @@ function verifyAdminLogin(adminId, pin) {
 function getSixMonthGrantCandidates() {
   const today = parseLocalDate(new Date());
   const employees = getEmployeesForAdmin();
-  const grantedMap = getGrantedEmployeeMapByGrantType_("six_month");
+  const grantedMap = getSixMonthGrantProcessedMap_();
 
   return employees
     .filter(emp => {
@@ -3769,7 +3769,7 @@ function getSixMonthGrantCandidates() {
       if (grantedMap[emp.employee_id]) return false;
 
       const oneYearDate = addYearsLocal_(parseLocalDate(emp.hire_date), 1);
-      if (today > oneYearDate) return false;
+      if (today >= oneYearDate) return false;
 
       const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
       return grantInfo.grant_date <= today;
@@ -3809,9 +3809,9 @@ function grantSixMonthPaidLeave(employeeId, adminUser) {
   if (!emp) throw new Error("対象社員が見つかりません");
   if (!emp.hire_date) throw new Error("入社日がありません");
 
-  const grantedMap = getGrantedEmployeeMapByGrantType_("six_month");
+  const grantedMap = getSixMonthGrantProcessedMap_();
   if (grantedMap[employeeId]) {
-    throw new Error("この社員にはすでに6か月付与が登録されています");
+    throw new Error("この社員の6か月付与チェックはすでに処理済みです");
   }
 
   const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
@@ -3880,6 +3880,87 @@ function grantSixMonthPaidLeave(employeeId, adminUser) {
 }
 
 /* =========================
+   6か月到達者：処理済みにする
+========================= */
+function markSixMonthGrantCandidateProcessed(employeeId, reason, adminUser) {
+  if (!employeeId) throw new Error("employeeId がありません");
+
+  const employees = getEmployeesForAdmin();
+  const emp = employees.find(e => String(e.employee_id) === String(employeeId));
+
+  if (!emp) throw new Error("対象社員が見つかりません");
+  if (!emp.hire_date) throw new Error("入社日がありません");
+
+  const grantedMap = getSixMonthGrantProcessedMap_();
+  if (grantedMap[employeeId]) {
+    throw new Error("この社員の6か月付与チェックはすでに処理済みです");
+  }
+
+  const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
+  const grantDate = grantInfo.grant_date;
+  const now = new Date();
+  const note = String(reason || "").trim() ||
+    "手動入力済みのため6か月付与チェックを処理済みにした";
+
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "grant_id",
+    "employee_id",
+    "grant_date",
+    "grant_days",
+    "carry_over_days",
+    "valid_from",
+    "valid_to",
+    "grant_type",
+    "year",
+    "notes",
+    "created_at",
+    "updated_at"
+  ]);
+
+  const rowObj = createEmptyRowObject(headerInfo.headers);
+
+  rowObj.grant_id = getNextGrantId_();
+  rowObj.employee_id = employeeId;
+  rowObj.grant_date = grantDate;
+  rowObj.grant_days = 0;
+  rowObj.carry_over_days = 0;
+  rowObj.valid_from = "";
+  rowObj.valid_to = "";
+  rowObj.grant_type = "six_month_processed";
+  rowObj.year = getFiscalYearFromDateWithStart(grantDate, Number(emp.fiscal_start_month || 4));
+  rowObj.notes = note;
+  rowObj.created_at = now;
+  rowObj.updated_at = now;
+
+  appendRowFast_(
+    sheet,
+    objectToRow(rowObj, headerInfo.headers)
+  );
+
+  const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
+  const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
+
+  appendUsageLog({
+    request_id: employeeId,
+    action_type: "six_month_processed",
+    operator_id: operatorId,
+    operator_name: operatorName,
+    comment: emp.name + " さんの6か月付与チェックを処理済みにしました: " + note
+  });
+
+  clearAppCache();
+
+  return {
+    ok: true,
+    employee_id: employeeId,
+    name: emp.name,
+    grant_date: formatDateValue(grantDate),
+    grant_type: "six_month_processed"
+  };
+}
+
+/* =========================
    初回付与予定日
 ========================= */
 function getInitialPaidLeaveGrantInfo_(emp) {
@@ -3925,6 +4006,8 @@ function getGrantedEmployeeMapByGrantType_(grantType) {
   const headerInfo = requireHeaders(sheet, ["employee_id", "grant_type"]);
   const data = sheet.getDataRange().getValues();
   const result = {};
+  const grantTypes = Array.isArray(grantType) ? grantType : [grantType];
+  const targetTypes = grantTypes.map(type => String(type || "").trim());
 
   if (data.length <= 1) return result;
 
@@ -3933,12 +4016,20 @@ function getGrantedEmployeeMapByGrantType_(grantType) {
     const employeeId = String(rowObj.employee_id || "").trim();
     const type = String(rowObj.grant_type || "").trim();
 
-    if (employeeId && type === grantType) {
+    if (employeeId && targetTypes.includes(type)) {
       result[employeeId] = true;
     }
   });
 
   return result;
+}
+
+function getSixMonthGrantProcessedMap_() {
+  return getGrantedEmployeeMapByGrantType_([
+    "six_month",
+    "six_month_processed",
+    "six_month_skipped"
+  ]);
 }
 
 /* =========================

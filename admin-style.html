@@ -527,8 +527,9 @@
 
 .six-month-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
 
   padding: 16px 18px;
   border-radius: 16px;
@@ -541,6 +542,34 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.six-month-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.six-month-actions .btn {
+  min-width: 96px;
+  min-height: 40px;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+
+.six-month-processed-btn {
+  border: none;
+  background: var(--accent-red);
+  color: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.six-month-processed-btn:hover {
+  filter: brightness(1.06);
 }
 
 .six-month-name {
@@ -603,9 +632,11 @@
 
 @media (max-width: 760px) {
   .six-month-row {
-    flex-direction: column;
-    align-items: stretch;
     gap: 12px;
+  }
+
+  .six-month-actions {
+    justify-content: flex-start;
   }
 
   .grant-detail-grid {
