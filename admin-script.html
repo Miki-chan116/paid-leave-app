@@ -935,79 +935,91 @@ function renderSixMonthGrantCandidates(data) {
     ${data.map(emp => `
     <div class="six-month-row">
       <div class="six-month-main">
-        <div class="six-month-name">
-          <label class="grant-candidate-check">
-            <input
-              type="checkbox"
-              class="grant-candidate-checkbox six-month-grant-checkbox"
-              value="${escapeHtml(emp.employee_id)}"
+        <div class="grant-card-topline">
+          <div class="six-month-name">
+            <label class="grant-candidate-check">
+              <input
+                type="checkbox"
+                class="grant-candidate-checkbox six-month-grant-checkbox"
+                value="${escapeHtml(emp.employee_id)}"
+                data-employee-id="${escapeHtml(emp.employee_id)}"
+                data-name="${escapeHtml(emp.name)}"
+              >
+              <span>選択</span>
+            </label>
+            ${escapeHtml(emp.name)}
+            <span class="six-month-id">${escapeHtml(emp.display_employee_id || emp.employee_id)}</span>
+          </div>
+
+          <div class="six-month-actions">
+            <button
+              class="btn btn-approve"
+              type="button"
               data-employee-id="${escapeHtml(emp.employee_id)}"
               data-name="${escapeHtml(emp.name)}"
+              data-grant-days="${escapeHtml(emp.grant_days)}"
+              onclick="grantSixMonthPaidLeaveActionFromButton(this)"
             >
-            <span>選択</span>
-          </label>
-          ${escapeHtml(emp.name)}
-          <span class="six-month-id">${escapeHtml(emp.display_employee_id || emp.employee_id)}</span>
-          <span class="grant-basis-badge">${escapeHtml(emp.fiscal_start_month || 4)}月基準</span>
+              付与
+            </button>
+
+            <button
+              class="btn six-month-processed-btn"
+              type="button"
+              data-employee-id="${escapeHtml(emp.employee_id)}"
+              data-name="${escapeHtml(emp.name)}"
+              onclick="markSixMonthGrantProcessedActionFromButton(this)"
+            >
+              処理済
+            </button>
+          </div>
         </div>
 
-        <div class="grant-detail-grid">
+        <div class="grant-card-meta">
+          <span>${escapeHtml(emp.company_name || emp.company_code || "-")}</span>
+          <span>${escapeHtml(emp.department || "-")}</span>
+        </div>
+
+        <div class="grant-card-summary-grid">
           <div class="grant-detail-item">
-            <span>入社日</span>
-            <strong>${escapeHtml(emp.hire_date || "")}</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>入社6か月</span>
-            <strong>${escapeHtml(emp.six_month_date || "")}</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>会社基準日</span>
-            <strong>${escapeHtml(emp.company_basis_date || "")}</strong>
-          </div>
-          <div class="grant-detail-item highlight">
-            <span>初回付与予定日</span>
+            <span>予定日</span>
             <strong>${escapeHtml(emp.grant_date || "")}</strong>
           </div>
-          <div class="grant-detail-item">
+          <div class="grant-detail-item highlight">
             <span>付与日数</span>
             ${renderGrantDaysInput(emp.grant_days)}
           </div>
-          <div class="grant-detail-item">
-            <span>会社</span>
-            <strong>${escapeHtml(emp.company_name || emp.company_code || "")}</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>部署</span>
-            <strong>${escapeHtml(emp.department || "-")}</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>判定</span>
-            <strong>${escapeHtml(getInitialGrantReasonLabel(emp.grant_reason))}</strong>
-          </div>
         </div>
-      </div>
 
-      <div class="six-month-actions">
-        <button
-          class="btn btn-approve"
-          type="button"
-          data-employee-id="${escapeHtml(emp.employee_id)}"
-          data-name="${escapeHtml(emp.name)}"
-          data-grant-days="${escapeHtml(emp.grant_days)}"
-          onclick="grantSixMonthPaidLeaveActionFromButton(this)"
-        >
-          付与
-        </button>
-
-        <button
-          class="btn six-month-processed-btn"
-          type="button"
-          data-employee-id="${escapeHtml(emp.employee_id)}"
-          data-name="${escapeHtml(emp.name)}"
-          onclick="markSixMonthGrantProcessedActionFromButton(this)"
-        >
-          処理済
-        </button>
+        <details class="grant-card-details">
+          <summary>詳細を見る</summary>
+          <div class="grant-detail-grid compact">
+            <div class="grant-detail-item">
+              <span>入社日</span>
+              <strong>${escapeHtml(emp.hire_date || "")}</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>6か月日</span>
+              <strong>${escapeHtml(emp.six_month_date || "")}</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>会社基準日</span>
+              <strong>${escapeHtml(emp.company_basis_date || "")}</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>年度開始</span>
+              <strong>${escapeHtml(emp.fiscal_start_month || 4)}月</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>判定</span>
+              <strong>${escapeHtml(getInitialGrantReasonLabel(emp.grant_reason))}</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>システム計算</span>
+              <strong>${escapeHtml(emp.grant_days)}日</strong>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   `).join("")}
@@ -1128,7 +1140,7 @@ function renderGrantDaysInput(systemGrantDays) {
         >
         <span>日</span>
       </div>
-      <small>システム計算: ${escapeHtml(days)}日</small>
+      <small>標準: ${escapeHtml(days)}日</small>
     </div>
   `;
 }
@@ -1415,67 +1427,75 @@ function renderYearlyGrantCandidates(data) {
     ${data.map(item => `
     <div class="yearly-grant-item">
       <div class="yearly-grant-main">
-        <div class="yearly-grant-name">
-          <label class="grant-candidate-check">
-            <input
-              type="checkbox"
-              class="grant-candidate-checkbox yearly-grant-checkbox"
-              value="${escapeHtml(item.employee_id)}"
+        <div class="grant-card-topline">
+          <div class="yearly-grant-name">
+            <label class="grant-candidate-check">
+              <input
+                type="checkbox"
+                class="grant-candidate-checkbox yearly-grant-checkbox"
+                value="${escapeHtml(item.employee_id)}"
+                data-employee-id="${escapeHtml(item.employee_id)}"
+                data-name="${escapeHtml(item.name)}"
+              >
+              <span>選択</span>
+            </label>
+            ${escapeHtml(item.name)}
+            <span class="six-month-id">
+              ${escapeHtml(item.display_employee_id || item.employee_id)}
+            </span>
+          </div>
+
+          <div class="yearly-grant-actions">
+            <button
+              class="btn btn-approve"
+              type="button"
               data-employee-id="${escapeHtml(item.employee_id)}"
               data-name="${escapeHtml(item.name)}"
+              data-grant-days="${escapeHtml(item.grant_days)}"
+              onclick="grantYearlyPaidLeaveActionFromButton(this)"
             >
-            <span>選択</span>
-          </label>
-          ${escapeHtml(item.name)}
-          <span class="six-month-id">
-            ${escapeHtml(item.display_employee_id || item.employee_id)}
-          </span>
-          <span class="grant-basis-badge">${escapeHtml(item.fiscal_start_month || 4)}月基準</span>
+              付与
+            </button>
+          </div>
         </div>
 
-        <div class="grant-detail-grid">
+        <div class="grant-card-meta">
+          <span>${escapeHtml(item.company_name || item.company_code || "-")}</span>
+          <span>${escapeHtml(item.department || "-")}</span>
+        </div>
+
+        <div class="grant-card-summary-grid">
           <div class="grant-detail-item">
             <span>基準日</span>
             <strong>${escapeHtml(item.basis_date || "")}</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>年度開始月</span>
-            <strong>${escapeHtml(item.fiscal_start_month || 4)}月</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>会社</span>
-            <strong>${escapeHtml(item.company_name || item.company_code || "")}</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>部署</span>
-            <strong>${escapeHtml(item.department || "-")}</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>入社日</span>
-            <strong>${escapeHtml(item.hire_date || "")}</strong>
-          </div>
-          <div class="grant-detail-item">
-            <span>勤続</span>
-            <strong>${escapeHtml(item.months_worked)}か月</strong>
           </div>
           <div class="grant-detail-item highlight">
             <span>付与日数</span>
             ${renderGrantDaysInput(item.grant_days)}
           </div>
         </div>
-      </div>
 
-      <div class="yearly-grant-actions">
-        <button
-          class="btn btn-approve"
-          type="button"
-          data-employee-id="${escapeHtml(item.employee_id)}"
-          data-name="${escapeHtml(item.name)}"
-          data-grant-days="${escapeHtml(item.grant_days)}"
-          onclick="grantYearlyPaidLeaveActionFromButton(this)"
-        >
-          付与
-        </button>
+        <details class="grant-card-details">
+          <summary>詳細を見る</summary>
+          <div class="grant-detail-grid compact">
+            <div class="grant-detail-item">
+              <span>入社日</span>
+              <strong>${escapeHtml(item.hire_date || "")}</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>勤続</span>
+              <strong>${escapeHtml(item.months_worked)}か月</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>年度開始</span>
+              <strong>${escapeHtml(item.fiscal_start_month || 4)}月</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>システム計算</span>
+              <strong>${escapeHtml(item.grant_days)}日</strong>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   `).join("")}

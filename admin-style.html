@@ -544,20 +544,26 @@
   gap: 6px;
 }
 
+.grant-card-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .six-month-actions {
   display: flex;
   flex-direction: row;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding-top: 4px;
 }
 
 .six-month-actions .btn {
-  min-width: 96px;
-  min-height: 40px;
-  padding: 10px 16px;
+  min-width: 72px;
+  min-height: 34px;
+  padding: 8px 12px;
   white-space: nowrap;
 }
 
@@ -575,17 +581,37 @@
 .six-month-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   flex-wrap: wrap;
   font-size: 18px;
   font-weight: 700;
   color: #24435f;
+  min-width: 0;
 }
 
 .six-month-id {
   font-size: 12px;
   color: #5d7488;
   font-weight: 700;
+}
+
+.grant-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: #5d7488;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.grant-card-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid #dceff5;
+  border-radius: 999px;
+  background: #ffffff;
 }
 
 .grant-candidate-check {
@@ -650,6 +676,17 @@
   margin-top: 4px;
 }
 
+.grant-card-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.9fr) minmax(210px, 1.2fr);
+  gap: 8px;
+}
+
+.grant-detail-grid.compact {
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  margin-top: 8px;
+}
+
 .grant-detail-item {
   min-width: 0;
   padding: 8px 10px;
@@ -679,10 +716,32 @@
   background: #eef8fb;
 }
 
+.grant-card-details {
+  margin-top: 2px;
+}
+
+.grant-card-details summary {
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #5d7488;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.grant-card-details summary:hover {
+  background: #eef8fb;
+  color: #24435f;
+}
+
 .grant-days-editor {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
 }
 
 .grant-days-input-row {
@@ -692,9 +751,9 @@
 }
 
 .grant-days-input {
-  width: 96px;
+  width: 78px;
   max-width: 100%;
-  padding: 7px 9px;
+  padding: 6px 8px;
   border: 1px solid #b9ddec;
   border-radius: 10px;
   background: #ffffff;
@@ -720,6 +779,7 @@
   color: #7a8d9d;
   font-size: 11px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {
@@ -729,6 +789,11 @@
 
   .six-month-actions {
     justify-content: flex-start;
+  }
+
+  .grant-card-topline {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .grant-bulk-action-bar {
@@ -741,6 +806,11 @@
   }
 
   .grant-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grant-card-summary-grid,
+  .grant-detail-grid.compact {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -783,26 +853,26 @@
 .yearly-grant-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   flex-wrap: wrap;
   font-size: 18px;
   font-weight: 700;
   color: #24435f;
+  min-width: 0;
 }
 
 .yearly-grant-actions {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding-top: 4px;
 }
 
 .yearly-grant-actions .btn {
-  min-width: 96px;
-  min-height: 40px;
-  padding: 10px 16px;
+  min-width: 72px;
+  min-height: 34px;
+  padding: 8px 12px;
   white-space: nowrap;
 }
 
@@ -1258,7 +1328,9 @@
 }
 
 @media (max-width: 520px) {
-  .grant-detail-grid {
+  .grant-detail-grid,
+  .grant-card-summary-grid,
+  .grant-detail-grid.compact {
     grid-template-columns: 1fr;
   }
 
