@@ -206,7 +206,7 @@
               type="button"
               onclick="loadYearlyGrantCandidates()"
             >
-              付与対象者を確認する
+              対象者を確認する
             </button>
 
             <button
@@ -220,7 +220,7 @@
 
           <div id="yearlyGrantList" class="yearly-grant-list">
             <div class="empty-message">
-              「付与対象者を確認する」を押してください
+              「対象者を確認する」を押してください
             </div>
           </div>
         </div>
@@ -237,7 +237,7 @@
               type="button"
               onclick="loadSixMonthGrantCandidates()"
             >
-              付与対象者を確認する
+              対象者を確認する
             </button>
 
             <button
@@ -251,7 +251,7 @@
 
           <div id="sixMonthGrantArea" class="six-month-grant-area">
             <div class="empty-message">
-              「付与対象者を確認する」を押してください
+              「対象者を確認する」を押してください
             </div>
           </div>
         </div>
@@ -264,9 +264,9 @@
       <div class="section-heading-row">
         <div>
           <div class="section-kicker">試算</div>
-          <h2 class="section-heading">FIFO残日数 試算</h2>
+          <h2 class="section-heading">繰越・期限確認</h2>
           <p class="section-description">
-            本番表示には反映せず、旧計算とFIFO計算の差分だけを確認します。
+            有給の繰越・期限切れ・残日数を確認するための試算画面です。
           </p>
         </div>
       </div>
@@ -274,8 +274,8 @@
       <div class="search-card fifo-trial-card">
         <div class="search-card-header">
           <div>
-            <div class="search-title">差分確認</div>
-            <p class="subtitle">社員IDを指定すると1名だけ、空欄の場合は最大20名まで試算します。</p>
+            <div class="search-title">残日数チェック</div>
+            <p class="subtitle">社員を選択すると1名だけ確認できます。未選択の場合は20名ずつ確認できます。</p>
           </div>
         </div>
 
@@ -307,7 +307,7 @@
           </div>
 
           <div class="field">
-            <label for="fifoAsOfDate">試算基準日</label>
+            <label for="fifoAsOfDate">確認日</label>
             <input type="date" id="fifoAsOfDate">
           </div>
         </div>
@@ -316,7 +316,7 @@
 
         <div class="search-actions">
           <button class="btn btn-search" type="button" onclick="loadFifoTrialDifferences()">
-            試算する
+            確認する
           </button>
 
           <button class="btn btn-reset" type="button" onclick="clearFifoTrialResults()">
@@ -326,19 +326,19 @@
 
         <div id="fifoTrialSummary" class="fifo-trial-summary"></div>
         <div id="fifoTrialResults" class="fifo-trial-results">
-          <div class="empty-message">社員IDを指定するか、最大20名の制限で「試算する」を押してください</div>
+          <div class="empty-message">社員IDを指定するか、最大20名の制限で「確認する」を押してください</div>
         </div>
       </div>
     </section>
 
-    <!-- ================= 年跨ぎ・繰越確認 ================= -->
+    <!-- ================= 年度切替・繰越確認 ================= -->
     <section class="admin-section year-end-section">
       <div class="section-heading-row">
         <div>
           <div class="section-kicker">確認のみ</div>
-          <h2 class="section-heading">年跨ぎ・繰越確認</h2>
+          <h2 class="section-heading">年度切替・繰越確認</h2>
           <p class="section-description">
-            年度末時点のFIFO試算から、繰越候補と消滅見込みを確認します。確定処理はまだ行いません。
+            年度切替時の繰越日数と消滅見込みを確認します。ここではまだ確定登録は行いません。
           </p>
         </div>
       </div>
@@ -346,8 +346,8 @@
       <div class="search-card year-end-card">
         <div class="search-card-header">
           <div>
-            <div class="search-title">繰越候補生成</div>
-            <p class="subtitle">対象年度を入力して、表示専用の候補一覧を生成します。</p>
+            <div class="search-title">繰越候補を確認</div>
+            <p class="subtitle">対象年度を入力して、表示専用の候補一覧を表示します。</p>
           </div>
         </div>
 
@@ -360,7 +360,7 @@
 
         <div class="search-actions">
           <button class="btn btn-search" type="button" onclick="loadYearEndCarryOverCandidates()">
-            候補生成
+            候補を表示
           </button>
 
           <button class="btn btn-reset" type="button" onclick="clearYearEndCarryOverCandidates()">
@@ -370,7 +370,7 @@
 
         <div id="yearEndSummary" class="year-end-summary"></div>
         <div id="yearEndCandidates" class="year-end-candidates">
-          <div class="empty-message">対象年度を入力して「候補生成」を押してください</div>
+          <div class="empty-message">対象年度を入力して「候補を表示」を押してください</div>
         </div>
       </div>
     </section>
