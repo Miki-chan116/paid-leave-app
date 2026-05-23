@@ -275,11 +275,32 @@
         <div class="search-card-header">
           <div>
             <div class="search-title">差分確認</div>
-            <p class="subtitle">差分がある社員だけを表示します。</p>
+            <p class="subtitle">社員IDを指定すると1名だけ、空欄の場合は最大20名まで試算します。</p>
           </div>
         </div>
 
         <div class="fifo-trial-controls">
+          <div class="field fifo-employee-search-field">
+            <label for="fifoEmployeeSearch">社員名検索</label>
+            <input
+              type="text"
+              id="fifoEmployeeSearch"
+              placeholder="氏名・ふりがな・表示IDで検索"
+              oninput="handleFifoEmployeeSearchInput()"
+            >
+            <div id="fifoEmployeeCandidates" class="fifo-employee-candidates"></div>
+          </div>
+
+          <div class="field">
+            <label for="fifoEmployeeId">社員ID</label>
+            <input
+              type="text"
+              id="fifoEmployeeId"
+              placeholder="例: EMP0046"
+              oninput="handleFifoEmployeeIdInput()"
+            >
+          </div>
+
           <div class="field">
             <label for="fifoFiscalYear">対象年度</label>
             <input type="number" id="fifoFiscalYear" placeholder="例: 2026">
@@ -290,6 +311,8 @@
             <input type="date" id="fifoAsOfDate">
           </div>
         </div>
+
+        <div id="fifoSelectedEmployee" class="fifo-selected-employee" style="display:none;"></div>
 
         <div class="search-actions">
           <button class="btn btn-search" type="button" onclick="loadFifoTrialDifferences()">
@@ -303,7 +326,7 @@
 
         <div id="fifoTrialSummary" class="fifo-trial-summary"></div>
         <div id="fifoTrialResults" class="fifo-trial-results">
-          <div class="empty-message">対象年度と試算基準日を確認して「試算する」を押してください</div>
+          <div class="empty-message">社員IDを指定するか、最大20名の制限で「試算する」を押してください</div>
         </div>
       </div>
     </section>

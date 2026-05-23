@@ -1,6 +1,8 @@
 <script>
 let currentStatus = "pending";
 let currentMode = "recent";
+let fifoEmployeeCandidates = [];
+let selectedFifoEmployee = null;
 
 const selectedRequestIds = new Set();
 
@@ -179,6 +181,7 @@ function showAdminApp() {
 
   setDefaultReportValues();
   setDefaultSearchDates();
+  loadFifoEmployeeCandidates();
   loadRequests("pending");
 }
 
@@ -1312,6 +1315,9 @@ function approveSelectedRequests() {
 function loadFifoTrialDifferences() {
   const fiscalYear = document.getElementById("fifoFiscalYear").value;
   const asOfDate = document.getElementById("fifoAsOfDate").value;
+  const employeeId = selectedFifoEmployee
+    ? selectedFifoEmployee.employee_id
+    : document.getElementById("fifoEmployeeId").value.trim();
   const results = document.getElementById("fifoTrialResults");
   const summary = document.getElementById("fifoTrialSummary");
 
@@ -1335,24 +1341,39 @@ function loadFifoTrialDifferences() {
     .withFailureHandler(err => {
       console.error("FIFO試算エラー:", err);
       if (results) {
-        results.innerHTML = `<div class="message error">FIFO残日数の試算でエラーが発生しました。</div>`;
+        const message = err && err.message
+          ? err.message
+          : "FIFO残日数の試算でエラーが発生しました。";
+        results.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
       }
     })
-    .compareFifoBalanceDifferencesOnly(Number(fiscalYear), asOfDate);
+    .compareFifoBalanceDifferencesForAdmin(Number(fiscalYear), asOfDate, employeeId, 20);
 }
 
-function renderFifoTrialDifferences(rows) {
+function renderFifoTrialDifferences(response) {
   const results = document.getElementById("fifoTrialResults");
   const summary = document.getElementById("fifoTrialSummary");
 
   if (!results) return;
 
-  const data = Array.isArray(rows) ? rows : [];
+  const data = Array.isArray(response)
+    ? response
+    : Array.isArray(response && response.rows) ? response.rows : [];
+  const scannedCount = response && response.scanned_count != null
+    ? response.scanned_count
+    : data.length;
+  const limit = response && response.limit ? response.limit : 20;
+  const targetEmployeeId = response && response.employee_id ? response.employee_id : "";
+  const targetText = targetEmployeeId
+    ? `対象社員：${escapeHtml(targetEmployeeId)}`
+    : `対象制限あり：最大${escapeHtml(limit)}名まで試算`;
 
   if (summary) {
     summary.innerHTML = `
       <div class="fifo-trial-count">
-        差分あり：<strong>${escapeHtml(data.length)}</strong>件
+        表示件数：<strong>${escapeHtml(data.length)}</strong>件
+        ／ 試算対象：<strong>${escapeHtml(scannedCount)}</strong>件
+        ／ ${targetText}
       </div>
     `;
   }
@@ -1426,13 +1447,157 @@ function clearFifoTrialResults() {
   const summary = document.getElementById("fifoTrialSummary");
 
   if (summary) summary.innerHTML = "";
+  clearSelectedFifoEmployee();
   if (results) {
     results.innerHTML = `
       <div class="empty-message">
-        対象年度と試算基準日を確認して「試算する」を押してください
+        社員IDを指定するか、最大20名の制限で「試算する」を押してください
       </div>
     `;
   }
+}
+
+function loadFifoEmployeeCandidates() {
+  google.script.run
+    .withSuccessHandler(data => {
+      fifoEmployeeCandidates = Array.isArray(data) ? data : [];
+    })
+    .withFailureHandler(err => {
+      console.error("FIFO社員候補取得エラー:", err);
+      fifoEmployeeCandidates = [];
+    })
+    .getEmployeesForAdmin();
+}
+
+function handleFifoEmployeeSearchInput() {
+  const input = document.getElementById("fifoEmployeeSearch");
+  const list = document.getElementById("fifoEmployeeCandidates");
+  if (!input || !list) return;
+
+  const keyword = normalizeFifoSearchText(input.value);
+
+  selectedFifoEmployee = null;
+  updateSelectedFifoEmployee();
+
+  if (!keyword) {
+    list.innerHTML = "";
+    list.style.display = "none";
+    return;
+  }
+
+  const matches = fifoEmployeeCandidates
+    .filter(emp => {
+      const target = normalizeFifoSearchText([
+        emp.name,
+        emp.display_name,
+        emp.name_kana,
+        emp.display_employee_id,
+        emp.employee_id
+      ].join(" "));
+      return target.includes(keyword);
+    })
+    .slice(0, 8);
+
+  if (matches.length === 0) {
+    list.innerHTML = `<div class="fifo-employee-empty">該当する社員はいません</div>`;
+    list.style.display = "block";
+    return;
+  }
+
+  list.innerHTML = matches.map(emp => `
+    <button
+      class="fifo-employee-option"
+      type="button"
+      data-employee-id="${escapeHtml(emp.employee_id || "")}"
+      onclick="selectFifoEmployeeCandidate(this.dataset.employeeId)"
+    >
+      <span class="fifo-employee-option-name">${escapeHtml(emp.display_name || emp.name || emp.employee_id)}</span>
+      <span class="fifo-employee-option-meta">
+        ${escapeHtml(emp.name_kana || "")}
+        ／ ${escapeHtml(emp.display_employee_id || emp.employee_id || "")}
+        ／ ${escapeHtml(emp.company_code || "")}
+      </span>
+    </button>
+  `).join("");
+  list.style.display = "block";
+}
+
+function selectFifoEmployeeCandidate(employeeId) {
+  const emp = fifoEmployeeCandidates.find(item => {
+    return String(item.employee_id || "") === String(employeeId || "");
+  });
+
+  if (!emp) return;
+
+  selectedFifoEmployee = emp;
+
+  const search = document.getElementById("fifoEmployeeSearch");
+  const idInput = document.getElementById("fifoEmployeeId");
+  const list = document.getElementById("fifoEmployeeCandidates");
+
+  if (search) search.value = emp.display_name || emp.name || emp.employee_id;
+  if (idInput) idInput.value = emp.employee_id || "";
+  if (list) {
+    list.innerHTML = "";
+    list.style.display = "none";
+  }
+
+  updateSelectedFifoEmployee();
+}
+
+function handleFifoEmployeeIdInput() {
+  if (!selectedFifoEmployee) return;
+
+  const idInput = document.getElementById("fifoEmployeeId");
+  const currentId = idInput ? String(idInput.value || "").trim() : "";
+
+  if (currentId === String(selectedFifoEmployee.employee_id || "")) return;
+
+  selectedFifoEmployee = null;
+  updateSelectedFifoEmployee();
+}
+
+function updateSelectedFifoEmployee() {
+  const area = document.getElementById("fifoSelectedEmployee");
+  if (!area) return;
+
+  if (!selectedFifoEmployee) {
+    area.style.display = "none";
+    area.innerHTML = "";
+    return;
+  }
+
+  area.style.display = "flex";
+  area.innerHTML = `
+    <div>
+      選択中：<strong>${escapeHtml(selectedFifoEmployee.display_name || selectedFifoEmployee.name || "")}</strong>
+      <span>${escapeHtml(selectedFifoEmployee.employee_id || "")}</span>
+    </div>
+    <button class="fifo-selected-clear" type="button" onclick="clearSelectedFifoEmployee()">解除</button>
+  `;
+}
+
+function clearSelectedFifoEmployee() {
+  selectedFifoEmployee = null;
+
+  const search = document.getElementById("fifoEmployeeSearch");
+  const idInput = document.getElementById("fifoEmployeeId");
+  const list = document.getElementById("fifoEmployeeCandidates");
+
+  if (search) search.value = "";
+  if (idInput) idInput.value = "";
+  if (list) {
+    list.innerHTML = "";
+    list.style.display = "none";
+  }
+
+  updateSelectedFifoEmployee();
+}
+
+function normalizeFifoSearchText(value) {
+  return String(value || "")
+    .replace(/\s/g, "")
+    .toLowerCase();
 }
 
 </script>
