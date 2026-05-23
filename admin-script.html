@@ -944,11 +944,13 @@ function renderSixMonthGrantCandidates(data) {
                 value="${escapeHtml(emp.employee_id)}"
                 data-employee-id="${escapeHtml(emp.employee_id)}"
                 data-name="${escapeHtml(emp.name)}"
+                onchange="updateGrantBulkSelectionCount('sixMonth')"
               >
               <span>選択</span>
             </label>
             ${escapeHtml(emp.name)}
             <span class="six-month-id">${escapeHtml(emp.display_employee_id || emp.employee_id)}</span>
+            <span class="grant-adjustment-badge">調整あり</span>
           </div>
 
           <div class="six-month-actions">
@@ -1137,6 +1139,7 @@ function renderGrantDaysInput(systemGrantDays) {
           step="0.5"
           value="${escapeHtml(days)}"
           data-system-grant-days="${escapeHtml(days)}"
+          oninput="updateGrantDaysAdjustment(this)"
         >
         <span>日</span>
       </div>
@@ -1147,10 +1150,14 @@ function renderGrantDaysInput(systemGrantDays) {
 
 function renderGrantBulkActionBar(type, count) {
   const label = type === "sixMonth" ? "6か月付与" : "年次付与";
+  const selectedCountId = getGrantBulkSelectedCountId(type);
 
   return `
     <div class="grant-bulk-action-bar">
-      <div class="grant-bulk-info">${escapeHtml(label)}候補 ${escapeHtml(count)}件</div>
+      <div class="grant-bulk-info">
+        <div>${escapeHtml(label)}候補 ${escapeHtml(count)}件 / 選択 <strong id="${escapeHtml(selectedCountId)}">0</strong>名</div>
+        <small>表示中のみ対象</small>
+      </div>
       <div class="grant-bulk-actions">
         <button class="btn btn-reset" type="button" onclick="toggleGrantCandidateSelection('${type}', true)">全選択</button>
         <button class="btn btn-reset" type="button" onclick="toggleGrantCandidateSelection('${type}', false)">選択解除</button>
@@ -1158,6 +1165,12 @@ function renderGrantBulkActionBar(type, count) {
       </div>
     </div>
   `;
+}
+
+function getGrantBulkSelectedCountId(type) {
+  return type === "sixMonth"
+    ? "sixMonthGrantSelectedCount"
+    : "yearlyGrantSelectedCount";
 }
 
 function getGrantCandidateCheckboxes(type) {
@@ -1171,6 +1184,18 @@ function toggleGrantCandidateSelection(type, checked) {
   getGrantCandidateCheckboxes(type).forEach(checkbox => {
     checkbox.checked = checked;
   });
+  updateGrantBulkSelectionCount(type);
+}
+
+function updateGrantBulkSelectionCount(type) {
+  const countEl = document.getElementById(getGrantBulkSelectedCountId(type));
+  if (!countEl) return;
+
+  const selectedCount = getGrantCandidateCheckboxes(type)
+    .filter(checkbox => checkbox.checked)
+    .length;
+
+  countEl.textContent = String(selectedCount);
 }
 
 function getSelectedGrantCandidateIds(type) {
@@ -1241,6 +1266,19 @@ function getGrantDaysOptionsFromElement(element) {
     original_grant_days: systemGrantDays,
     manual_note: "手入力調整"
   };
+}
+
+function updateGrantDaysAdjustment(input) {
+  const card = input.closest(".six-month-row, .yearly-grant-item");
+  if (!card) return;
+
+  const systemGrantDays = Number(input.dataset.systemGrantDays || 0);
+  const rawValue = String(input.value || "").trim();
+  const grantDays = rawValue === "" ? systemGrantDays : Number(rawValue);
+  const hasAdjustment = isFinite(grantDays) &&
+    Math.abs(systemGrantDays - grantDays) > 0.000001;
+
+  card.classList.toggle("has-grant-adjustment", hasAdjustment);
 }
 
 function hasGrantDaysAdjustment(item) {
@@ -1436,6 +1474,7 @@ function renderYearlyGrantCandidates(data) {
                 value="${escapeHtml(item.employee_id)}"
                 data-employee-id="${escapeHtml(item.employee_id)}"
                 data-name="${escapeHtml(item.name)}"
+                onchange="updateGrantBulkSelectionCount('yearly')"
               >
               <span>選択</span>
             </label>
@@ -1443,6 +1482,7 @@ function renderYearlyGrantCandidates(data) {
             <span class="six-month-id">
               ${escapeHtml(item.display_employee_id || item.employee_id)}
             </span>
+            <span class="grant-adjustment-badge">調整あり</span>
           </div>
 
           <div class="yearly-grant-actions">

@@ -529,10 +529,10 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
+  gap: 8px;
 
-  padding: 16px 18px;
-  border-radius: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
 
   background: #f8fbff;
   border: 1px solid #d7e8ff;
@@ -561,9 +561,9 @@
 }
 
 .six-month-actions .btn {
-  min-width: 72px;
-  min-height: 34px;
-  padding: 8px 12px;
+  min-width: 64px;
+  min-height: 32px;
+  padding: 7px 11px;
   white-space: nowrap;
 }
 
@@ -583,7 +583,7 @@
   align-items: center;
   gap: 7px;
   flex-wrap: wrap;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #24435f;
   min-width: 0;
@@ -593,6 +593,22 @@
   font-size: 12px;
   color: #5d7488;
   font-weight: 700;
+}
+
+.grant-adjustment-badge {
+  display: none;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fff1f5;
+  color: #c94c72;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.has-grant-adjustment .grant-adjustment-badge {
+  display: inline-flex;
 }
 
 .grant-card-meta {
@@ -648,6 +664,14 @@
   font-weight: 900;
 }
 
+.grant-bulk-info small {
+  display: block;
+  margin-top: 2px;
+  color: #7a8d9d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .grant-bulk-actions {
   display: flex;
   flex-wrap: wrap;
@@ -656,8 +680,8 @@
 }
 
 .grant-bulk-actions .btn {
-  min-height: 38px;
-  padding: 9px 13px;
+  min-height: 34px;
+  padding: 7px 11px;
 }
 
 .six-month-meta {
@@ -678,8 +702,8 @@
 
 .grant-card-summary-grid {
   display: grid;
-  grid-template-columns: minmax(130px, 0.9fr) minmax(210px, 1.2fr);
-  gap: 8px;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(220px, 1.2fr);
+  gap: 6px;
 }
 
 .grant-detail-grid.compact {
@@ -689,9 +713,9 @@
 
 .grant-detail-item {
   min-width: 0;
-  padding: 8px 10px;
+  padding: 7px 9px;
   border: 1px solid #dceff5;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #ffffff;
 }
 
@@ -716,13 +740,18 @@
   background: #eef8fb;
 }
 
+.has-grant-adjustment .grant-detail-item.highlight {
+  border-color: rgba(217, 79, 120, 0.42);
+  background: #fff8fa;
+}
+
 .grant-card-details {
   margin-top: 2px;
 }
 
 .grant-card-details summary {
   width: fit-content;
-  padding: 5px 9px;
+  padding: 3px 8px;
   border-radius: 999px;
   color: #5d7488;
   font-size: 12px;
@@ -741,7 +770,7 @@
   flex-direction: row;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 4px 8px;
 }
 
 .grant-days-input-row {
@@ -751,9 +780,9 @@
 }
 
 .grant-days-input {
-  width: 78px;
+  width: 70px;
   max-width: 100%;
-  padding: 6px 8px;
+  padding: 5px 7px;
   border: 1px solid #b9ddec;
   border-radius: 10px;
   background: #ffffff;
@@ -777,7 +806,7 @@
 
 .grant-days-editor small {
   color: #7a8d9d;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -834,11 +863,11 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
+  gap: 8px;
 
-  padding: 16px 18px;
+  padding: 12px 14px;
 
-  border-radius: 16px;
+  border-radius: 14px;
 
   background: #f8fbff;
   border: 1px solid #d7e8ff;
@@ -855,7 +884,7 @@
   align-items: center;
   gap: 7px;
   flex-wrap: wrap;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #24435f;
   min-width: 0;
@@ -870,9 +899,9 @@
 }
 
 .yearly-grant-actions .btn {
-  min-width: 72px;
-  min-height: 34px;
-  padding: 8px 12px;
+  min-width: 64px;
+  min-height: 32px;
+  padding: 7px 11px;
   white-space: nowrap;
 }
 
