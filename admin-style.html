@@ -573,16 +573,65 @@
 }
 
 .six-month-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 18px;
   font-weight: 700;
   color: #24435f;
 }
 
 .six-month-id {
-  margin-left: 8px;
   font-size: 12px;
   color: #5d7488;
   font-weight: 700;
+}
+
+.grant-candidate-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid #dceff5;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #5d7488;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.grant-candidate-check input {
+  margin: 0;
+}
+
+.grant-bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #dceff5;
+  border-radius: 14px;
+  background: #f5fbfd;
+}
+
+.grant-bulk-info {
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.grant-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.grant-bulk-actions .btn {
+  min-height: 38px;
+  padding: 9px 13px;
 }
 
 .six-month-meta {
@@ -639,6 +688,15 @@
     justify-content: flex-start;
   }
 
+  .grant-bulk-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .grant-bulk-actions {
+    justify-content: flex-start;
+  }
+
   .grant-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -680,6 +738,10 @@
 }
 
 .yearly-grant-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 18px;
   font-weight: 700;
   color: #24435f;

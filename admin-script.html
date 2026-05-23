@@ -928,10 +928,20 @@ function renderSixMonthGrantCandidates(data) {
     return;
   }
 
-  area.innerHTML = data.map(emp => `
+  area.innerHTML = `
+    ${renderGrantBulkActionBar("sixMonth", data.length)}
+    ${data.map(emp => `
     <div class="six-month-row">
       <div class="six-month-main">
         <div class="six-month-name">
+          <label class="grant-candidate-check">
+            <input
+              type="checkbox"
+              class="grant-candidate-checkbox six-month-grant-checkbox"
+              value="${escapeHtml(emp.employee_id)}"
+            >
+            <span>選択</span>
+          </label>
           ${escapeHtml(emp.name)}
           <span class="six-month-id">${escapeHtml(emp.display_employee_id || emp.employee_id)}</span>
           <span class="grant-basis-badge">${escapeHtml(emp.fiscal_start_month || 4)}月基準</span>
@@ -996,7 +1006,8 @@ function renderSixMonthGrantCandidates(data) {
         </button>
       </div>
     </div>
-  `).join("");
+  `).join("")}
+  `;
 }
 
 function grantSixMonthPaidLeaveActionFromButton(button) {
@@ -1089,6 +1100,120 @@ function getInitialGrantReasonLabel(reason) {
   return "入社6か月到達";
 }
 
+function renderGrantBulkActionBar(type, count) {
+  const label = type === "sixMonth" ? "6か月付与" : "年次付与";
+
+  return `
+    <div class="grant-bulk-action-bar">
+      <div class="grant-bulk-info">${escapeHtml(label)}候補 ${escapeHtml(count)}件</div>
+      <div class="grant-bulk-actions">
+        <button class="btn btn-reset" type="button" onclick="toggleGrantCandidateSelection('${type}', true)">全選択</button>
+        <button class="btn btn-reset" type="button" onclick="toggleGrantCandidateSelection('${type}', false)">選択解除</button>
+        <button class="btn btn-approve" type="button" onclick="grantSelectedCandidatesAction('${type}')">選択した人をまとめて付与</button>
+      </div>
+    </div>
+  `;
+}
+
+function getGrantCandidateCheckboxes(type) {
+  const selector = type === "sixMonth"
+    ? ".six-month-grant-checkbox"
+    : ".yearly-grant-checkbox";
+  return Array.from(document.querySelectorAll(selector));
+}
+
+function toggleGrantCandidateSelection(type, checked) {
+  getGrantCandidateCheckboxes(type).forEach(checkbox => {
+    checkbox.checked = checked;
+  });
+}
+
+function getSelectedGrantCandidateIds(type) {
+  return getGrantCandidateCheckboxes(type)
+    .filter(checkbox => checkbox.checked)
+    .map(checkbox => checkbox.value)
+    .filter(Boolean);
+}
+
+function grantSelectedCandidatesAction(type) {
+  const ids = getSelectedGrantCandidateIds(type);
+
+  if (ids.length === 0) {
+    alert("付与する社員を選択してください");
+    return;
+  }
+
+  const ok = confirm(
+    `選択した${ids.length}名に有給を付与します。よろしいですか？`
+  );
+
+  if (!ok) return;
+
+  const targetId = type === "sixMonth" ? "sixMonthGrantArea" : "yearlyGrantList";
+  const target = document.getElementById(targetId);
+
+  if (target) {
+    target.innerHTML = `<div class="message">選択した社員へ一括付与を実行しています...</div>`;
+  }
+
+  const runner = google.script.run
+    .withSuccessHandler(res => {
+      alert(buildGrantBatchResultMessage(res));
+      loadDashboardSummary();
+      if (type === "sixMonth") {
+        loadSixMonthGrantCandidates();
+      } else {
+        loadYearlyGrantCandidates();
+      }
+    })
+    .withFailureHandler(err => {
+      console.error("一括付与エラー:", err);
+      const message = err && err.message
+        ? err.message
+        : "一括付与でエラーが発生しました。";
+      if (target) {
+        target.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+    });
+
+  if (type === "sixMonth") {
+    runner.grantSelectedSixMonthPaidLeave(ids, currentAdminUser);
+  } else {
+    runner.grantSelectedYearlyPaidLeave(ids, currentAdminUser);
+  }
+}
+
+function buildGrantBatchResultMessage(res) {
+  const data = res || {};
+  const errors = Array.isArray(data.results)
+    ? data.results.filter(item => item.status === "error")
+    : [];
+  const skipped = Array.isArray(data.results)
+    ? data.results.filter(item => item.status === "skipped")
+    : [];
+  let message =
+    `一括付与が完了しました。\n` +
+    `成功: ${data.success_count || 0}名\n` +
+    `スキップ: ${data.skipped_count || 0}名\n` +
+    `失敗: ${data.error_count || 0}名`;
+
+  if (skipped.length > 0) {
+    message += "\n\nスキップ:\n" + skipped
+      .slice(0, 5)
+      .map(item => `${item.employee_id}: ${item.message}`)
+      .join("\n");
+  }
+
+  if (errors.length > 0) {
+    message += "\n\nエラー:\n" + errors
+      .slice(0, 5)
+      .map(item => `${item.employee_id}: ${item.message}`)
+      .join("\n");
+  }
+
+  return message;
+}
+
 /* =========================
    年次付与候補読み込み
 ========================= */
@@ -1131,10 +1256,20 @@ function renderYearlyGrantCandidates(data) {
     return;
   }
 
-  container.innerHTML = data.map(item => `
+  container.innerHTML = `
+    ${renderGrantBulkActionBar("yearly", data.length)}
+    ${data.map(item => `
     <div class="yearly-grant-item">
       <div class="yearly-grant-main">
         <div class="yearly-grant-name">
+          <label class="grant-candidate-check">
+            <input
+              type="checkbox"
+              class="grant-candidate-checkbox yearly-grant-checkbox"
+              value="${escapeHtml(item.employee_id)}"
+            >
+            <span>選択</span>
+          </label>
           ${escapeHtml(item.name)}
           <span class="six-month-id">
             ${escapeHtml(item.display_employee_id || item.employee_id)}
@@ -1187,7 +1322,8 @@ function renderYearlyGrantCandidates(data) {
         </button>
       </div>
     </div>
-  `).join("");
+  `).join("")}
+  `;
 }
 
 function grantYearlyPaidLeaveActionFromButton(button) {

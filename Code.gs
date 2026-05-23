@@ -3961,6 +3961,17 @@ function markSixMonthGrantCandidateProcessed(employeeId, reason, adminUser) {
 }
 
 /* =========================
+   6か月到達者：選択一括付与
+========================= */
+function grantSelectedSixMonthPaidLeave(employeeIds, adminUser) {
+  return grantSelectedPaidLeave_(
+    employeeIds,
+    adminUser,
+    grantSixMonthPaidLeave
+  );
+}
+
+/* =========================
    初回付与予定日
 ========================= */
 function getInitialPaidLeaveGrantInfo_(emp) {
@@ -4257,6 +4268,68 @@ function grantYearlyPaidLeave(employeeId, adminUser) {
   clearAppCache();
 
   return { ok: true };
+}
+
+/* =========================
+   年次付与：選択一括付与
+========================= */
+function grantSelectedYearlyPaidLeave(employeeIds, adminUser) {
+  return grantSelectedPaidLeave_(
+    employeeIds,
+    adminUser,
+    grantYearlyPaidLeave
+  );
+}
+
+function grantSelectedPaidLeave_(employeeIds, adminUser, grantFn) {
+  const ids = (employeeIds || [])
+    .map(id => String(id || "").trim())
+    .filter(Boolean);
+  const result = {
+    ok: true,
+    total_count: ids.length,
+    success_count: 0,
+    skipped_count: 0,
+    error_count: 0,
+    results: []
+  };
+
+  ids.forEach(employeeId => {
+    try {
+      const res = grantFn(employeeId, adminUser);
+      result.success_count++;
+      result.results.push({
+        employee_id: employeeId,
+        status: "success",
+        message: "付与しました",
+        detail: res || null
+      });
+    } catch (e) {
+      const message = e && e.message ? e.message : String(e);
+      const isSkipped =
+        message.indexOf("すでに") !== -1 ||
+        message.indexOf("処理済み") !== -1 ||
+        message.indexOf("付与済み") !== -1;
+
+      if (isSkipped) {
+        result.skipped_count++;
+        result.results.push({
+          employee_id: employeeId,
+          status: "skipped",
+          message: message
+        });
+      } else {
+        result.error_count++;
+        result.results.push({
+          employee_id: employeeId,
+          status: "error",
+          message: message
+        });
+      }
+    }
+  });
+
+  return result;
 }
 
 /* =========================
