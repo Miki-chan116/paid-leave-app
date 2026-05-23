@@ -3911,7 +3911,7 @@ function getSixMonthGrantCandidates() {
 /* =========================
    6か月到達者：1名付与
 ========================= */
-function grantSixMonthPaidLeave(employeeId, adminUser) {
+function grantSixMonthPaidLeave(employeeId, adminUser, options) {
   if (!employeeId) throw new Error("employeeId がありません");
 
   const employees = getEmployeesForAdmin();
@@ -3927,7 +3927,8 @@ function grantSixMonthPaidLeave(employeeId, adminUser) {
 
   const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
   const grantDate = grantInfo.grant_date;
-  const grantDays = getSixMonthGrantDays_(emp.work_days_per_week);
+  const systemGrantDays = getSixMonthGrantDays_(emp.work_days_per_week);
+  const grantDays = resolveGrantDaysOverride_(options, systemGrantDays);
   const now = new Date();
 
   const sheet = getSheet("paid_leave_grants");
@@ -3957,9 +3958,10 @@ function grantSixMonthPaidLeave(employeeId, adminUser) {
   rowObj.valid_to = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
   rowObj.grant_type = "six_month";
   rowObj.year = getFiscalYearFromDateWithStart(grantDate, Number(emp.fiscal_start_month || 4));
-  rowObj.notes = grantInfo.grant_reason === "company_basis"
+  const baseNotes = grantInfo.grant_reason === "company_basis"
     ? "会社基準日による初回付与"
     : "入社6か月到達による初回付与";
+  rowObj.notes = buildGrantDaysAdjustmentNotes_(baseNotes, systemGrantDays, grantDays);
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
@@ -4302,7 +4304,7 @@ function getYearlyGrantCandidates() {
 /* =========================
    年次付与実行
 ========================= */
-function grantYearlyPaidLeave(employeeId, adminUser) {
+function grantYearlyPaidLeave(employeeId, adminUser, options) {
   if (!employeeId) throw new Error("employeeId がありません");
 
   const employees = getEmployeesForAdmin();
@@ -4326,7 +4328,8 @@ function grantYearlyPaidLeave(employeeId, adminUser) {
     throw new Error("この年度はすでに年次付与済みです");
   }
 
-  const grantDays = getYearlyGrantDays_(months);
+  const systemGrantDays = getYearlyGrantDays_(months);
+  const grantDays = resolveGrantDaysOverride_(options, systemGrantDays);
   const now = new Date();
 
   const sheet = getSheet("paid_leave_grants");
@@ -4356,7 +4359,7 @@ function grantYearlyPaidLeave(employeeId, adminUser) {
   rowObj.valid_to = addDaysLocal_(addYearsLocal_(basisDate, 2), -1);
   rowObj.grant_type = "yearly";
   rowObj.year = fiscalYear;
-  rowObj.notes = "年次有給付与";
+  rowObj.notes = buildGrantDaysAdjustmentNotes_("年次有給付与", systemGrantDays, grantDays);
   rowObj.created_at = now;
   rowObj.updated_at = now;
 
@@ -4393,21 +4396,23 @@ function grantSelectedYearlyPaidLeave(employeeIds, adminUser) {
 }
 
 function grantSelectedPaidLeave_(employeeIds, adminUser, grantFn) {
-  const ids = (employeeIds || [])
-    .map(id => String(id || "").trim())
-    .filter(Boolean);
+  const items = (employeeIds || [])
+    .map(parseSelectedGrantItem_)
+    .filter(item => item.employee_id);
   const result = {
     ok: true,
-    total_count: ids.length,
+    total_count: items.length,
     success_count: 0,
     skipped_count: 0,
     error_count: 0,
     results: []
   };
 
-  ids.forEach(employeeId => {
+  items.forEach(item => {
+    const employeeId = item.employee_id;
+
     try {
-      const res = grantFn(employeeId, adminUser);
+      const res = grantFn(employeeId, adminUser, item.options);
       result.success_count++;
       result.results.push({
         employee_id: employeeId,
@@ -4441,6 +4446,74 @@ function grantSelectedPaidLeave_(employeeIds, adminUser, grantFn) {
   });
 
   return result;
+}
+
+function parseSelectedGrantItem_(item) {
+  if (item && typeof item === "object") {
+    return {
+      employee_id: String(item.employee_id || "").trim(),
+      options: {
+        grant_days_override: item.grant_days,
+        original_grant_days: item.original_grant_days,
+        manual_note: item.manual_note || "手入力調整"
+      }
+    };
+  }
+
+  return {
+    employee_id: String(item || "").trim(),
+    options: {}
+  };
+}
+
+function resolveGrantDaysOverride_(options, systemGrantDays) {
+  const opts = options || {};
+  const rawValue = opts.grant_days_override;
+
+  if (rawValue === "" || rawValue === null || rawValue === undefined) {
+    return Number(systemGrantDays || 0);
+  }
+
+  const grantDays = Number(rawValue);
+
+  if (!isFinite(grantDays)) {
+    throw new Error("付与日数は数値で入力してください");
+  }
+
+  if (grantDays <= 0) {
+    throw new Error("付与日数は0日より大きい値を入力してください");
+  }
+
+  if (grantDays > 20) {
+    throw new Error("付与日数は20日以下で入力してください");
+  }
+
+  if (Math.abs(grantDays * 2 - Math.round(grantDays * 2)) > 0.000001) {
+    throw new Error("付与日数は0.5日単位で入力してください");
+  }
+
+  return grantDays;
+}
+
+function buildGrantDaysAdjustmentNotes_(baseNotes, systemGrantDays, grantDays) {
+  const systemDays = Number(systemGrantDays || 0);
+  const actualDays = Number(grantDays || 0);
+
+  if (Math.abs(systemDays - actualDays) < 0.000001) {
+    return baseNotes;
+  }
+
+  return baseNotes +
+    " / 手入力調整: システム計算 " +
+    formatGrantDaysForNote_(systemDays) +
+    "日 → 手入力 " +
+    formatGrantDaysForNote_(actualDays) +
+    "日";
+}
+
+function formatGrantDaysForNote_(value) {
+  const num = Number(value || 0);
+  return Number.isInteger(num) ? String(num) : String(num);
 }
 
 /* =========================

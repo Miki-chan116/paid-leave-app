@@ -941,6 +941,8 @@ function renderSixMonthGrantCandidates(data) {
               type="checkbox"
               class="grant-candidate-checkbox six-month-grant-checkbox"
               value="${escapeHtml(emp.employee_id)}"
+              data-employee-id="${escapeHtml(emp.employee_id)}"
+              data-name="${escapeHtml(emp.name)}"
             >
             <span>選択</span>
           </label>
@@ -968,7 +970,7 @@ function renderSixMonthGrantCandidates(data) {
           </div>
           <div class="grant-detail-item">
             <span>付与日数</span>
-            <strong>${escapeHtml(emp.grant_days)}日</strong>
+            ${renderGrantDaysInput(emp.grant_days)}
           </div>
           <div class="grant-detail-item">
             <span>会社</span>
@@ -1013,10 +1015,14 @@ function renderSixMonthGrantCandidates(data) {
 }
 
 function grantSixMonthPaidLeaveActionFromButton(button) {
+  const grantOptions = getGrantDaysOptionsFromElement(button);
+  if (!grantOptions) return;
+
   grantSixMonthPaidLeaveAction(
     button.dataset.employeeId,
     button.dataset.name,
-    button.dataset.grantDays
+    grantOptions.grant_days_override,
+    grantOptions
   );
 }
 
@@ -1027,12 +1033,15 @@ function markSixMonthGrantProcessedActionFromButton(button) {
   );
 }
 
-function grantSixMonthPaidLeaveAction(employeeId, name, grantDays) {
+function grantSixMonthPaidLeaveAction(employeeId, name, grantDays, grantOptions) {
   if (!employeeId) return;
 
-  const ok = confirm(
-    `${name} さんに ${grantDays}日 の有給を付与しますか？`
-  );
+  const ok = confirm(buildIndividualGrantConfirmMessage({
+    employee_id: employeeId,
+    name: name,
+    grant_days: grantDays,
+    original_grant_days: grantOptions && grantOptions.original_grant_days
+  }));
 
   if (!ok) return;
 
@@ -1057,7 +1066,7 @@ function grantSixMonthPaidLeaveAction(employeeId, name, grantDays) {
         area.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
       }
     })
-    .grantSixMonthPaidLeave(employeeId, currentAdminUser);
+    .grantSixMonthPaidLeave(employeeId, currentAdminUser, grantOptions || {});
 }
 
 function markSixMonthGrantProcessedAction(employeeId, name) {
@@ -1102,6 +1111,28 @@ function getInitialGrantReasonLabel(reason) {
   return "入社6か月到達";
 }
 
+function renderGrantDaysInput(systemGrantDays) {
+  const days = Number(systemGrantDays || 0);
+
+  return `
+    <div class="grant-days-editor">
+      <div class="grant-days-input-row">
+        <input
+          type="number"
+          class="grant-days-input"
+          min="0.5"
+          max="20"
+          step="0.5"
+          value="${escapeHtml(days)}"
+          data-system-grant-days="${escapeHtml(days)}"
+        >
+        <span>日</span>
+      </div>
+      <small>システム計算: ${escapeHtml(days)}日</small>
+    </div>
+  `;
+}
+
 function renderGrantBulkActionBar(type, count) {
   const label = type === "sixMonth" ? "6か月付与" : "年次付与";
 
@@ -1137,17 +1168,138 @@ function getSelectedGrantCandidateIds(type) {
     .filter(Boolean);
 }
 
-function grantSelectedCandidatesAction(type) {
-  const ids = getSelectedGrantCandidateIds(type);
+function getSelectedGrantCandidateItems(type) {
+  const items = [];
+  const checkboxes = getGrantCandidateCheckboxes(type).filter(checkbox => checkbox.checked);
 
-  if (ids.length === 0) {
+  for (const checkbox of checkboxes) {
+    const grantOptions = getGrantDaysOptionsFromElement(checkbox);
+    if (!grantOptions) return null;
+
+    items.push({
+      employee_id: checkbox.dataset.employeeId || checkbox.value,
+      name: checkbox.dataset.name || "",
+      grant_days: grantOptions.grant_days_override,
+      original_grant_days: grantOptions.original_grant_days,
+      manual_note: grantOptions.manual_note
+    });
+  }
+
+  return items;
+}
+
+function getGrantDaysOptionsFromElement(element) {
+  const card = element.closest(".six-month-row, .yearly-grant-item");
+  const input = card ? card.querySelector(".grant-days-input") : null;
+
+  if (!input) {
+    return {};
+  }
+
+  const systemGrantDays = Number(input.dataset.systemGrantDays || 0);
+  const rawValue = String(input.value || "").trim();
+  const grantDays = rawValue === "" ? systemGrantDays : Number(rawValue);
+
+  if (rawValue !== "" && !isFinite(grantDays)) {
+    alert("付与日数は数値で入力してください");
+    input.focus();
+    return null;
+  }
+
+  if (grantDays <= 0) {
+    alert("付与日数は0日より大きい値を入力してください");
+    input.focus();
+    return null;
+  }
+
+  if (grantDays > 20) {
+    alert("付与日数は20日以下で入力してください");
+    input.focus();
+    return null;
+  }
+
+  if (Math.abs(grantDays * 2 - Math.round(grantDays * 2)) > 0.000001) {
+    alert("付与日数は0.5日単位で入力してください");
+    input.focus();
+    return null;
+  }
+
+  return {
+    grant_days_override: grantDays,
+    original_grant_days: systemGrantDays,
+    manual_note: "手入力調整"
+  };
+}
+
+function hasGrantDaysAdjustment(item) {
+  const systemDays = Number(item && item.original_grant_days || 0);
+  const grantDays = Number(item && item.grant_days || item && item.grant_days_override || 0);
+  return Math.abs(systemDays - grantDays) > 0.000001;
+}
+
+function formatGrantDaysForConfirm(value) {
+  const num = Number(value || 0);
+  return Number.isInteger(num) ? String(num) : String(num);
+}
+
+function buildIndividualGrantConfirmMessage(item) {
+  const systemDays = Number(item.original_grant_days || 0);
+  const grantDays = Number(item.grant_days || 0);
+  const hasAdjustment = hasGrantDaysAdjustment({
+    original_grant_days: systemDays,
+    grant_days: grantDays
+  });
+  const lines = [
+    item.name || "",
+    `社員ID: ${item.employee_id || ""}`,
+    "",
+    `システム計算: ${formatGrantDaysForConfirm(systemDays)}日`,
+    `実際に付与: ${formatGrantDaysForConfirm(grantDays)}日`,
+    ""
+  ];
+
+  if (hasAdjustment) {
+    lines.push("手入力調整があります。");
+  }
+
+  lines.push("この内容で付与しますか？");
+  return lines.join("\n");
+}
+
+function buildBulkGrantConfirmMessage(items) {
+  const rows = Array.isArray(items) ? items : [];
+  const detailRows = rows.slice(0, 10).map((item, index) => {
+    const adjustment = hasGrantDaysAdjustment(item) ? "（調整あり）" : "";
+
+    return [
+      `${index + 1}. ${item.name || ""} / ${item.employee_id || ""}`,
+      `   システム計算: ${formatGrantDaysForConfirm(item.original_grant_days)}日 → 付与: ${formatGrantDaysForConfirm(item.grant_days)}日${adjustment}`
+    ].join("\n");
+  });
+
+  if (rows.length > 10) {
+    detailRows.push(`ほか${rows.length - 10}名`);
+  }
+
+  return [
+    `${rows.length}名に有給を付与します。`,
+    "",
+    detailRows.join("\n\n"),
+    "",
+    "この内容で付与しますか？"
+  ].join("\n");
+}
+
+function grantSelectedCandidatesAction(type) {
+  const items = getSelectedGrantCandidateItems(type);
+  if (!items) return;
+
+  if (items.length === 0) {
     alert("付与する社員を選択してください");
     return;
   }
 
-  const ok = confirm(
-    `選択した${ids.length}名に有給を付与します。よろしいですか？`
-  );
+  const ok = confirm(buildBulkGrantConfirmMessage(items));
 
   if (!ok) return;
 
@@ -1179,9 +1331,9 @@ function grantSelectedCandidatesAction(type) {
     });
 
   if (type === "sixMonth") {
-    runner.grantSelectedSixMonthPaidLeave(ids, currentAdminUser);
+    runner.grantSelectedSixMonthPaidLeave(items, currentAdminUser);
   } else {
-    runner.grantSelectedYearlyPaidLeave(ids, currentAdminUser);
+    runner.grantSelectedYearlyPaidLeave(items, currentAdminUser);
   }
 }
 
@@ -1269,6 +1421,8 @@ function renderYearlyGrantCandidates(data) {
               type="checkbox"
               class="grant-candidate-checkbox yearly-grant-checkbox"
               value="${escapeHtml(item.employee_id)}"
+              data-employee-id="${escapeHtml(item.employee_id)}"
+              data-name="${escapeHtml(item.name)}"
             >
             <span>選択</span>
           </label>
@@ -1306,7 +1460,7 @@ function renderYearlyGrantCandidates(data) {
           </div>
           <div class="grant-detail-item highlight">
             <span>付与日数</span>
-            <strong>${escapeHtml(item.grant_days)}日</strong>
+            ${renderGrantDaysInput(item.grant_days)}
           </div>
         </div>
       </div>
@@ -1329,22 +1483,29 @@ function renderYearlyGrantCandidates(data) {
 }
 
 function grantYearlyPaidLeaveActionFromButton(button) {
+  const grantOptions = getGrantDaysOptionsFromElement(button);
+  if (!grantOptions) return;
+
   grantYearlyPaidLeaveAction(
     button.dataset.employeeId,
     button.dataset.name,
-    button.dataset.grantDays
+    grantOptions.grant_days_override,
+    grantOptions
   );
 }
 
 /* =========================
    年次付与実行
 ========================= */
-function grantYearlyPaidLeaveAction(employeeId, name, grantDays) {
+function grantYearlyPaidLeaveAction(employeeId, name, grantDays, grantOptions) {
   if (!employeeId) return;
 
-  const ok = confirm(
-    `${name} さんに ${grantDays}日 の年次有給を付与しますか？`
-  );
+  const ok = confirm(buildIndividualGrantConfirmMessage({
+    employee_id: employeeId,
+    name: name,
+    grant_days: grantDays,
+    original_grant_days: grantOptions && grantOptions.original_grant_days
+  }));
 
   if (!ok) return;
 
@@ -1380,7 +1541,7 @@ function grantYearlyPaidLeaveAction(employeeId, name, grantDays) {
         `;
       }
     })
-    .grantYearlyPaidLeave(employeeId, currentAdminUser);
+    .grantYearlyPaidLeave(employeeId, currentAdminUser, grantOptions || {});
 }
 
 function closeYearlyGrantList() {
