@@ -1035,6 +1035,159 @@
   color: #9f2a2a;
 }
 
+.year-end-section {
+  padding-top: 8px;
+  border-top: 1px solid #dceff5;
+}
+
+.year-end-card {
+  margin-bottom: 18px;
+}
+
+.year-end-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px);
+  gap: 12px;
+}
+
+.year-end-summary {
+  margin-top: 12px;
+}
+
+.year-end-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #dceff5;
+  background: #f5fbfd;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.year-end-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.year-end-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid #d7e8ff;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.year-end-main {
+  min-width: 0;
+}
+
+.year-end-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.year-end-name {
+  color: #24435f;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.year-end-id {
+  color: #5d7488;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.year-end-meta {
+  margin-top: 6px;
+  color: #5d7488;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.year-end-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.year-end-detail-item {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #dceff5;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.year-end-detail-item span {
+  display: block;
+  margin-bottom: 3px;
+  color: #7a8d9d;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.year-end-detail-item strong {
+  display: block;
+  color: #24435f;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.year-end-detail-item.highlight {
+  border-color: #b9e4ef;
+  background: #eef8fb;
+}
+
+.year-end-detail-item.expired {
+  border-color: #f2ddb8;
+  background: #fff8ec;
+}
+
+.year-end-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #dceff5;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.year-end-status-badge.finalized {
+  background: #eefaf3;
+  border-color: #cdebd8;
+  color: #216b3a;
+}
+
+.year-end-status-badge.pending {
+  background: #ffffff;
+  color: #5d7488;
+}
+
+.year-end-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.year-end-actions .btn[disabled] {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 @media (max-width: 900px) {
   .yearly-grant-item {
     gap: 12px;
@@ -1055,6 +1208,10 @@
   .fifo-trial-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .year-end-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 520px) {
@@ -1063,7 +1220,9 @@
   }
 
   .fifo-trial-controls,
-  .fifo-trial-numbers {
+  .fifo-trial-numbers,
+  .year-end-controls,
+  .year-end-detail-grid {
     grid-template-columns: 1fr;
   }
 

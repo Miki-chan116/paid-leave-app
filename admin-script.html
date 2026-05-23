@@ -22,9 +22,11 @@ function setDefaultReportValues() {
 
   const fifoFiscalYear = document.getElementById("fifoFiscalYear");
   const fifoAsOfDate = document.getElementById("fifoAsOfDate");
+  const yearEndFiscalYear = document.getElementById("yearEndFiscalYear");
 
   if (fifoFiscalYear) fifoFiscalYear.value = fiscalYear;
   if (fifoAsOfDate) fifoAsOfDate.value = toInputDate(now);
+  if (yearEndFiscalYear) yearEndFiscalYear.value = fiscalYear;
 }
 
 function setDefaultSearchDates() {
@@ -1792,6 +1794,125 @@ function normalizeFifoSearchText(value) {
   return String(value || "")
     .replace(/\s/g, "")
     .toLowerCase();
+}
+
+/* =========================
+   年跨ぎ・繰越確認
+========================= */
+function loadYearEndCarryOverCandidates() {
+  const fiscalYear = document.getElementById("yearEndFiscalYear").value;
+  const summary = document.getElementById("yearEndSummary");
+  const container = document.getElementById("yearEndCandidates");
+
+  if (!fiscalYear) {
+    if (summary) summary.innerHTML = `<div class="message error">対象年度を入力してください。</div>`;
+    return;
+  }
+
+  if (summary) summary.innerHTML = "";
+  if (container) {
+    container.innerHTML = `<div class="message">年跨ぎ・繰越候補を生成しています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(renderYearEndCarryOverCandidates)
+    .withFailureHandler(err => {
+      console.error("年跨ぎ・繰越候補取得エラー:", err);
+      const message = err && err.message
+        ? err.message
+        : "年跨ぎ・繰越候補の取得でエラーが発生しました。";
+      if (container) {
+        container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+    })
+    .getYearEndCarryOverCandidates(Number(fiscalYear), {});
+}
+
+function renderYearEndCarryOverCandidates(response) {
+  const summary = document.getElementById("yearEndSummary");
+  const container = document.getElementById("yearEndCandidates");
+  if (!container) return;
+
+  const rows = Array.isArray(response && response.rows) ? response.rows : [];
+
+  if (summary) {
+    summary.innerHTML = `
+      <div class="year-end-count">
+        対象年度：<strong>${escapeHtml(response && response.fiscal_year ? response.fiscal_year : "")}</strong>
+        ／ 候補：<strong>${escapeHtml(rows.length)}</strong>件
+      </div>
+    `;
+  }
+
+  if (rows.length === 0) {
+    container.innerHTML = `<div class="empty-message">年跨ぎ・繰越候補はありません。</div>`;
+    return;
+  }
+
+  container.innerHTML = rows.map(row => `
+    <div class="year-end-row">
+      <div class="year-end-main">
+        <div class="year-end-name-line">
+          <span class="year-end-name">${escapeHtml(row.display_name || row.name || row.employee_id)}</span>
+          <span class="year-end-id">${escapeHtml(row.employee_id || "")}</span>
+          ${renderYearEndFinalizedBadge(row.is_finalized)}
+        </div>
+
+        <div class="year-end-meta">
+          会社：${escapeHtml(row.company_name || row.company_code || "-")}
+          ／ 部署：${escapeHtml(row.department || "-")}
+          ／ ${escapeHtml(row.fiscal_start_month || 4)}月開始
+        </div>
+
+        <div class="year-end-detail-grid">
+          <div class="year-end-detail-item">
+            <span>年度末日</span>
+            <strong>${escapeHtml(row.fiscal_year_end_date || "")}</strong>
+          </div>
+          <div class="year-end-detail-item">
+            <span>前年度残</span>
+            <strong>${escapeHtml(formatDays(row.previous_remaining_days))}</strong>
+          </div>
+          <div class="year-end-detail-item highlight">
+            <span>繰越候補</span>
+            <strong>${escapeHtml(formatDays(row.carry_over_candidate_days))}</strong>
+          </div>
+          <div class="year-end-detail-item expired">
+            <span>消滅見込み</span>
+            <strong>${escapeHtml(formatDays(row.expired_days))}</strong>
+          </div>
+          <div class="year-end-detail-item">
+            <span>新規付与</span>
+            <strong>${escapeHtml(formatDays(row.new_grant_days))}</strong>
+          </div>
+          <div class="year-end-detail-item">
+            <span>付与後見込み</span>
+            <strong>${escapeHtml(formatDays(row.estimated_after_grant_days))}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="year-end-actions">
+        <button class="btn btn-reset" type="button" disabled>確定は未実装</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderYearEndFinalizedBadge(isFinalized) {
+  return isFinalized
+    ? `<span class="year-end-status-badge finalized">確定済み</span>`
+    : `<span class="year-end-status-badge pending">未確定</span>`;
+}
+
+function clearYearEndCarryOverCandidates() {
+  const summary = document.getElementById("yearEndSummary");
+  const container = document.getElementById("yearEndCandidates");
+
+  if (summary) summary.innerHTML = "";
+  if (container) {
+    container.innerHTML = `<div class="empty-message">対象年度を入力して「候補生成」を押してください</div>`;
+  }
 }
 
 </script>

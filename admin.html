@@ -331,6 +331,50 @@
       </div>
     </section>
 
+    <!-- ================= 年跨ぎ・繰越確認 ================= -->
+    <section class="admin-section year-end-section">
+      <div class="section-heading-row">
+        <div>
+          <div class="section-kicker">確認のみ</div>
+          <h2 class="section-heading">年跨ぎ・繰越確認</h2>
+          <p class="section-description">
+            年度末時点のFIFO試算から、繰越候補と消滅見込みを確認します。確定処理はまだ行いません。
+          </p>
+        </div>
+      </div>
+
+      <div class="search-card year-end-card">
+        <div class="search-card-header">
+          <div>
+            <div class="search-title">繰越候補生成</div>
+            <p class="subtitle">対象年度を入力して、表示専用の候補一覧を生成します。</p>
+          </div>
+        </div>
+
+        <div class="year-end-controls">
+          <div class="field">
+            <label for="yearEndFiscalYear">対象年度</label>
+            <input type="number" id="yearEndFiscalYear" placeholder="例: 2026">
+          </div>
+        </div>
+
+        <div class="search-actions">
+          <button class="btn btn-search" type="button" onclick="loadYearEndCarryOverCandidates()">
+            候補生成
+          </button>
+
+          <button class="btn btn-reset" type="button" onclick="clearYearEndCarryOverCandidates()">
+            クリア
+          </button>
+        </div>
+
+        <div id="yearEndSummary" class="year-end-summary"></div>
+        <div id="yearEndCandidates" class="year-end-candidates">
+          <div class="empty-message">対象年度を入力して「候補生成」を押してください</div>
+        </div>
+      </div>
+    </section>
+
     <!-- ================= 出力 ================= -->
 <section class="admin-section report-section">
 

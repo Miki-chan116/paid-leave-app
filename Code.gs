@@ -911,6 +911,117 @@ function calculateFifoPaidLeaveBalance(employeeId, asOfDateValue) {
   };
 }
 
+/* =========================
+   年跨ぎ・繰越候補生成（表示専用）
+   paid_leave_grants には書き込まない
+========================= */
+function getYearEndCarryOverCandidates(fiscalYear, options) {
+  const targetFiscalYear = Number(fiscalYear || getFiscalYearFromDate(new Date()));
+  const opts = options || {};
+  const employeeIdFilter = String(opts.employee_id || "").trim();
+  const companyCodeFilter = String(opts.company_code || "").trim().toUpperCase();
+  const departmentFilter = String(opts.department || "").trim();
+  const includeFinalized = opts.include_finalized === true;
+  const context = createFifoBalanceComparisonContext_(new Date());
+  const finalizedMap = getYearlyGrantFinalizedMap_(targetFiscalYear + 1);
+
+  const rows = getEmployeesForAdmin()
+    .filter(emp => {
+      const status = String(emp.employment_status || "").trim().toLowerCase();
+      const isActive = status === "active" || status === "在職";
+      if (!isActive) return false;
+      if (emp.leave_management_target !== true) return false;
+      if (employeeIdFilter && String(emp.employee_id || "").trim() !== employeeIdFilter) return false;
+      if (companyCodeFilter && String(emp.company_code || "").trim().toUpperCase() !== companyCodeFilter) return false;
+      if (departmentFilter && String(emp.department || "").trim() !== departmentFilter) return false;
+      return true;
+    })
+    .map(emp => buildYearEndCarryOverCandidate_(emp, targetFiscalYear, context, finalizedMap))
+    .filter(row => includeFinalized || row.is_finalized !== true)
+    .sort((a, b) => {
+      if (a.company_code !== b.company_code) {
+        return String(a.company_code).localeCompare(String(b.company_code));
+      }
+      return String(a.employee_id).localeCompare(String(b.employee_id));
+    });
+
+  return {
+    ok: true,
+    fiscal_year: targetFiscalYear,
+    row_count: rows.length,
+    rows: rows
+  };
+}
+
+function buildYearEndCarryOverCandidate_(emp, fiscalYear, context, finalizedMap) {
+  const employeeId = String(emp.employee_id || "").trim();
+  const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+  const fiscalRange = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
+  const fiscalYearEndDate = fiscalRange.end;
+  const nextFiscalYearStartDate = addDaysLocal_(fiscalYearEndDate, 1);
+  const fifoBalance = calculateFifoBalanceFromContext_(
+    employeeId,
+    fiscalYearEndDate,
+    context
+  );
+  const previousRemainingDays = Number(fifoBalance.current_remaining_days || 0);
+  const carryOverCandidateDays = Math.min(previousRemainingDays, 20);
+  const carryOverLimitExpiredDays = Math.max(previousRemainingDays - 20, 0);
+  const expiredDays =
+    Number(fifoBalance.expired_days || 0) +
+    carryOverLimitExpiredDays;
+  const months = emp.hire_date
+    ? getMonthsWorked_(parseLocalDate(emp.hire_date), nextFiscalYearStartDate)
+    : 0;
+  const newGrantDays = getYearlyGrantDays_(months);
+  const estimatedAfterGrantDays = carryOverCandidateDays + newGrantDays;
+  const isFinalized = !!(finalizedMap && finalizedMap[employeeId]);
+
+  return {
+    employee_id: employeeId,
+    name: String(emp.name || ""),
+    display_name: String(emp.display_name || ""),
+    company_code: String(emp.company_code || ""),
+    company_name: String(emp.company_name || ""),
+    department: String(emp.department || ""),
+    fiscal_start_month: fiscalStartMonth,
+    fiscal_year: Number(fiscalYear),
+    fiscal_year_end_date: formatDateValue(fiscalYearEndDate),
+    previous_remaining_days: previousRemainingDays,
+    carry_over_candidate_days: carryOverCandidateDays,
+    expired_days: expiredDays,
+    new_grant_days: newGrantDays,
+    estimated_after_grant_days: estimatedAfterGrantDays,
+    is_finalized: isFinalized
+  };
+}
+
+function getYearlyGrantFinalizedMap_(fiscalYear) {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "grant_type",
+    "year"
+  ]);
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+
+  if (data.length <= 1) return result;
+
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const employeeId = String(rowObj.employee_id || "").trim();
+
+    if (!employeeId) return;
+    if (String(rowObj.grant_type || "").trim() !== "yearly") return;
+    if (Number(rowObj.year) !== Number(fiscalYear)) return;
+
+    result[employeeId] = true;
+  });
+
+  return result;
+}
+
 function compareFifoBalanceWithBuildBalance(employeeId, fiscalYear, asOfDateValue) {
   const targetEmployeeId = String(employeeId || "").trim();
   if (!targetEmployeeId) throw new Error("employeeId がありません");
