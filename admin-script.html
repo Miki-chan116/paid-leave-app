@@ -1174,16 +1174,18 @@ function renderYearlyGrantCandidates(data) {
         </div>
       </div>
 
-      <button
-        class="btn btn-approve"
-        type="button"
-        data-employee-id="${escapeHtml(item.employee_id)}"
-        data-name="${escapeHtml(item.name)}"
-        data-grant-days="${escapeHtml(item.grant_days)}"
-        onclick="grantYearlyPaidLeaveActionFromButton(this)"
-      >
-        付与する
-      </button>
+      <div class="yearly-grant-actions">
+        <button
+          class="btn btn-approve"
+          type="button"
+          data-employee-id="${escapeHtml(item.employee_id)}"
+          data-name="${escapeHtml(item.name)}"
+          data-grant-days="${escapeHtml(item.grant_days)}"
+          onclick="grantYearlyPaidLeaveActionFromButton(this)"
+        >
+          付与
+        </button>
+      </div>
     </div>
   `).join("");
 }

@@ -661,8 +661,9 @@
 
 .yearly-grant-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
 
   padding: 16px 18px;
 
@@ -682,6 +683,22 @@
   font-size: 18px;
   font-weight: 700;
   color: #24435f;
+}
+
+.yearly-grant-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.yearly-grant-actions .btn {
+  min-width: 96px;
+  min-height: 40px;
+  padding: 10px 16px;
+  white-space: nowrap;
 }
 
 .yearly-grant-meta {
@@ -958,9 +975,11 @@
 
 @media (max-width: 900px) {
   .yearly-grant-item {
-    flex-direction: column;
-    align-items: stretch;
     gap: 12px;
+  }
+
+  .yearly-grant-actions {
+    justify-content: flex-start;
   }
 
   .grant-check-grid {
