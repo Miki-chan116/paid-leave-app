@@ -918,6 +918,7 @@ function calculateFifoPaidLeaveBalance(employeeId, asOfDateValue) {
 function getYearEndCarryOverCandidates(fiscalYear, options) {
   const targetFiscalYear = Number(fiscalYear || getFiscalYearFromDate(new Date()));
   const opts = options || {};
+  const page = normalizePagingOptions_(opts);
   const employeeIdFilter = String(opts.employee_id || "").trim();
   const companyCodeFilter = String(opts.company_code || "").trim().toUpperCase();
   const departmentFilter = String(opts.department || "").trim();
@@ -925,7 +926,7 @@ function getYearEndCarryOverCandidates(fiscalYear, options) {
   const context = createFifoBalanceComparisonContext_(new Date());
   const finalizedMap = getYearlyGrantFinalizedMap_(targetFiscalYear + 1);
 
-  const rows = getEmployeesForAdmin()
+  const employees = getEmployeesForAdmin()
     .filter(emp => {
       const status = String(emp.employment_status || "").trim().toLowerCase();
       const isActive = status === "active" || status === "在職";
@@ -936,19 +937,29 @@ function getYearEndCarryOverCandidates(fiscalYear, options) {
       if (departmentFilter && String(emp.department || "").trim() !== departmentFilter) return false;
       return true;
     })
-    .map(emp => buildYearEndCarryOverCandidate_(emp, targetFiscalYear, context, finalizedMap))
-    .filter(row => includeFinalized || row.is_finalized !== true)
+    .filter(emp => {
+      if (includeFinalized) return true;
+      return !finalizedMap[String(emp.employee_id || "").trim()];
+    })
     .sort((a, b) => {
-      if (a.company_code !== b.company_code) {
-        return String(a.company_code).localeCompare(String(b.company_code));
+      if (String(a.company_code || "") !== String(b.company_code || "")) {
+        return String(a.company_code || "").localeCompare(String(b.company_code || ""));
       }
-      return String(a.employee_id).localeCompare(String(b.employee_id));
+      return String(a.employee_id || "").localeCompare(String(b.employee_id || ""));
     });
+  const pageEmployees = employees.slice(page.offset, page.offset + page.limit);
+  const rows = pageEmployees
+    .map(emp => buildYearEndCarryOverCandidate_(emp, targetFiscalYear, context, finalizedMap));
 
   return {
     ok: true,
     fiscal_year: targetFiscalYear,
     row_count: rows.length,
+    total_count: employees.length,
+    offset: page.offset,
+    limit: page.limit,
+    has_prev: page.offset > 0,
+    has_next: page.offset + page.limit < employees.length,
     rows: rows
   };
 }
@@ -1022,6 +1033,36 @@ function getYearlyGrantFinalizedMap_(fiscalYear) {
   return result;
 }
 
+function normalizePagingOptions_(options) {
+  const opts = options || {};
+  const rawLimit = Number(opts.limit || 20);
+  const rawOffset = Number(opts.offset || 0);
+  const limit = Math.max(1, Math.min(isFinite(rawLimit) ? rawLimit : 20, 20));
+  const offset = Math.max(0, isFinite(rawOffset) ? rawOffset : 0);
+
+  return {
+    limit: limit,
+    offset: offset
+  };
+}
+
+function buildPagedResponse_(rows, options) {
+  const allRows = Array.isArray(rows) ? rows : [];
+  const page = normalizePagingOptions_(options);
+  const pageRows = allRows.slice(page.offset, page.offset + page.limit);
+
+  return {
+    ok: true,
+    total_count: allRows.length,
+    row_count: pageRows.length,
+    offset: page.offset,
+    limit: page.limit,
+    has_prev: page.offset > 0,
+    has_next: page.offset + page.limit < allRows.length,
+    rows: pageRows
+  };
+}
+
 function compareFifoBalanceWithBuildBalance(employeeId, fiscalYear, asOfDateValue) {
   const targetEmployeeId = String(employeeId || "").trim();
   if (!targetEmployeeId) throw new Error("employeeId がありません");
@@ -1093,14 +1134,20 @@ function compareFifoBalanceDifferencesOnly(fiscalYear, asOfDateValue) {
   return rows;
 }
 
-function compareFifoBalanceDifferencesForAdmin(fiscalYear, asOfDateValue, employeeId, limit) {
+function compareFifoBalanceDifferencesForAdmin(fiscalYear, asOfDateValue, employeeId, limit, offset) {
   const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
   const targetEmployeeId = String(employeeId || "").trim();
-  const maxRows = targetEmployeeId ? 1 : Math.max(1, Math.min(Number(limit || 20), 20));
-  const rows = getFifoBalanceComparisonRows_(fiscalYear, asOfDate, {
-    employee_id: targetEmployeeId,
-    limit: maxRows
+  const page = normalizePagingOptions_({
+    limit: targetEmployeeId ? 1 : limit,
+    offset: targetEmployeeId ? 0 : offset
   });
+  const comparison = getFifoBalanceComparisonRows_(fiscalYear, asOfDate, {
+    employee_id: targetEmployeeId,
+    limit: page.limit,
+    offset: page.offset,
+    include_paging: true
+  });
+  const rows = comparison.rows || [];
   const differenceRows = rows.filter(row => row.has_difference === true);
 
   return {
@@ -1108,10 +1155,14 @@ function compareFifoBalanceDifferencesForAdmin(fiscalYear, asOfDateValue, employ
     fiscal_year: Number(fiscalYear || 0),
     as_of_date: formatDateValue(asOfDate),
     employee_id: targetEmployeeId,
-    limit: maxRows,
+    limit: page.limit,
+    offset: page.offset,
     target_limited: !targetEmployeeId,
     scanned_count: rows.length,
     difference_count: differenceRows.length,
+    total_count: comparison.total_count || rows.length,
+    has_prev: page.offset > 0,
+    has_next: page.offset + page.limit < Number(comparison.total_count || rows.length),
     rows: differenceRows
   };
 }
@@ -1120,6 +1171,7 @@ function getFifoBalanceComparisonRows_(fiscalYear, asOfDate, options) {
   options = options || {};
   const targetEmployeeId = String(options.employee_id || "").trim();
   const limit = Number(options.limit || 0);
+  const offset = Math.max(0, Number(options.offset || 0));
   const context = createFifoBalanceComparisonContext_(asOfDate);
   const employees = getEmployeesForAdmin()
     .filter(emp => isFifoBalanceCompareTargetEmployee_(emp))
@@ -1128,9 +1180,11 @@ function getFifoBalanceComparisonRows_(fiscalYear, asOfDate, options) {
       return String(emp.employee_id || "").trim() === targetEmployeeId;
     });
 
-  const targetEmployees = limit > 0 ? employees.slice(0, limit) : employees;
+  const targetEmployees = limit > 0
+    ? employees.slice(offset, offset + limit)
+    : employees;
 
-  return targetEmployees.map(emp => {
+  const rows = targetEmployees.map(emp => {
     const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
     const targetFiscalYear = Number(
       fiscalYear || getFiscalYearFromDateWithStart(asOfDate, fiscalStartMonth)
@@ -1138,6 +1192,17 @@ function getFifoBalanceComparisonRows_(fiscalYear, asOfDate, options) {
 
     return buildFifoBalanceComparisonRow_(emp, targetFiscalYear, asOfDate, context);
   });
+
+  if (options.include_paging === true) {
+    return {
+      total_count: employees.length,
+      offset: offset,
+      limit: limit,
+      rows: rows
+    };
+  }
+
+  return rows;
 }
 
 function buildFifoBalanceComparisonRow_(emp, fiscalYear, asOfDate, context) {
@@ -3865,12 +3930,13 @@ function verifyAdminLogin(adminId, pin) {
 /* =========================
    6か月到達者：初回有給付与候補取得
 ========================= */
-function getSixMonthGrantCandidates() {
+function getSixMonthGrantCandidates(options) {
   const today = parseLocalDate(new Date());
   const employees = getEmployeesForAdmin();
   const grantedMap = getSixMonthGrantProcessedMap_();
+  const opts = options || null;
 
-  return employees
+  const rows = employees
     .filter(emp => {
       const status = String(emp.employment_status || "").trim().toLowerCase();
       const isActive = status === "active" || status === "在職";
@@ -3906,6 +3972,8 @@ function getSixMonthGrantCandidates() {
         fiscal_start_month: Number(emp.fiscal_start_month || 4)
       };
     });
+
+  return opts ? buildPagedResponse_(rows, opts) : rows;
 }
 
 /* =========================
@@ -4251,11 +4319,12 @@ function getAdminDashboardSummary() {
 /* =========================
    年次付与候補取得
 ========================= */
-function getYearlyGrantCandidates() {
+function getYearlyGrantCandidates(options) {
   const today = new Date();
   const employees = getEmployeesForAdmin();
+  const opts = options || null;
 
-  return employees
+  const rows = employees
     .filter(emp => {
       if (String(emp.employment_status || "").toLowerCase() !== "active") return false;
       if (emp.leave_management_target !== true) return false;
@@ -4299,6 +4368,8 @@ function getYearlyGrantCandidates() {
         fiscal_start_month: fiscalStartMonth
       };
     });
+
+  return opts ? buildPagedResponse_(rows, opts) : rows;
 }
 
 /* =========================

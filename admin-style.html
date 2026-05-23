@@ -684,6 +684,35 @@
   padding: 7px 11px;
 }
 
+.pager-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dceff5;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.pager-range {
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.pager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pager-actions .btn {
+  min-height: 34px;
+  padding: 7px 11px;
+}
+
 .six-month-meta {
   display: flex;
   gap: 14px;
@@ -828,6 +857,15 @@
   .grant-bulk-action-bar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .pager-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pager-actions {
+    justify-content: flex-start;
   }
 
   .grant-bulk-actions {
