@@ -2246,9 +2246,11 @@ function compareFifoBalanceDifferencesForAdmin(fiscalYear, asOfDateValue, employ
 function getPaidLeaveExpiryLotsForAdmin(options) {
   const opts = options || {};
   const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate(new Date());
-  const soonDays = Math.max(0, Number(opts.expiring_within_days == null ? 30 : opts.expiring_within_days));
   const keyword = norm(opts.employee_keyword || "");
   const companyCode = String(opts.company_code || "").trim().toUpperCase();
+  const expiredOnly = opts.expired_only === true;
+  const expiringSoonOnly = opts.expiring_soon_only === true;
+  const validityUnconfirmedOnly = opts.validity_unconfirmed_only === true;
   const page = normalizePagingOptions_(opts);
   const context = createFifoBalanceComparisonContext_(asOfDate);
   const rows = [];
@@ -2291,17 +2293,17 @@ function getPaidLeaveExpiryLotsForAdmin(options) {
         );
         const isOpeningBalance = lot.lot_type === "opening_balance_virtual_lot";
         let expiryStatus = "active";
-        let expiryStatusLabel = "有効";
+        let expiryStatusLabel = "通常";
 
-        if (lot.validity_needs_review) {
-          expiryStatus = "needs_review";
-          expiryStatusLabel = "期限要確認";
-        } else if (lot.is_expired) {
+        if (lot.is_expired) {
           expiryStatus = "expired";
-          expiryStatusLabel = "失効済み";
-        } else if (daysUntilExpiry <= soonDays) {
-          expiryStatus = "expiring_soon";
-          expiryStatusLabel = "まもなく失効";
+          expiryStatusLabel = "期限切れ";
+        } else if (daysUntilExpiry <= 30) {
+          expiryStatus = "within_30";
+          expiryStatusLabel = "期限が近い（30日以内）";
+        } else if (daysUntilExpiry <= 90) {
+          expiryStatus = "within_90";
+          expiryStatusLabel = "期限が近い（90日以内）";
         }
 
         rows.push({
@@ -2325,15 +2327,33 @@ function getPaidLeaveExpiryLotsForAdmin(options) {
           validity_needs_review: lot.validity_needs_review === true,
           validity_basis: String(lot.validity_basis || ""),
           validity_warning: lot.validity_needs_review === true
-            ? "期限情報を確認してください"
+            ? "有効期限確認が必要です"
             : ""
         });
       });
     });
 
-  rows.sort((a, b) => {
-    if (a.validity_needs_review !== b.validity_needs_review) {
-      return a.validity_needs_review ? -1 : 1;
+  const hasStatusFilter = expiredOnly || expiringSoonOnly || validityUnconfirmedOnly;
+  const filteredRows = hasStatusFilter
+    ? rows.filter(row =>
+      (expiredOnly && row.expiry_status === "expired") ||
+      (expiringSoonOnly && (
+        row.expiry_status === "within_30" ||
+        row.expiry_status === "within_90"
+      )) ||
+      (validityUnconfirmedOnly && row.validity_needs_review)
+    )
+    : rows;
+  const priority = {
+    expired: 0,
+    within_30: 1,
+    within_90: 2,
+    active: 3
+  };
+
+  filteredRows.sort((a, b) => {
+    if (priority[a.expiry_status] !== priority[b.expiry_status]) {
+      return priority[a.expiry_status] - priority[b.expiry_status];
     }
     if (a.days_until_expiry !== b.days_until_expiry) {
       return a.days_until_expiry - b.days_until_expiry;
@@ -2341,24 +2361,25 @@ function getPaidLeaveExpiryLotsForAdmin(options) {
     if (a.employee_id !== b.employee_id) {
       return a.employee_id.localeCompare(b.employee_id);
     }
+    if (a.grant_date === b.grant_date) return 0;
     return a.grant_date < b.grant_date ? -1 : 1;
   });
 
-  const pageRows = rows.slice(page.offset, page.offset + page.limit);
+  const pageRows = filteredRows.slice(page.offset, page.offset + page.limit);
 
   return {
     ok: true,
     as_of_date: formatDateValue(asOfDate),
-    expiring_within_days: soonDays,
-    total_count: rows.length,
+    total_count: filteredRows.length,
     row_count: pageRows.length,
     offset: page.offset,
     limit: page.limit,
     has_prev: page.offset > 0,
-    has_next: page.offset + page.limit < rows.length,
-    expired_count: rows.filter(row => row.expiry_status === "expired").length,
-    expiring_soon_count: rows.filter(row => row.expiry_status === "expiring_soon").length,
-    needs_review_count: rows.filter(row => row.expiry_status === "needs_review").length,
+    has_next: page.offset + page.limit < filteredRows.length,
+    expired_count: filteredRows.filter(row => row.expiry_status === "expired").length,
+    within_30_count: filteredRows.filter(row => row.expiry_status === "within_30").length,
+    within_90_count: filteredRows.filter(row => row.expiry_status === "within_90").length,
+    needs_review_count: filteredRows.filter(row => row.validity_needs_review).length,
     rows: pageRows
   };
 }

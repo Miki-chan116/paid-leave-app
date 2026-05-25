@@ -1226,9 +1226,35 @@
 
 .expiry-check-controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(130px, 180px)) minmax(220px, 1fr) minmax(150px, 190px);
+  grid-template-columns: minmax(130px, 180px) minmax(220px, 1fr) minmax(150px, 190px);
   gap: 12px;
   align-items: end;
+}
+
+.expiry-filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 3px;
+}
+
+.expiry-filter-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid #dceff5;
+  border-radius: 999px;
+  background: #f5fbfd;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.expiry-filter-options input {
+  accent-color: var(--primary);
 }
 
 .expiry-summary {
@@ -1260,16 +1286,20 @@
   padding: 13px 15px;
   border: 1px solid #dceff5;
   border-radius: 14px;
-  background: #ffffff;
+  background: #f8fcfe;
 }
 
-.expiry-lot-row.expiring_soon {
-  border-color: #f2ddb8;
-  background: #fffdfa;
+.expiry-lot-row.within_30 {
+  border-color: #f1c684;
+  background: #fff9f0;
 }
 
-.expiry-lot-row.expired,
-.expiry-lot-row.needs_review {
+.expiry-lot-row.within_90 {
+  border-color: #efdd8a;
+  background: #fffdf3;
+}
+
+.expiry-lot-row.expired {
   border-color: #f2c8d4;
   background: #fffafb;
 }
@@ -1321,23 +1351,78 @@
   border-color: #b9e4ef;
 }
 
-.expiry-badge.status-expiring_soon {
-  background: #fff8ec;
-  border-color: #f2ddb8;
-  color: #9a651c;
+.expiry-badge.status-active {
+  background: #eef8fb;
+  border-color: #b9e4ef;
+  color: var(--primary-dark);
 }
 
-.expiry-badge.status-expired,
-.expiry-badge.status-needs_review {
+.expiry-badge.status-within_30 {
+  background: #fff3e3;
+  border-color: #f1c684;
+  color: #a25d12;
+}
+
+.expiry-badge.status-within_90 {
+  background: #fff9df;
+  border-color: #efdd8a;
+  color: #8a6a10;
+}
+
+.expiry-badge.status-expired {
   background: #fff6f8;
   border-color: #f2c8d4;
   color: #9f2a2a;
+}
+
+.expiry-badge.status-validity_review {
+  background: #f7f2ff;
+  border-color: #dbcfef;
+  color: #6943a1;
 }
 
 .expiry-meta {
   color: #5d7488;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.expiry-deadline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 9px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: #eef8fb;
+  color: var(--primary-dark);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.expiry-deadline span {
+  color: #5d7488;
+  font-size: 12px;
+}
+
+.expiry-deadline.expired {
+  background: #fff0f4;
+  color: #9f2a2a;
+}
+
+.expiry-deadline.within_30 {
+  background: #fff3e3;
+  color: #a25d12;
+}
+
+.expiry-deadline.within_90 {
+  background: #fff9df;
+  color: #8a6a10;
+}
+
+.expiry-deadline.validity_review {
+  background: #f7f2ff;
+  color: #6943a1;
 }
 
 .expiry-values {
@@ -1373,8 +1458,9 @@
   margin-top: 9px;
   padding: 7px 9px;
   border-radius: 10px;
-  background: #fff6f8;
-  color: #9f2a2a;
+  border: 1px solid #dbcfef;
+  background: #f7f2ff;
+  color: #6943a1;
   font-size: 12px;
   font-weight: 800;
 }

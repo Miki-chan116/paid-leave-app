@@ -2156,9 +2156,11 @@ function loadExpiryLots(keepPage) {
     ? Math.max(0, Number(pageOffsets.expiry || 0))
     : 0;
   const asOfDate = document.getElementById("expiryAsOfDate").value;
-  const soonDays = document.getElementById("expirySoonDays").value;
   const employeeKeyword = document.getElementById("expiryEmployeeKeyword").value.trim();
   const companyCode = document.getElementById("expiryCompany").value;
+  const expiredOnly = document.getElementById("expiryExpiredOnly").checked;
+  const expiringSoonOnly = document.getElementById("expirySoonOnly").checked;
+  const validityUnconfirmedOnly = document.getElementById("expiryUnconfirmedOnly").checked;
   const summary = document.getElementById("expirySummary");
   const container = document.getElementById("expiryLots");
 
@@ -2166,14 +2168,9 @@ function loadExpiryLots(keepPage) {
     if (summary) summary.innerHTML = `<div class="message error">確認日を入力してください。</div>`;
     return;
   }
-  if (soonDays === "" || Number(soonDays) < 0) {
-    if (summary) summary.innerHTML = `<div class="message error">まもなく失効の日数を入力してください。</div>`;
-    return;
-  }
-
   if (summary) summary.innerHTML = "";
   if (container) {
-    container.innerHTML = `<div class="message">有給ロットの期限を確認しています...</div>`;
+    container.innerHTML = `<div class="message">有給まとまりの期限を確認しています...</div>`;
   }
 
   google.script.run
@@ -2189,9 +2186,11 @@ function loadExpiryLots(keepPage) {
     })
     .getPaidLeaveExpiryLotsForAdmin({
       as_of_date: asOfDate,
-      expiring_within_days: Number(soonDays),
       employee_keyword: employeeKeyword,
       company_code: companyCode,
+      expired_only: expiredOnly,
+      expiring_soon_only: expiringSoonOnly,
+      validity_unconfirmed_only: validityUnconfirmedOnly,
       offset: pageOffsets.expiry,
       limit: PAGE_SIZE
     });
@@ -2214,16 +2213,17 @@ function renderExpiryLots(response) {
   if (summary) {
     summary.innerHTML = `
       <div class="expiry-count">
-        残ロット：<strong>${escapeHtml(totalCount)}</strong>件
-        ／ 失効済み：<strong>${escapeHtml(response.expired_count || 0)}</strong>件
-        ／ まもなく失効：<strong>${escapeHtml(response.expiring_soon_count || 0)}</strong>件
-        ／ 期限要確認：<strong>${escapeHtml(response.needs_review_count || 0)}</strong>件
+        残っている有給まとまり：<strong>${escapeHtml(totalCount)}</strong>件
+        ／ 期限切れ：<strong>${escapeHtml(response.expired_count || 0)}</strong>件
+        ／ 期限が近い（30日以内）：<strong>${escapeHtml(response.within_30_count || 0)}</strong>件
+        ／ 期限が近い（90日以内）：<strong>${escapeHtml(response.within_90_count || 0)}</strong>件
+        ／ 有効期限確認が必要：<strong>${escapeHtml(response.needs_review_count || 0)}</strong>件
       </div>
     `;
   }
 
   if (rows.length === 0) {
-    container.innerHTML = `<div class="empty-message">該当する有給ロットはありません。</div>`;
+    container.innerHTML = `<div class="empty-message">該当する有給まとまりはありません。</div>`;
     return;
   }
 
@@ -2239,6 +2239,7 @@ function renderExpiryLots(response) {
           <div class="expiry-badges">
             <span class="expiry-badge lot-${escapeHtml(row.lot_type)}">${escapeHtml(row.lot_type_label || "")}</span>
             <span class="expiry-badge status-${escapeHtml(row.expiry_status)}">${escapeHtml(row.expiry_status_label || "")}</span>
+            ${row.validity_needs_review ? `<span class="expiry-badge status-validity_review">有効期限確認が必要</span>` : ""}
           </div>
         </div>
         <div class="expiry-meta">
@@ -2246,6 +2247,17 @@ function renderExpiryLots(response) {
           ／ 氏名: ${escapeHtml(row.name || "-")}
           ${row.display_name ? ` ／ 表示名: ${escapeHtml(row.display_name)}` : ""}
         </div>
+        ${row.validity_needs_review ? `
+          <div class="expiry-deadline validity_review">
+            有効期限確認が必要
+            <span>期限日を確認してください</span>
+          </div>
+        ` : `
+          <div class="expiry-deadline ${escapeHtml(row.expiry_status || "active")}">
+            ${escapeHtml(row.valid_to || "-")}で期限切れ
+            <span>${escapeHtml(formatExpiryRemainingDays(row.days_until_expiry))}</span>
+          </div>
+        `}
         <div class="expiry-values">
           <div><span>付与日</span><strong>${escapeHtml(row.grant_date || "-")}</strong></div>
           <div><span>有効期限</span><strong>${escapeHtml(row.valid_to || "-")}</strong></div>
@@ -2255,7 +2267,7 @@ function renderExpiryLots(response) {
           <div><span>期限まで</span><strong>${escapeHtml(formatExpiryRemainingDays(row.days_until_expiry))}</strong></div>
         </div>
         ${row.validity_needs_review ? `
-          <div class="expiry-warning">期限要確認 ／ ${escapeHtml(row.validity_basis || "")}</div>
+          <div class="expiry-warning">有効期限確認が必要 ／ ${escapeHtml(row.validity_basis || "")}</div>
         ` : ""}
       </div>
     `).join("")}
@@ -2274,6 +2286,11 @@ function clearExpiryLots() {
   const summary = document.getElementById("expirySummary");
   const container = document.getElementById("expiryLots");
   pageOffsets.expiry = 0;
+  document.getElementById("expiryEmployeeKeyword").value = "";
+  document.getElementById("expiryCompany").value = "";
+  document.getElementById("expiryExpiredOnly").checked = false;
+  document.getElementById("expirySoonOnly").checked = false;
+  document.getElementById("expiryUnconfirmedOnly").checked = false;
   if (summary) summary.innerHTML = "";
   if (container) {
     container.innerHTML = `<div class="empty-message">条件を設定して「確認する」を押してください</div>`;
