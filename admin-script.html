@@ -9,6 +9,7 @@ const pageOffsets = {
   sixMonth: 0,
   yearly: 0,
   fifo: 0,
+  expiry: 0,
   yearEnd: 0
 };
 
@@ -30,10 +31,12 @@ function setDefaultReportValues() {
 
   const fifoFiscalYear = document.getElementById("fifoFiscalYear");
   const fifoAsOfDate = document.getElementById("fifoAsOfDate");
+  const expiryAsOfDate = document.getElementById("expiryAsOfDate");
   const yearEndFiscalYear = document.getElementById("yearEndFiscalYear");
 
   if (fifoFiscalYear) fifoFiscalYear.value = fiscalYear;
   if (fifoAsOfDate) fifoAsOfDate.value = toInputDate(now);
+  if (expiryAsOfDate) expiryAsOfDate.value = toInputDate(now);
   if (yearEndFiscalYear) yearEndFiscalYear.value = fiscalYear;
 }
 
@@ -1243,6 +1246,8 @@ function changePagedView(type, direction) {
     loadFifoTrialDifferences(true);
   } else if (type === "yearEnd") {
     loadYearEndCarryOverCandidates(true);
+  } else if (type === "expiry") {
+    loadExpiryLots(true);
   }
 }
 
@@ -2141,6 +2146,138 @@ function normalizeFifoSearchText(value) {
   return String(value || "")
     .replace(/\s/g, "")
     .toLowerCase();
+}
+
+/* =========================
+   期限切れ確認
+========================= */
+function loadExpiryLots(keepPage) {
+  pageOffsets.expiry = keepPage === true
+    ? Math.max(0, Number(pageOffsets.expiry || 0))
+    : 0;
+  const asOfDate = document.getElementById("expiryAsOfDate").value;
+  const soonDays = document.getElementById("expirySoonDays").value;
+  const employeeKeyword = document.getElementById("expiryEmployeeKeyword").value.trim();
+  const companyCode = document.getElementById("expiryCompany").value;
+  const summary = document.getElementById("expirySummary");
+  const container = document.getElementById("expiryLots");
+
+  if (!asOfDate) {
+    if (summary) summary.innerHTML = `<div class="message error">確認日を入力してください。</div>`;
+    return;
+  }
+  if (soonDays === "" || Number(soonDays) < 0) {
+    if (summary) summary.innerHTML = `<div class="message error">まもなく失効の日数を入力してください。</div>`;
+    return;
+  }
+
+  if (summary) summary.innerHTML = "";
+  if (container) {
+    container.innerHTML = `<div class="message">有給ロットの期限を確認しています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(renderExpiryLots)
+    .withFailureHandler(err => {
+      console.error("期限切れ確認エラー:", err);
+      const message = err && err.message
+        ? err.message
+        : "期限切れ確認でエラーが発生しました。";
+      if (container) {
+        container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+    })
+    .getPaidLeaveExpiryLotsForAdmin({
+      as_of_date: asOfDate,
+      expiring_within_days: Number(soonDays),
+      employee_keyword: employeeKeyword,
+      company_code: companyCode,
+      offset: pageOffsets.expiry,
+      limit: PAGE_SIZE
+    });
+}
+
+function renderExpiryLots(response) {
+  const summary = document.getElementById("expirySummary");
+  const container = document.getElementById("expiryLots");
+  if (!container) return;
+
+  const rows = Array.isArray(response && response.rows) ? response.rows : [];
+  const totalCount = Number(response && response.total_count || 0);
+
+  if (totalCount > 0 && rows.length === 0 && pageOffsets.expiry > 0) {
+    pageOffsets.expiry = Math.max(0, pageOffsets.expiry - PAGE_SIZE);
+    loadExpiryLots(true);
+    return;
+  }
+
+  if (summary) {
+    summary.innerHTML = `
+      <div class="expiry-count">
+        残ロット：<strong>${escapeHtml(totalCount)}</strong>件
+        ／ 失効済み：<strong>${escapeHtml(response.expired_count || 0)}</strong>件
+        ／ まもなく失効：<strong>${escapeHtml(response.expiring_soon_count || 0)}</strong>件
+        ／ 期限要確認：<strong>${escapeHtml(response.needs_review_count || 0)}</strong>件
+      </div>
+    `;
+  }
+
+  if (rows.length === 0) {
+    container.innerHTML = `<div class="empty-message">該当する有給ロットはありません。</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    ${renderPager("expiry", response)}
+    ${rows.map(row => `
+      <div class="expiry-lot-row ${escapeHtml(row.expiry_status || "active")}">
+        <div class="expiry-lot-heading">
+          <div>
+            <span class="expiry-name">${escapeHtml(row.display_name || row.name || row.employee_id)}</span>
+            <span class="expiry-id">${escapeHtml(row.employee_id || "")}</span>
+          </div>
+          <div class="expiry-badges">
+            <span class="expiry-badge lot-${escapeHtml(row.lot_type)}">${escapeHtml(row.lot_type_label || "")}</span>
+            <span class="expiry-badge status-${escapeHtml(row.expiry_status)}">${escapeHtml(row.expiry_status_label || "")}</span>
+          </div>
+        </div>
+        <div class="expiry-meta">
+          ${escapeHtml(row.company_name || row.company_code || "-")}
+          ／ 氏名: ${escapeHtml(row.name || "-")}
+          ${row.display_name ? ` ／ 表示名: ${escapeHtml(row.display_name)}` : ""}
+        </div>
+        <div class="expiry-values">
+          <div><span>付与日</span><strong>${escapeHtml(row.grant_date || "-")}</strong></div>
+          <div><span>有効期限</span><strong>${escapeHtml(row.valid_to || "-")}</strong></div>
+          <div><span>付与日数</span><strong>${escapeHtml(formatDays(row.granted_days))}</strong></div>
+          <div><span>使用済み</span><strong>${escapeHtml(formatDays(row.used_days))}</strong></div>
+          <div><span>残日数</span><strong>${escapeHtml(formatDays(row.remaining_days))}</strong></div>
+          <div><span>期限まで</span><strong>${escapeHtml(formatExpiryRemainingDays(row.days_until_expiry))}</strong></div>
+        </div>
+        ${row.validity_needs_review ? `
+          <div class="expiry-warning">期限要確認 ／ ${escapeHtml(row.validity_basis || "")}</div>
+        ` : ""}
+      </div>
+    `).join("")}
+    ${renderPager("expiry", response)}
+  `;
+}
+
+function formatExpiryRemainingDays(value) {
+  const days = Number(value || 0);
+  if (days < 0) return `${Math.abs(days)}日経過`;
+  if (days === 0) return "本日";
+  return `あと${days}日`;
+}
+
+function clearExpiryLots() {
+  const summary = document.getElementById("expirySummary");
+  const container = document.getElementById("expiryLots");
+  pageOffsets.expiry = 0;
+  if (summary) summary.innerHTML = "";
+  if (container) {
+    container.innerHTML = `<div class="empty-message">条件を設定して「確認する」を押してください</div>`;
+  }
 }
 
 /* =========================
