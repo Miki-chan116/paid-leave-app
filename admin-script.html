@@ -1891,6 +1891,9 @@ function renderFifoTrialDifferences(response) {
     ? Number(response.total_count || 0)
     : scannedCount;
   const targetEmployeeId = response && response.employee_id ? response.employee_id : "";
+  const warningCount = response && response.warning_count != null
+    ? Number(response.warning_count || 0)
+    : data.filter(row => row.has_validity_warning).length;
   const targetText = targetEmployeeId
     ? `対象社員：${escapeHtml(targetEmployeeId)}`
     : `ページ単位：${escapeHtml(limit)}名ずつ試算`;
@@ -1898,7 +1901,8 @@ function renderFifoTrialDifferences(response) {
   if (summary) {
     summary.innerHTML = `
       <div class="fifo-trial-count">
-        差分表示：<strong>${escapeHtml(data.length)}</strong>件
+        表示：<strong>${escapeHtml(data.length)}</strong>件
+        ／ 表示中の期限要確認：<strong>${escapeHtml(warningCount)}</strong>件
         ／ このページの試算対象：<strong>${escapeHtml(scannedCount)}</strong>件
         ／ 全対象：<strong>${escapeHtml(totalCount)}</strong>件
         ／ ${targetText}
@@ -1910,7 +1914,7 @@ function renderFifoTrialDifferences(response) {
     results.innerHTML = `
       ${renderPager("fifo", response)}
       <div class="empty-message">
-        このページでは旧計算とFIFO試算の差分はありません。
+        このページでは旧計算との差分・期限要確認はありません。
       </div>
       ${renderPager("fifo", response)}
     `;
@@ -1930,12 +1934,16 @@ function renderFifoTrialDifferences(response) {
             <span class="fifo-trial-name">${escapeHtml(row.display_name || row.name || row.employee_id)}</span>
             <span class="fifo-trial-id">${escapeHtml(row.employee_id || "")}</span>
             ${renderFifoDifferenceReasonBadge(row.difference_reason)}
+            ${row.has_validity_warning ? `<span class="fifo-reason-badge needs-check">期限要確認</span>` : ""}
           </div>
 
           <div class="fifo-trial-meta">
             会社：${escapeHtml(row.company_code || "-")}
             ／ 部署：${escapeHtml(row.department || "-")}
           </div>
+          ${row.validity_warning ? `
+            <div class="fifo-trial-meta">${escapeHtml(row.validity_warning)}</div>
+          ` : ""}
         </div>
 
         <div class="fifo-trial-numbers">
@@ -2182,6 +2190,9 @@ function renderYearEndCarryOverCandidates(response) {
   const totalCount = response && response.total_count != null
     ? Number(response.total_count || 0)
     : rows.length;
+  const warningCount = response && response.warning_count != null
+    ? Number(response.warning_count || 0)
+    : rows.filter(row => row.validity_warning).length;
 
   if (totalCount > 0 && rows.length === 0 && pageOffsets.yearEnd > 0) {
     pageOffsets.yearEnd = Math.max(0, pageOffsets.yearEnd - PAGE_SIZE);
@@ -2194,6 +2205,7 @@ function renderYearEndCarryOverCandidates(response) {
       <div class="year-end-count">
         対象年度：<strong>${escapeHtml(response && response.fiscal_year ? response.fiscal_year : "")}</strong>
         ／ 候補：<strong>${escapeHtml(totalCount)}</strong>件
+        ／ 表示中の期限要確認：<strong>${escapeHtml(warningCount)}</strong>件
       </div>
     `;
   }
@@ -2204,14 +2216,34 @@ function renderYearEndCarryOverCandidates(response) {
   }
 
   container.innerHTML = `
+    ${renderYearEndBulkActionBar(totalCount)}
     ${renderPager("yearEnd", response)}
     ${rows.map(row => `
-    <div class="year-end-row">
+    <div class="year-end-row ${row.is_finalized ? "finalized" : ""}">
       <div class="year-end-main">
         <div class="year-end-name-line">
+          <label class="grant-candidate-check year-end-check">
+            <input
+              type="checkbox"
+              class="year-end-finalize-checkbox"
+              value="${escapeHtml(row.employee_id || "")}"
+              data-employee-id="${escapeHtml(row.employee_id || "")}"
+              data-name="${escapeHtml(row.display_name || row.name || row.employee_id)}"
+              data-previous-remaining-days="${escapeHtml(row.previous_remaining_days)}"
+              data-carry-over-candidate-days="${escapeHtml(row.carry_over_candidate_days)}"
+              data-expired-days="${escapeHtml(row.expired_days)}"
+              data-new-grant-days="${escapeHtml(row.new_grant_days)}"
+              data-estimated-after-grant-days="${escapeHtml(row.estimated_after_grant_days)}"
+              data-validity-warning="${escapeHtml(row.validity_warning || "")}"
+              onchange="updateYearEndFinalizeSelectionCount()"
+              ${row.is_finalized ? "disabled" : ""}
+            >
+            <span>選択</span>
+          </label>
           <span class="year-end-name">${escapeHtml(row.display_name || row.name || row.employee_id)}</span>
           <span class="year-end-id">${escapeHtml(row.employee_id || "")}</span>
           ${renderYearEndFinalizedBadge(row.is_finalized)}
+          ${row.validity_warning ? `<span class="fifo-reason-badge needs-check">期限要確認</span>` : ""}
         </div>
 
         <div class="year-end-meta">
@@ -2219,6 +2251,9 @@ function renderYearEndCarryOverCandidates(response) {
           ／ 部署：${escapeHtml(row.department || "-")}
           ／ ${escapeHtml(row.fiscal_start_month || 4)}月開始
         </div>
+        ${row.validity_warning ? `
+          <div class="year-end-meta">${escapeHtml(row.validity_warning)}</div>
+        ` : ""}
 
         <div class="year-end-detail-grid">
           <div class="year-end-detail-item">
@@ -2249,12 +2284,229 @@ function renderYearEndCarryOverCandidates(response) {
       </div>
 
       <div class="year-end-actions">
-        <button class="btn btn-reset" type="button" disabled>確定は未実装</button>
+        <button
+          class="btn btn-approve"
+          type="button"
+          data-employee-id="${escapeHtml(row.employee_id || "")}"
+          data-name="${escapeHtml(row.display_name || row.name || row.employee_id)}"
+          data-previous-remaining-days="${escapeHtml(row.previous_remaining_days)}"
+          data-carry-over-candidate-days="${escapeHtml(row.carry_over_candidate_days)}"
+          data-expired-days="${escapeHtml(row.expired_days)}"
+          data-new-grant-days="${escapeHtml(row.new_grant_days)}"
+          data-estimated-after-grant-days="${escapeHtml(row.estimated_after_grant_days)}"
+          data-validity-warning="${escapeHtml(row.validity_warning || "")}"
+          onclick="finalizeYearEndCarryOverActionFromButton(this)"
+          ${row.is_finalized ? "disabled" : ""}
+        >
+          確定
+        </button>
       </div>
     </div>
   `).join("")}
     ${renderPager("yearEnd", response)}
   `;
+}
+
+function renderYearEndBulkActionBar(count) {
+  return `
+    <div class="year-end-bulk-action-bar">
+      <div class="year-end-bulk-info">
+        <div>繰越候補 ${escapeHtml(count)}件 / 選択 <strong id="yearEndFinalizeSelectedCount">0</strong>名</div>
+        <small>表示中のみ対象</small>
+      </div>
+      <div class="year-end-bulk-actions">
+        <button class="btn btn-reset" type="button" onclick="toggleYearEndFinalizeSelection(true)">全選択</button>
+        <button class="btn btn-reset" type="button" onclick="toggleYearEndFinalizeSelection(false)">選択解除</button>
+        <button class="btn btn-approve" type="button" onclick="finalizeSelectedYearEndCarryOverAction()">選択した社員をまとめて確定</button>
+      </div>
+    </div>
+  `;
+}
+
+function getYearEndFinalizeCheckboxes() {
+  return Array.from(document.querySelectorAll(".year-end-finalize-checkbox"));
+}
+
+function toggleYearEndFinalizeSelection(checked) {
+  getYearEndFinalizeCheckboxes().forEach(checkbox => {
+    if (!checkbox.disabled) checkbox.checked = checked;
+  });
+  updateYearEndFinalizeSelectionCount();
+}
+
+function updateYearEndFinalizeSelectionCount() {
+  const countEl = document.getElementById("yearEndFinalizeSelectedCount");
+  if (!countEl) return;
+
+  const selectedCount = getYearEndFinalizeCheckboxes()
+    .filter(checkbox => checkbox.checked && !checkbox.disabled)
+    .length;
+
+  countEl.textContent = String(selectedCount);
+}
+
+function getYearEndFinalizeItemFromElement(element) {
+  return {
+    employee_id: element.dataset.employeeId || element.value || "",
+    name: element.dataset.name || "",
+    previous_remaining_days: Number(element.dataset.previousRemainingDays || 0),
+    carry_over_candidate_days: Number(element.dataset.carryOverCandidateDays || 0),
+    expired_days: Number(element.dataset.expiredDays || 0),
+    new_grant_days: Number(element.dataset.newGrantDays || 0),
+    estimated_after_grant_days: Number(element.dataset.estimatedAfterGrantDays || 0),
+    validity_warning: element.dataset.validityWarning || ""
+  };
+}
+
+function getSelectedYearEndFinalizeItems() {
+  return getYearEndFinalizeCheckboxes()
+    .filter(checkbox => checkbox.checked && !checkbox.disabled)
+    .map(getYearEndFinalizeItemFromElement);
+}
+
+function buildYearEndFinalizeConfirmMessage(item) {
+  return [
+    item.name || "",
+    `社員ID: ${item.employee_id || ""}`,
+    "",
+    `前年度残: ${formatDays(item.previous_remaining_days)}`,
+    `繰越: ${formatDays(item.carry_over_candidate_days)}`,
+    `消滅見込み: ${formatDays(item.expired_days)}`,
+    `新規付与: ${formatDays(item.new_grant_days)}`,
+    `付与後見込み: ${formatDays(item.estimated_after_grant_days)}`,
+    item.validity_warning ? `注意: ${item.validity_warning}` : "",
+    "",
+    "この内容で年跨ぎ・繰越を確定しますか？"
+  ].join("\n");
+}
+
+function buildBulkYearEndFinalizeConfirmMessage(items) {
+  const rows = Array.isArray(items) ? items : [];
+  const detailRows = rows.slice(0, 10).map((item, index) => [
+    `${index + 1}. ${item.name || ""} / ${item.employee_id || ""}`,
+    `   繰越: ${formatDays(item.carry_over_candidate_days)} / 消滅: ${formatDays(item.expired_days)} / 新規付与: ${formatDays(item.new_grant_days)}`,
+    item.validity_warning ? `   注意: ${item.validity_warning}` : ""
+  ].join("\n"));
+
+  if (rows.length > 10) {
+    detailRows.push(`ほか${rows.length - 10}名`);
+  }
+
+  return [
+    `${rows.length}名の年跨ぎ・繰越を確定します。`,
+    "",
+    detailRows.join("\n\n"),
+    "",
+    "この内容で paid_leave_grants に次年度付与として登録します。",
+    "よろしいですか？"
+  ].join("\n");
+}
+
+function finalizeYearEndCarryOverActionFromButton(button) {
+  const fiscalYear = document.getElementById("yearEndFiscalYear").value;
+  const item = getYearEndFinalizeItemFromElement(button);
+
+  if (!fiscalYear) {
+    alert("対象年度を入力してください");
+    return;
+  }
+
+  if (!item.employee_id) return;
+  if (!confirm(buildYearEndFinalizeConfirmMessage(item))) return;
+
+  const container = document.getElementById("yearEndCandidates");
+  if (container) {
+    container.innerHTML = `<div class="message">年跨ぎ・繰越を確定しています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(res => {
+      alert(`${res.name || item.name} さんの年跨ぎ・繰越を確定しました`);
+      loadYearEndCarryOverCandidates(true);
+    })
+    .withFailureHandler(err => {
+      console.error("年跨ぎ・繰越確定エラー:", err);
+      const message = err && err.message
+        ? err.message
+        : "年跨ぎ・繰越の確定でエラーが発生しました。";
+      if (container) {
+        container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+    })
+    .finalizeYearEndCarryOver(item.employee_id, Number(fiscalYear), currentAdminUser);
+}
+
+function finalizeSelectedYearEndCarryOverAction() {
+  const fiscalYear = document.getElementById("yearEndFiscalYear").value;
+  const items = getSelectedYearEndFinalizeItems();
+
+  if (!fiscalYear) {
+    alert("対象年度を入力してください");
+    return;
+  }
+
+  if (items.length === 0) {
+    alert("確定する社員を選択してください");
+    return;
+  }
+
+  if (!confirm(buildBulkYearEndFinalizeConfirmMessage(items))) return;
+
+  const container = document.getElementById("yearEndCandidates");
+  if (container) {
+    container.innerHTML = `<div class="message">選択した社員の年跨ぎ・繰越を確定しています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(res => {
+      alert(buildYearEndFinalizeBatchResultMessage(res));
+      loadYearEndCarryOverCandidates(true);
+    })
+    .withFailureHandler(err => {
+      console.error("年跨ぎ・繰越一括確定エラー:", err);
+      const message = err && err.message
+        ? err.message
+        : "年跨ぎ・繰越の一括確定でエラーが発生しました。";
+      if (container) {
+        container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+    })
+    .finalizeSelectedYearEndCarryOver(
+      items.map(item => item.employee_id),
+      Number(fiscalYear),
+      currentAdminUser
+    );
+}
+
+function buildYearEndFinalizeBatchResultMessage(res) {
+  const data = res || {};
+  const errors = Array.isArray(data.results)
+    ? data.results.filter(item => item.status === "error")
+    : [];
+  const skipped = Array.isArray(data.results)
+    ? data.results.filter(item => item.status === "skipped")
+    : [];
+  let message =
+    `年跨ぎ・繰越の一括確定が完了しました。\n` +
+    `成功: ${data.success_count || 0}名\n` +
+    `スキップ: ${data.skipped_count || 0}名\n` +
+    `失敗: ${data.error_count || 0}名`;
+
+  if (skipped.length > 0) {
+    message += "\n\nスキップ:\n" + skipped
+      .slice(0, 5)
+      .map(item => `${item.employee_id}: ${item.message}`)
+      .join("\n");
+  }
+
+  if (errors.length > 0) {
+    message += "\n\nエラー:\n" + errors
+      .slice(0, 5)
+      .map(item => `${item.employee_id}: ${item.message}`)
+      .join("\n");
+  }
+
+  return message;
 }
 
 function renderYearEndFinalizedBadge(isFinalized) {

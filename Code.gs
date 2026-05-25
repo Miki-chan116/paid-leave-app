@@ -960,6 +960,7 @@ function getYearEndCarryOverCandidates(fiscalYear, options) {
     limit: page.limit,
     has_prev: page.offset > 0,
     has_next: page.offset + page.limit < employees.length,
+    warning_count: rows.filter(row => row.validity_warning).length,
     rows: rows
   };
 }
@@ -970,7 +971,7 @@ function buildYearEndCarryOverCandidate_(emp, fiscalYear, context, finalizedMap)
   const fiscalRange = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
   const fiscalYearEndDate = fiscalRange.end;
   const nextFiscalYearStartDate = addDaysLocal_(fiscalYearEndDate, 1);
-  const fifoBalance = calculateFifoBalanceFromContext_(
+  const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(
     employeeId,
     fiscalYearEndDate,
     context
@@ -1003,8 +1004,1074 @@ function buildYearEndCarryOverCandidate_(emp, fiscalYear, context, finalizedMap)
     expired_days: expiredDays,
     new_grant_days: newGrantDays,
     estimated_after_grant_days: estimatedAfterGrantDays,
+    opening_balance_days_total: Number(fifoBalance.opening_balance_days_total || 0),
+    expiry_unconfirmed_days_total: Number(
+      fifoBalance.expiry_unconfirmed_opening_balance_days_total || 0
+    ),
+    validity_warning: String(fifoBalance.validity_warning || ""),
     is_finalized: isFinalized
   };
+}
+
+function finalizeYearEndCarryOver(employeeId, fiscalYear, adminUser) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const targetFiscalYear = Number(fiscalYear || 0);
+
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+  if (!targetFiscalYear) throw new Error("対象年度がありません");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+  const employees = getEmployeesForAdmin();
+  const emp = employees.find(e => String(e.employee_id || "").trim() === targetEmployeeId);
+
+  if (!emp) throw new Error("対象社員が見つかりません");
+  if (emp.leave_management_target !== true) throw new Error("有給管理対象外の社員です");
+
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+  if (status !== "active" && status !== "在職") {
+    throw new Error("在職中の社員ではありません");
+  }
+
+  const nextFiscalYear = targetFiscalYear + 1;
+
+  if (hasYearlyGrantForFiscalYear_(targetEmployeeId, nextFiscalYear)) {
+    throw new Error("この社員は次年度の年次付与がすでに確定済みです");
+  }
+
+  const context = createFifoBalanceComparisonContext_(new Date());
+  const candidate = buildYearEndCarryOverCandidate_(
+    emp,
+    targetFiscalYear,
+    context,
+    {}
+  );
+
+  if (hasYearlyGrantForFiscalYear_(targetEmployeeId, nextFiscalYear)) {
+    throw new Error("この社員は次年度の年次付与がすでに確定済みです");
+  }
+
+  const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+  const grantDate = getFiscalYearRangeWithStart(nextFiscalYear, fiscalStartMonth).start;
+  const now = new Date();
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "grant_id",
+    "employee_id",
+    "grant_date",
+    "grant_days",
+    "carry_over_days",
+    "valid_from",
+    "valid_to",
+    "grant_type",
+    "year",
+    "notes",
+    "created_at",
+    "updated_at"
+  ]);
+  const rowObj = createEmptyRowObject(headerInfo.headers);
+
+  rowObj.grant_id = getNextGrantId_();
+  rowObj.employee_id = targetEmployeeId;
+  rowObj.grant_date = grantDate;
+  rowObj.grant_days = Number(candidate.new_grant_days || 0);
+  rowObj.carry_over_days = Number(candidate.carry_over_candidate_days || 0);
+  rowObj.valid_from = grantDate;
+  rowObj.valid_to = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
+  rowObj.grant_type = "yearly";
+  rowObj.year = nextFiscalYear;
+  rowObj.notes = buildYearEndCarryOverFinalizedNotes_(candidate, nextFiscalYear);
+  rowObj.created_at = now;
+  rowObj.updated_at = now;
+
+  if ("is_finalized" in headerInfo.map) {
+    rowObj.is_finalized = true;
+  }
+
+  if ("finalized_at" in headerInfo.map) {
+    rowObj.finalized_at = now;
+  }
+
+  appendRowFast_(
+    sheet,
+    objectToRow(rowObj, headerInfo.headers)
+  );
+
+  const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
+  const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
+  const displayName = getDisplayName(emp) || emp.name || targetEmployeeId;
+
+  appendUsageLog({
+    request_id: targetEmployeeId,
+    action_type: "year_end_carry_over_finalized",
+    operator_id: operatorId,
+    operator_name: operatorName,
+    comment: displayName +
+      " さんの年跨ぎ・繰越を確定しました: " +
+      rowObj.notes
+  });
+
+  clearAppCache();
+
+  return {
+    ok: true,
+    employee_id: targetEmployeeId,
+    name: displayName,
+    fiscal_year: targetFiscalYear,
+    next_fiscal_year: nextFiscalYear,
+    grant_date: formatDateValue(grantDate),
+    grant_days: Number(candidate.new_grant_days || 0),
+    carry_over_days: Number(candidate.carry_over_candidate_days || 0),
+    expired_days: Number(candidate.expired_days || 0),
+    previous_remaining_days: Number(candidate.previous_remaining_days || 0),
+    estimated_after_grant_days: Number(candidate.estimated_after_grant_days || 0)
+  };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function finalizeSelectedYearEndCarryOver(employeeIds, fiscalYear, adminUser) {
+  const ids = (employeeIds || [])
+    .map(id => String(
+      id && typeof id === "object" ? id.employee_id : id
+    ).trim())
+    .filter(Boolean);
+  const result = {
+    ok: true,
+    total_count: ids.length,
+    success_count: 0,
+    skipped_count: 0,
+    error_count: 0,
+    results: []
+  };
+
+  ids.forEach(employeeId => {
+    try {
+      const res = finalizeYearEndCarryOver(employeeId, fiscalYear, adminUser);
+      result.success_count++;
+      result.results.push({
+        employee_id: employeeId,
+        status: "success",
+        message: "確定しました",
+        detail: res || null
+      });
+    } catch (e) {
+      const message = e && e.message ? e.message : String(e);
+      const isSkipped =
+        message.indexOf("すでに") !== -1 ||
+        message.indexOf("確定済み") !== -1;
+
+      if (isSkipped) {
+        result.skipped_count++;
+        result.results.push({
+          employee_id: employeeId,
+          status: "skipped",
+          message: message
+        });
+      } else {
+        result.error_count++;
+        result.results.push({
+          employee_id: employeeId,
+          status: "error",
+          message: message
+        });
+      }
+    }
+  });
+
+  return result;
+}
+
+function buildYearEndCarryOverFinalizedNotes_(candidate, nextFiscalYear) {
+  return [
+    "年跨ぎ確定",
+    "前年度: " + candidate.fiscal_year,
+    "次年度: " + nextFiscalYear,
+    "前年度残: " + formatGrantDaysForNote_(candidate.previous_remaining_days) + "日",
+    "繰越: " + formatGrantDaysForNote_(candidate.carry_over_candidate_days) + "日",
+    "消滅見込み: " + formatGrantDaysForNote_(candidate.expired_days) + "日",
+    "新規付与: " + formatGrantDaysForNote_(candidate.new_grant_days) + "日"
+  ].join(" / ");
+}
+
+/* =========================
+   検証用：年跨ぎ確定後の残日数確認
+   既存表示・CSV・本番残日数には未接続
+========================= */
+function debugYearEndFinalizedBalance(employeeId, fiscalYear) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const targetFiscalYear = Number(fiscalYear || 0);
+
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+  if (!targetFiscalYear) throw new Error("対象年度がありません");
+
+  const employeeMap = getEmployeeDetailMap();
+  const fiscalStartMonth = getFiscalStartMonthByEmployeeId(targetEmployeeId, employeeMap);
+  const fiscalRange = getFiscalYearRangeWithStart(targetFiscalYear, fiscalStartMonth);
+  const grantRecords = getPaidLeaveGrantDebugRecordsForFiscalYear_(
+    targetEmployeeId,
+    targetFiscalYear,
+    fiscalStartMonth
+  );
+  const grantDaysTotal = grantRecords.reduce((sum, row) => sum + Number(row.grant_days || 0), 0);
+  const carryOverDaysTotal = grantRecords.reduce((sum, row) => sum + Number(row.carry_over_days || 0), 0);
+  const usedMap = getApprovedUsedDaysByFiscalYearForEmployeeIds(targetFiscalYear, [targetEmployeeId]);
+  const approvedUsedDays = Number(usedMap[targetEmployeeId] || 0);
+  const legacyBalance = buildBalance(
+    targetEmployeeId,
+    {
+      employee_id: targetEmployeeId,
+      grant_days: grantDaysTotal,
+      carry_over_days: carryOverDaysTotal
+    },
+    approvedUsedDays
+  );
+  const fifoContext = createFifoBalanceComparisonContext_(fiscalRange.end);
+  const fifoBalance = calculateFifoBalanceFromContext_(
+    targetEmployeeId,
+    fiscalRange.end,
+    fifoContext
+  );
+  const suspectedYearEndRecords = grantRecords.filter(row =>
+    String(row.grant_type || "") === "yearly" &&
+    (
+      String(row.notes || "").indexOf("年跨ぎ確定") !== -1 ||
+      Number(row.carry_over_days || 0) > 0
+    )
+  );
+  const result = {
+    employee_id: targetEmployeeId,
+    fiscal_year: targetFiscalYear,
+    fiscal_start_month: fiscalStartMonth,
+    fiscal_year_start: formatDateValue(fiscalRange.start),
+    fiscal_year_end: formatDateValue(fiscalRange.end),
+    paid_leave_grants: grantRecords,
+    grant_days_total: grantDaysTotal,
+    carry_over_days_total: carryOverDaysTotal,
+    approved_used_days: approvedUsedDays,
+    build_balance: legacyBalance,
+    fifo_balance: fifoBalance,
+    difference: {
+      current_remaining_days:
+        Number(fifoBalance.current_remaining_days || 0) -
+        Number(legacyBalance.current_remaining_days || 0),
+      used_days:
+        Number(fifoBalance.used_days || 0) -
+        Number(legacyBalance.used_days || 0),
+      expired_days:
+        Number(fifoBalance.expired_days || 0) -
+        Number(legacyBalance.expired_days || 0)
+    },
+    suspected_year_end_finalized_records: suspectedYearEndRecords.map(row => ({
+      grant_id: row.grant_id,
+      notes: row.notes,
+      grant_date: row.grant_date,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+      grant_days: row.grant_days,
+      carry_over_days: row.carry_over_days
+    })),
+    carry_over_days_handling: {
+      calculation: "buildBalance は対象年度の carry_over_days 合計を前年度繰越として扱い、grant_days 合計と足して used_days を差し引きます。",
+      formula: "current_remaining_days = carry_over_days_total + grant_days_total - approved_used_days",
+      carry_over_days_total: carryOverDaysTotal,
+      grant_days_total: grantDaysTotal,
+      approved_used_days: approvedUsedDays
+    },
+    valid_period_handling: {
+      fifo_as_of_date: formatDateValue(fiscalRange.end),
+      note: "FIFO試算では grant_days + carry_over_days を同一付与レコードの total_days として扱い、同じ valid_from / valid_to を適用します。",
+      warning: suspectedYearEndRecords.length > 0
+        ? "年跨ぎ確定レコードの繰越分と新規付与分が同じ有効期限になっている可能性があります。繰越分の元付与期限を厳密に維持する運用とは差が出る可能性があります。"
+        : ""
+    },
+    annual_report_alignment: "年間一覧・CSVは getGrantMapByFiscalYear と buildBalance を使うため、build_balance と同じ grant_days/carry_over_days/used_days/next_carry_over_days/expired_days になります。"
+  };
+
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function getPaidLeaveGrantDebugRecordsForFiscalYear_(employeeId, fiscalYear, fiscalStartMonth) {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "grant_id",
+    "employee_id",
+    "grant_date",
+    "grant_days",
+    "carry_over_days",
+    "valid_from",
+    "valid_to",
+    "grant_type",
+    "year",
+    "notes"
+  ]);
+  const data = sheet.getDataRange().getValues();
+  const targetEmployeeId = String(employeeId || "").trim();
+
+  if (data.length <= 1) return [];
+
+  return data.slice(1)
+    .map(row => rowToObject(row, headerInfo.headers))
+    .filter(rowObj => String(rowObj.employee_id || "").trim() === targetEmployeeId)
+    .filter(rowObj => rowObj.grant_date)
+    .map(rowObj => {
+      const grantDate = parseLocalDate(rowObj.grant_date);
+      const recordFiscalYear = getFiscalYearFromDateWithStart(grantDate, fiscalStartMonth);
+
+      return {
+        grant_id: String(rowObj.grant_id || ""),
+        employee_id: targetEmployeeId,
+        grant_date: formatDateValue(grantDate),
+        grant_days: Number(rowObj.grant_days || 0),
+        carry_over_days: Number(rowObj.carry_over_days || 0),
+        total_days: Number(rowObj.grant_days || 0) + Number(rowObj.carry_over_days || 0),
+        valid_from: formatDateValue(rowObj.valid_from || rowObj.grant_date),
+        valid_to: formatDateValue(
+          rowObj.valid_to || addDaysLocal_(addYearsLocal_(grantDate, 2), -1)
+        ),
+        grant_type: String(rowObj.grant_type || ""),
+        year: rowObj.year || "",
+        fiscal_year_by_grant_date: recordFiscalYear,
+        notes: String(rowObj.notes || "")
+      };
+    })
+    .filter(row => Number(row.fiscal_year_by_grant_date) === Number(fiscalYear))
+    .sort((a, b) => {
+      if (a.grant_date !== b.grant_date) return a.grant_date < b.grant_date ? -1 : 1;
+      return String(a.grant_id).localeCompare(String(b.grant_id));
+    });
+}
+
+/* =========================
+   検証用：繰越集計値を権利日数に加算しないFIFO確認
+   既存表示・CSV・本番残日数には未接続
+========================= */
+function debugFifoBalanceWithoutCarryOver(employeeId, asOfDateValue) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+
+  const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
+  const context = createFifoBalanceComparisonContext_(asOfDate);
+  const result = calculateFifoBalanceWithoutCarryOverFromContext_(
+    targetEmployeeId,
+    asOfDate,
+    context
+  );
+
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function compareYearEndFinalizedBalanceModes(employeeId, fiscalYear) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const targetFiscalYear = Number(fiscalYear || 0);
+
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+  if (!targetFiscalYear) throw new Error("対象年度がありません");
+
+  const employeeMap = getEmployeeDetailMap();
+  const fiscalStartMonth = getFiscalStartMonthByEmployeeId(targetEmployeeId, employeeMap);
+  const fiscalRange = getFiscalYearRangeWithStart(targetFiscalYear, fiscalStartMonth);
+  const fiscalYearGrantRecords = getPaidLeaveGrantDebugRecordsForFiscalYear_(
+    targetEmployeeId,
+    targetFiscalYear,
+    fiscalStartMonth
+  );
+  const grantDaysTotal = fiscalYearGrantRecords.reduce(
+    (sum, row) => sum + Number(row.grant_days || 0),
+    0
+  );
+  const carryOverDaysTotal = fiscalYearGrantRecords.reduce(
+    (sum, row) => sum + Number(row.carry_over_days || 0),
+    0
+  );
+  const usedMap = getApprovedUsedDaysByFiscalYearForEmployeeIds(
+    targetFiscalYear,
+    [targetEmployeeId]
+  );
+  const approvedUsedDays = Number(usedMap[targetEmployeeId] || 0);
+  const legacyBalance = buildBalance(
+    targetEmployeeId,
+    {
+      employee_id: targetEmployeeId,
+      grant_days: grantDaysTotal,
+      carry_over_days: carryOverDaysTotal
+    },
+    approvedUsedDays
+  );
+  const context = createFifoBalanceComparisonContext_(fiscalRange.end);
+  const currentFifoBalance = calculateFifoBalanceFromContext_(
+    targetEmployeeId,
+    fiscalRange.end,
+    context
+  );
+  const fifoWithoutCarryOverBalance = calculateFifoBalanceWithoutCarryOverFromContext_(
+    targetEmployeeId,
+    fiscalRange.end,
+    context
+  );
+  const yearEndFinalizedRecords = fiscalYearGrantRecords.filter(row =>
+    String(row.grant_type || "") === "yearly" &&
+    (
+      String(row.notes || "").indexOf("年跨ぎ確定") !== -1 ||
+      Number(row.carry_over_days || 0) > 0
+    )
+  );
+  const yearEndGrantIds = {};
+  yearEndFinalizedRecords.forEach(row => {
+    yearEndGrantIds[String(row.grant_id || "")] = true;
+  });
+  const originalGrantRecords = (currentFifoBalance.grant_details || [])
+    .filter(row => !yearEndGrantIds[String(row.grant_id || "")])
+    .filter(row => parseLocalDate(row.grant_date) < fiscalRange.start)
+    .map(row => ({
+      grant_id: row.grant_id,
+      grant_date: row.grant_date,
+      grant_type: row.grant_type,
+      year: row.year,
+      grant_days: row.grant_days,
+      carry_over_days: row.carry_over_days,
+      total_days_in_current_fifo: row.total_days,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+      active_remaining_days_in_current_fifo: row.active_remaining_days,
+      expired_days_in_current_fifo: row.expired_days
+    }));
+  const currentRemainingDays = Number(currentFifoBalance.current_remaining_days || 0);
+  const withoutCarryOverRemainingDays = Number(
+    fifoWithoutCarryOverBalance.current_remaining_days || 0
+  );
+  const legacyRemainingDays = Number(legacyBalance.current_remaining_days || 0);
+  const suspectedDuplicateDays = Math.max(
+    currentRemainingDays - withoutCarryOverRemainingDays,
+    0
+  );
+  const result = {
+    employee_id: targetEmployeeId,
+    fiscal_year: targetFiscalYear,
+    fiscal_start_month: fiscalStartMonth,
+    as_of_date: formatDateValue(fiscalRange.end),
+    legacy_build_balance_remaining_days: legacyRemainingDays,
+    current_fifo_remaining_days: currentRemainingDays,
+    fifo_without_carry_over_remaining_days: withoutCarryOverRemainingDays,
+    carry_over_days_total: carryOverDaysTotal,
+    suspected_duplicate_days: suspectedDuplicateDays,
+    approved_used_days: approvedUsedDays,
+    legacy_build_balance: legacyBalance,
+    current_fifo_balance: currentFifoBalance,
+    fifo_without_carry_over_balance: fifoWithoutCarryOverBalance,
+    differences: {
+      current_fifo_minus_legacy: currentRemainingDays - legacyRemainingDays,
+      fifo_without_carry_over_minus_legacy:
+        withoutCarryOverRemainingDays - legacyRemainingDays,
+      removed_by_excluding_carry_over:
+        currentRemainingDays - withoutCarryOverRemainingDays
+    },
+    year_end_finalized_records: yearEndFinalizedRecords.map(row => ({
+      grant_id: row.grant_id,
+      grant_date: row.grant_date,
+      grant_type: row.grant_type,
+      grant_days: row.grant_days,
+      carry_over_days: row.carry_over_days,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+      notes: row.notes
+    })),
+    original_grant_records: originalGrantRecords,
+    valid_period_note: "carry_over除外FIFOでは元付与レコードの valid_from / valid_to を維持し、年跨ぎ確定行の carry_over_days は権利日数に加算しません。",
+    difference_reason: getYearEndFinalizedBalanceModeDifferenceReason_({
+      legacy_remaining_days: legacyRemainingDays,
+      current_fifo_remaining_days: currentRemainingDays,
+      fifo_without_carry_over_remaining_days: withoutCarryOverRemainingDays,
+      carry_over_days_total: carryOverDaysTotal,
+      suspected_duplicate_days: suspectedDuplicateDays
+    })
+  };
+
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function calculateFifoBalanceWithoutCarryOverFromContext_(employeeId, asOfDate, context) {
+  const grants = (context.grants_by_employee[employeeId] || [])
+    .filter(grant => grant.is_finalized)
+    .filter(grant => grant.valid_from_date <= asOfDate)
+    .map(grant => ({
+      grant_id: grant.grant_id,
+      grant_date: grant.grant_date,
+      valid_from_date: grant.valid_from_date,
+      valid_to_date: grant.valid_to_date,
+      grant_type: grant.grant_type,
+      year: grant.year,
+      grant_days: grant.grant_days,
+      excluded_carry_over_days: grant.carry_over_days,
+      total_days: Number(grant.grant_days || 0),
+      used_days: 0,
+      remaining_days: Number(grant.grant_days || 0),
+      active_remaining_days: 0,
+      expired_days: 0,
+      is_expired: false
+    }))
+    .sort((a, b) => {
+      if (a.grant_date.getTime() !== b.grant_date.getTime()) {
+        return a.grant_date - b.grant_date;
+      }
+      return String(a.grant_id).localeCompare(String(b.grant_id));
+    });
+  const usedRows = getFifoApprovedLeaveUseRowsFromContext_(employeeId, asOfDate, context);
+  const allocations = [];
+
+  usedRows.forEach(useRow => {
+    let remainingUseDays = Number(useRow.days || 0);
+
+    grants.forEach(grant => {
+      if (remainingUseDays <= 0) return;
+      if (grant.remaining_days <= 0) return;
+      if (useRow.use_date < grant.valid_from_date) return;
+      if (useRow.use_date > grant.valid_to_date) return;
+
+      const consumedDays = Math.min(grant.remaining_days, remainingUseDays);
+      grant.remaining_days -= consumedDays;
+      grant.used_days += consumedDays;
+      remainingUseDays -= consumedDays;
+
+      allocations.push({
+        request_id: useRow.request_id,
+        use_date: formatDateValue(useRow.use_date),
+        grant_id: grant.grant_id,
+        consumed_days: consumedDays
+      });
+    });
+
+    useRow.unallocated_days = remainingUseDays > 0 ? remainingUseDays : 0;
+  });
+
+  grants.forEach(grant => {
+    const isExpired = grant.valid_to_date < asOfDate;
+    grant.is_expired = isExpired;
+    grant.expired_days = isExpired ? grant.remaining_days : 0;
+    grant.active_remaining_days = isExpired ? 0 : grant.remaining_days;
+  });
+
+  return {
+    employee_id: employeeId,
+    as_of_date: formatDateValue(asOfDate),
+    calculation_mode: "grant_days_only_carry_over_excluded",
+    current_remaining_days: grants.reduce((sum, grant) => sum + grant.active_remaining_days, 0),
+    total_granted_days: grants.reduce((sum, grant) => sum + grant.total_days, 0),
+    excluded_carry_over_days_total: grants.reduce(
+      (sum, grant) => sum + Number(grant.excluded_carry_over_days || 0),
+      0
+    ),
+    used_days: usedRows.reduce((sum, row) => sum + Number(row.days || 0), 0),
+    allocated_used_days: allocations.reduce((sum, row) => sum + Number(row.consumed_days || 0), 0),
+    unallocated_used_days: usedRows.reduce((sum, row) => sum + Number(row.unallocated_days || 0), 0),
+    expired_days: grants.reduce((sum, grant) => sum + grant.expired_days, 0),
+    grant_details: grants.map(grant => ({
+      grant_id: grant.grant_id,
+      grant_date: formatDateValue(grant.grant_date),
+      valid_from: formatDateValue(grant.valid_from_date),
+      valid_to: formatDateValue(grant.valid_to_date),
+      grant_type: grant.grant_type,
+      year: grant.year,
+      grant_days: grant.grant_days,
+      excluded_carry_over_days: grant.excluded_carry_over_days,
+      total_days: grant.total_days,
+      used_days: grant.used_days,
+      remaining_days: grant.remaining_days,
+      active_remaining_days: grant.active_remaining_days,
+      expired_days: grant.expired_days,
+      is_expired: grant.is_expired
+    })),
+    used_details: usedRows.map(row => ({
+      request_id: row.request_id,
+      use_date: formatDateValue(row.use_date),
+      days: row.days,
+      unallocated_days: row.unallocated_days || 0
+    })),
+    allocations: allocations
+  };
+}
+
+function getYearEndFinalizedBalanceModeDifferenceReason_(info) {
+  const legacyDays = Number(info.legacy_remaining_days || 0);
+  const currentFifoDays = Number(info.current_fifo_remaining_days || 0);
+  const withoutCarryOverDays = Number(info.fifo_without_carry_over_remaining_days || 0);
+  const carryOverDays = Number(info.carry_over_days_total || 0);
+  const suspectedDuplicateDays = Number(info.suspected_duplicate_days || 0);
+
+  if (currentFifoDays === legacyDays && withoutCarryOverDays === legacyDays) {
+    return "差分はありません";
+  }
+
+  if (suspectedDuplicateDays > 0 && withoutCarryOverDays === legacyDays) {
+    return "carry_over_days をFIFO権利日数から除外すると旧計算と一致します。繰越分の二重計上が疑われます。";
+  }
+
+  if (
+    suspectedDuplicateDays > 0 &&
+    Math.abs(withoutCarryOverDays - legacyDays) < Math.abs(currentFifoDays - legacyDays)
+  ) {
+    return "carry_over_days の除外で差分が縮小します。残る差分は元付与残・有効期限・使用割当の確認が必要です。";
+  }
+
+  if (carryOverDays > 0 && suspectedDuplicateDays === 0) {
+    return "carry_over_days はありますが、試算日時点では残数差に現れていません。期限切れまたは消化状況を確認してください。";
+  }
+
+  return "carry_over_days 以外にも、元付与残・有効期限・使用割当による差分がある可能性があります。";
+}
+
+/* =========================
+   検証用：FIFO切替前の繰越集計値監査
+   データの更新は行わない
+========================= */
+function auditCarryOverGrantRowsForFifoMigration() {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "grant_id",
+    "employee_id",
+    "grant_date",
+    "grant_days",
+    "carry_over_days",
+    "valid_from",
+    "valid_to",
+    "grant_type",
+    "year",
+    "notes"
+  ]);
+  const data = sheet.getDataRange().getValues();
+  const employeeMap = getEmployeeDetailMap();
+
+  if (data.length <= 1) {
+    return {
+      row_count: 0,
+      needs_review_count: 0,
+      carry_over_days_total: 0,
+      needs_review_carry_over_days_total: 0,
+      rows: []
+    };
+  }
+
+  const allRows = data.slice(1)
+    .map(row => rowToObject(row, headerInfo.headers))
+    .filter(rowObj => rowObj.employee_id && rowObj.grant_date)
+    .map(rowObj => ({
+      grant_id: String(rowObj.grant_id || ""),
+      employee_id: String(rowObj.employee_id || "").trim(),
+      grant_date_value: parseLocalDate(rowObj.grant_date),
+      grant_date: formatDateValue(rowObj.grant_date),
+      grant_days: Number(rowObj.grant_days || 0),
+      carry_over_days: Number(rowObj.carry_over_days || 0),
+      valid_from: formatDateValue(rowObj.valid_from || rowObj.grant_date),
+      valid_to: formatDateValue(rowObj.valid_to || ""),
+      grant_type: String(rowObj.grant_type || ""),
+      year: rowObj.year || "",
+      notes: String(rowObj.notes || "")
+    }));
+  const carryOverRows = allRows.filter(row => row.carry_over_days > 0);
+  const resultRows = carryOverRows.map(row => {
+    const earlierGrantRows = allRows.filter(candidate =>
+      candidate.employee_id === row.employee_id &&
+      candidate.grant_id !== row.grant_id &&
+      candidate.grant_days > 0 &&
+      candidate.grant_date_value < row.grant_date_value
+    );
+    const hasEarlierGrantDaysRecord = earlierGrantRows.length > 0;
+    const isCarryOverOnlyRow = row.grant_days <= 0;
+    const needsReview = isCarryOverOnlyRow || !hasEarlierGrantDaysRecord;
+    const employee = employeeMap[row.employee_id] || {};
+
+    return {
+      employee_id: row.employee_id,
+      name: String(employee.name || ""),
+      display_name: String(employee.display_name || ""),
+      grant_id: row.grant_id,
+      grant_date: row.grant_date,
+      grant_type: row.grant_type,
+      year: row.year,
+      grant_days: row.grant_days,
+      carry_over_days: row.carry_over_days,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+      notes: row.notes,
+      is_carry_over_only_row: isCarryOverOnlyRow,
+      has_earlier_grant_days_record: hasEarlierGrantDaysRecord,
+      earlier_grant_ids: earlierGrantRows.map(candidate => candidate.grant_id),
+      needs_review: needsReview,
+      review_reason: isCarryOverOnlyRow
+        ? "carry_over_days のみで残を持つ行です。FIFO除外前に権利の元データを確認してください。"
+        : !hasEarlierGrantDaysRecord
+          ? "繰越元となる過去の grant_days 行が確認できません。初期移行残または手入力残の可能性があります。"
+          : "過去の grant_days 行があり、年度集計用 carry_over_days の可能性があります。"
+    };
+  });
+  const needsReviewRows = resultRows.filter(row => row.needs_review);
+  const result = {
+    row_count: resultRows.length,
+    needs_review_count: needsReviewRows.length,
+    carry_over_days_total: resultRows.reduce(
+      (sum, row) => sum + Number(row.carry_over_days || 0),
+      0
+    ),
+    needs_review_carry_over_days_total: needsReviewRows.reduce(
+      (sum, row) => sum + Number(row.carry_over_days || 0),
+      0
+    ),
+    rows: resultRows
+  };
+
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+/* =========================
+   初期導入残高を仮想付与ロットとして含めるFIFO
+   通常表示・CSVには未接続。管理者試算・年跨ぎ候補で使用。
+========================= */
+function debugFifoBalanceWithOpeningBalance(employeeId, asOfDateValue) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+
+  const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
+  const result = calculateFifoBalanceWithOpeningBalance_(
+    targetEmployeeId,
+    asOfDate
+  );
+
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function compareFifoOpeningBalanceModes(employeeId, fiscalYear) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const targetFiscalYear = Number(fiscalYear || 0);
+
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+  if (!targetFiscalYear) throw new Error("対象年度がありません");
+
+  const employeeMap = getEmployeeDetailMap();
+  const fiscalStartMonth = getFiscalStartMonthByEmployeeId(targetEmployeeId, employeeMap);
+  const fiscalRange = getFiscalYearRangeWithStart(targetFiscalYear, fiscalStartMonth);
+  const legacyBalance = calculateYearlyBalanceByEmployee(targetEmployeeId, targetFiscalYear);
+  const context = createFifoBalanceComparisonContext_(fiscalRange.end);
+  const fifoWithoutCarryOver = calculateFifoBalanceWithoutCarryOverFromContext_(
+    targetEmployeeId,
+    fiscalRange.end,
+    context
+  );
+  const fifoWithOpeningBalance = calculateFifoBalanceWithOpeningBalance_(
+    targetEmployeeId,
+    fiscalRange.end
+  );
+  const result = {
+    employee_id: targetEmployeeId,
+    fiscal_year: targetFiscalYear,
+    fiscal_start_month: fiscalStartMonth,
+    as_of_date: formatDateValue(fiscalRange.end),
+    legacy_build_balance_remaining_days: Number(legacyBalance.current_remaining_days || 0),
+    fifo_without_carry_over_remaining_days: Number(
+      fifoWithoutCarryOver.current_remaining_days || 0
+    ),
+    fifo_with_opening_balance_remaining_days: Number(
+      fifoWithOpeningBalance.current_remaining_days || 0
+    ),
+    opening_balance_days_total: Number(
+      fifoWithOpeningBalance.opening_balance_days_total || 0
+    ),
+    excluded_year_end_carry_over_days_total: Number(
+      fifoWithOpeningBalance.excluded_non_opening_carry_over_days_total || 0
+    ),
+    expiry_unconfirmed_days_total: Number(
+      fifoWithOpeningBalance.expiry_unconfirmed_opening_balance_days_total || 0
+    ),
+    differences: {
+      fifo_without_carry_over_minus_legacy:
+        Number(fifoWithoutCarryOver.current_remaining_days || 0) -
+        Number(legacyBalance.current_remaining_days || 0),
+      fifo_with_opening_balance_minus_legacy:
+        Number(fifoWithOpeningBalance.current_remaining_days || 0) -
+        Number(legacyBalance.current_remaining_days || 0),
+      restored_by_opening_balance:
+        Number(fifoWithOpeningBalance.current_remaining_days || 0) -
+        Number(fifoWithoutCarryOver.current_remaining_days || 0)
+    },
+    legacy_build_balance: legacyBalance,
+    fifo_without_carry_over_balance: fifoWithoutCarryOver,
+    fifo_with_opening_balance: fifoWithOpeningBalance,
+    opening_balance_records: fifoWithOpeningBalance.opening_balance_records || [],
+    excluded_carry_over_records: fifoWithOpeningBalance.excluded_carry_over_records || [],
+    difference_reason: getFifoOpeningBalanceDifferenceReason_({
+      legacy_remaining_days: legacyBalance.current_remaining_days,
+      without_carry_over_remaining_days: fifoWithoutCarryOver.current_remaining_days,
+      with_opening_balance_remaining_days: fifoWithOpeningBalance.current_remaining_days,
+      opening_balance_days_total: fifoWithOpeningBalance.opening_balance_days_total,
+      expiry_unconfirmed_days_total:
+        fifoWithOpeningBalance.expiry_unconfirmed_opening_balance_days_total
+    })
+  };
+
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function calculateFifoBalanceWithOpeningBalance_(employeeId, asOfDate) {
+  const context = createFifoBalanceComparisonContext_(asOfDate);
+  return calculateFifoBalanceWithOpeningBalanceFromContext_(
+    employeeId,
+    asOfDate,
+    context
+  );
+}
+
+function calculateFifoBalanceWithOpeningBalanceFromContext_(employeeId, asOfDate, context) {
+  const grantData = getFifoGrantRowsWithOpeningBalanceFromContext_(
+    employeeId,
+    asOfDate,
+    context
+  );
+  const grants = grantData.grants;
+  const usedRows = getFifoApprovedLeaveUseRowsFromContext_(employeeId, asOfDate, context);
+  const allocations = [];
+
+  usedRows.forEach(useRow => {
+    let remainingUseDays = Number(useRow.days || 0);
+
+    grants.forEach(grant => {
+      if (remainingUseDays <= 0) return;
+      if (grant.remaining_days <= 0) return;
+      if (useRow.use_date < grant.valid_from_date) return;
+      if (useRow.use_date > grant.valid_to_date) return;
+
+      const consumedDays = Math.min(grant.remaining_days, remainingUseDays);
+      grant.remaining_days -= consumedDays;
+      grant.used_days += consumedDays;
+      remainingUseDays -= consumedDays;
+
+      allocations.push({
+        request_id: useRow.request_id,
+        use_date: formatDateValue(useRow.use_date),
+        grant_id: grant.grant_id,
+        lot_type: grant.lot_type,
+        consumed_days: consumedDays
+      });
+    });
+
+    useRow.unallocated_days = remainingUseDays > 0 ? remainingUseDays : 0;
+  });
+
+  grants.forEach(grant => {
+    const isExpired = grant.valid_to_date < asOfDate;
+    grant.is_expired = isExpired;
+    grant.expired_days = isExpired ? grant.remaining_days : 0;
+    grant.active_remaining_days = isExpired ? 0 : grant.remaining_days;
+  });
+
+  return {
+    employee_id: employeeId,
+    as_of_date: formatDateValue(asOfDate),
+    calculation_mode: "grant_days_plus_opening_balance_virtual_lots",
+    current_remaining_days: grants.reduce((sum, grant) => sum + grant.active_remaining_days, 0),
+    total_granted_days: grants.reduce((sum, grant) => sum + grant.total_days, 0),
+    opening_balance_days_total: grantData.opening_balance_records.reduce(
+      (sum, row) => sum + Number(row.carry_over_days || 0),
+      0
+    ),
+    excluded_non_opening_carry_over_days_total: grantData.excluded_carry_over_records.reduce(
+      (sum, row) => sum + Number(row.carry_over_days || 0),
+      0
+    ),
+    expiry_unconfirmed_opening_balance_days_total: grantData.opening_balance_records
+      .filter(row => row.validity_needs_review)
+      .reduce((sum, row) => sum + Number(row.carry_over_days || 0), 0),
+    used_days: usedRows.reduce((sum, row) => sum + Number(row.days || 0), 0),
+    allocated_used_days: allocations.reduce((sum, row) => sum + Number(row.consumed_days || 0), 0),
+    unallocated_used_days: usedRows.reduce((sum, row) => sum + Number(row.unallocated_days || 0), 0),
+    expired_days: grants.reduce((sum, grant) => sum + grant.expired_days, 0),
+    opening_balance_records: grantData.opening_balance_records,
+    excluded_carry_over_records: grantData.excluded_carry_over_records,
+    grant_details: grants.map(grant => ({
+      grant_id: grant.grant_id,
+      source_grant_id: grant.source_grant_id,
+      lot_type: grant.lot_type,
+      grant_date: formatDateValue(grant.grant_date),
+      valid_from: formatDateValue(grant.valid_from_date),
+      valid_to: formatDateValue(grant.valid_to_date),
+      validity_basis: grant.validity_basis,
+      validity_needs_review: grant.validity_needs_review,
+      grant_type: grant.grant_type,
+      year: grant.year,
+      grant_days: grant.grant_days,
+      opening_balance_days: grant.opening_balance_days,
+      total_days: grant.total_days,
+      used_days: grant.used_days,
+      remaining_days: grant.remaining_days,
+      active_remaining_days: grant.active_remaining_days,
+      expired_days: grant.expired_days,
+      is_expired: grant.is_expired
+    })),
+    used_details: usedRows.map(row => ({
+      request_id: row.request_id,
+      use_date: formatDateValue(row.use_date),
+      days: row.days,
+      unallocated_days: row.unallocated_days || 0
+    })),
+    allocations: allocations,
+    validity_warning: grantData.opening_balance_records.some(row => row.validity_needs_review)
+      ? "初期導入残高に valid_from または valid_to が不足する行があります。試算では grant_date 起点の2年期限を仮定していますが、本番切替前に期限確認が必要です。"
+      : ""
+  };
+}
+
+function getFifoGrantRowsWithOpeningBalance_(employeeId, asOfDate) {
+  const context = createFifoBalanceComparisonContext_(asOfDate);
+  return getFifoGrantRowsWithOpeningBalanceFromContext_(
+    employeeId,
+    asOfDate,
+    context
+  );
+}
+
+function getFifoGrantRowsWithOpeningBalanceFromContext_(employeeId, asOfDate, context) {
+  const grants = [];
+  const openingBalanceRecords = [];
+  const excludedCarryOverRecords = [];
+
+  (context.grants_by_employee[employeeId] || []).forEach(rowObj => {
+    const grantDate = rowObj.grant_date;
+    const validFromDate = rowObj.valid_from_date;
+    const validToDate = rowObj.valid_to_date;
+    if (validFromDate > asOfDate) return;
+    if (!rowObj.is_finalized) return;
+
+    const grantId = rowObj.grant_id;
+    const grantDays = Number(rowObj.grant_days || 0);
+    const carryOverDays = Number(rowObj.carry_over_days || 0);
+    const notes = String(rowObj.notes || "");
+    const isOpeningBalance = isOpeningBalanceRecordForFifo_(notes);
+    const validityNeedsReview =
+      !rowObj.has_recorded_valid_from ||
+      !rowObj.has_recorded_valid_to;
+    const validityBasis = validityNeedsReview
+      ? "推定: grant_date から2年後の前日"
+      : "記録済み valid_from / valid_to";
+
+    if (grantDays > 0) {
+      grants.push({
+        grant_id: grantId,
+        source_grant_id: grantId,
+        lot_type: "grant_days",
+        grant_date: grantDate,
+        valid_from_date: validFromDate,
+        valid_to_date: validToDate,
+        validity_basis: validityBasis,
+        validity_needs_review: false,
+        grant_type: rowObj.grant_type,
+        year: rowObj.year || "",
+        grant_days: grantDays,
+        opening_balance_days: 0,
+        total_days: grantDays,
+        used_days: 0,
+        remaining_days: grantDays,
+        active_remaining_days: 0,
+        expired_days: 0,
+        is_expired: false
+      });
+    }
+
+    if (carryOverDays <= 0) return;
+
+    const carryOverRecord = {
+      grant_id: grantId,
+      grant_date: formatDateValue(grantDate),
+      grant_type: rowObj.grant_type,
+      year: rowObj.year || "",
+      carry_over_days: carryOverDays,
+      valid_from: formatDateValue(validFromDate),
+      valid_to: formatDateValue(validToDate),
+      validity_basis: validityBasis,
+      validity_needs_review: validityNeedsReview,
+      notes: notes
+    };
+
+    if (!isOpeningBalance) {
+      excludedCarryOverRecords.push(carryOverRecord);
+      return;
+    }
+
+    openingBalanceRecords.push(carryOverRecord);
+    grants.push({
+      grant_id: grantId + "#opening_balance",
+      source_grant_id: grantId,
+      lot_type: "opening_balance_virtual_lot",
+      grant_date: grantDate,
+      valid_from_date: validFromDate,
+      valid_to_date: validToDate,
+      validity_basis: validityBasis,
+      validity_needs_review: validityNeedsReview,
+      grant_type: "opening_balance_virtual_lot",
+      year: rowObj.year || "",
+      grant_days: 0,
+      opening_balance_days: carryOverDays,
+      total_days: carryOverDays,
+      used_days: 0,
+      remaining_days: carryOverDays,
+      active_remaining_days: 0,
+      expired_days: 0,
+      is_expired: false
+    });
+  });
+
+  grants.sort((a, b) => {
+    if (a.grant_date.getTime() !== b.grant_date.getTime()) {
+      return a.grant_date - b.grant_date;
+    }
+    return String(a.grant_id).localeCompare(String(b.grant_id));
+  });
+
+  return {
+    grants: grants,
+    opening_balance_records: openingBalanceRecords,
+    excluded_carry_over_records: excludedCarryOverRecords
+  };
+}
+
+function isOpeningBalanceRecordForFifo_(notes) {
+  return String(notes || "").indexOf("初期導入残高") !== -1;
+}
+
+function getFifoOpeningBalanceDifferenceReason_(info) {
+  const legacyDays = Number(info.legacy_remaining_days || 0);
+  const withoutCarryOverDays = Number(info.without_carry_over_remaining_days || 0);
+  const withOpeningBalanceDays = Number(info.with_opening_balance_remaining_days || 0);
+  const openingBalanceDays = Number(info.opening_balance_days_total || 0);
+  const expiryUnconfirmedDays = Number(info.expiry_unconfirmed_days_total || 0);
+
+  if (expiryUnconfirmedDays > 0) {
+    return "初期導入残高を仮想ロットとして含めていますが、期限未確認の日数があります。";
+  }
+
+  if (withOpeningBalanceDays === legacyDays && withoutCarryOverDays !== legacyDays) {
+    return "初期導入残高を仮想ロットとして含めると旧計算と一致します。";
+  }
+
+  if (
+    openingBalanceDays > 0 &&
+    Math.abs(withOpeningBalanceDays - legacyDays) <
+      Math.abs(withoutCarryOverDays - legacyDays)
+  ) {
+    return "初期導入残高を含めることで旧計算との差分が縮小します。残る差分は期限または使用割当の確認が必要です。";
+  }
+
+  if (openingBalanceDays === 0) {
+    return "初期導入残高に該当する行はありません。";
+  }
+
+  return "初期導入残高以外にも、有効期限または年度集計方式による差分がある可能性があります。";
 }
 
 function getYearlyGrantFinalizedMap_(fiscalYear) {
@@ -1149,6 +2216,10 @@ function compareFifoBalanceDifferencesForAdmin(fiscalYear, asOfDateValue, employ
   });
   const rows = comparison.rows || [];
   const differenceRows = rows.filter(row => row.has_difference === true);
+  const displayRows = rows.filter(row =>
+    row.has_difference === true ||
+    row.has_validity_warning === true
+  );
 
   return {
     ok: true,
@@ -1160,10 +2231,11 @@ function compareFifoBalanceDifferencesForAdmin(fiscalYear, asOfDateValue, employ
     target_limited: !targetEmployeeId,
     scanned_count: rows.length,
     difference_count: differenceRows.length,
+    warning_count: rows.filter(row => row.has_validity_warning === true).length,
     total_count: comparison.total_count || rows.length,
     has_prev: page.offset > 0,
     has_next: page.offset + page.limit < Number(comparison.total_count || rows.length),
-    rows: differenceRows
+    rows: displayRows
   };
 }
 
@@ -1265,6 +2337,12 @@ function buildFifoBalanceComparisonRow_(emp, fiscalYear, asOfDate, context) {
     legacy_expired_days: Number(legacyBalance.expired_days || 0),
     fifo_expired_days: Number(fifoBalance.expired_days || 0),
     expired_difference: expiredDifference,
+    opening_balance_days_total: Number(fifoBalance.opening_balance_days_total || 0),
+    expiry_unconfirmed_days_total: Number(
+      fifoBalance.expiry_unconfirmed_opening_balance_days_total || 0
+    ),
+    validity_warning: String(fifoBalance.validity_warning || ""),
+    has_validity_warning: !!fifoBalance.validity_warning,
     grant_count: (fifoBalance.grant_details || []).length,
     approved_request_count: Object.keys(approvedRequestIds).length,
     difference_reason: getFifoComparisonDifferenceReason_({
@@ -1290,7 +2368,11 @@ function compareFifoBalanceWithBuildBalanceFromContext_(emp, fiscalYear, asOfDat
     fiscalStartMonth,
     context
   );
-  const fifoBalance = calculateFifoBalanceFromContext_(employeeId, asOfDate, context);
+  const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(
+    employeeId,
+    asOfDate,
+    context
+  );
 
   return {
     employee_id: employeeId,
@@ -1333,7 +2415,8 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
     "valid_from",
     "valid_to",
     "grant_type",
-    "year"
+    "year",
+    "notes"
   ]);
   const data = sheet.getDataRange().getValues();
   const result = {};
@@ -1369,6 +2452,9 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
       grant_days: grantDays,
       carry_over_days: carryOverDays,
       total_days: grantDays + carryOverDays,
+      notes: String(rowObj.notes || ""),
+      has_recorded_valid_from: !!rowObj.valid_from,
+      has_recorded_valid_to: !!rowObj.valid_to,
       is_finalized: finalizedValue !== "FALSE"
     });
   });
@@ -4672,5 +5758,11 @@ function testDebugFifoUseRows() {
 
 function testCompareFifoDiffOnly() {
   const result = compareFifoBalanceDifferencesOnly(2026, "2026-05-23");
+  Logger.log(JSON.stringify(result, null, 2));
+}
+
+function testDebugYearEndFinalizedBalance() {
+  const result = debugYearEndFinalizedBalance("TEST-FIFO-001", 2026);
+
   Logger.log(JSON.stringify(result, null, 2));
 }
