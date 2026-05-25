@@ -1215,6 +1215,170 @@
   color: #9f2a2a;
 }
 
+.expiry-check-section {
+  padding-top: 8px;
+  border-top: 1px solid #dceff5;
+}
+
+.expiry-check-card {
+  margin-bottom: 18px;
+}
+
+.expiry-check-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 180px)) minmax(220px, 1fr) minmax(150px, 190px);
+  gap: 12px;
+  align-items: end;
+}
+
+.expiry-summary {
+  margin-top: 12px;
+}
+
+.expiry-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid #dceff5;
+  border-radius: 999px;
+  background: #f5fbfd;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.expiry-lots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.expiry-lot-row {
+  padding: 13px 15px;
+  border: 1px solid #dceff5;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.expiry-lot-row.expiring_soon {
+  border-color: #f2ddb8;
+  background: #fffdfa;
+}
+
+.expiry-lot-row.expired,
+.expiry-lot-row.needs_review {
+  border-color: #f2c8d4;
+  background: #fffafb;
+}
+
+.expiry-lot-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.expiry-name {
+  color: #24435f;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.expiry-id {
+  margin-left: 7px;
+  color: #5d7488;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.expiry-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.expiry-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 3px 8px;
+  border: 1px solid #dceff5;
+  border-radius: 999px;
+  background: #f5fbfd;
+  color: var(--primary-dark);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.expiry-badge.lot-opening_balance {
+  background: #eef8fb;
+  border-color: #b9e4ef;
+}
+
+.expiry-badge.status-expiring_soon {
+  background: #fff8ec;
+  border-color: #f2ddb8;
+  color: #9a651c;
+}
+
+.expiry-badge.status-expired,
+.expiry-badge.status-needs_review {
+  background: #fff6f8;
+  border-color: #f2c8d4;
+  color: #9f2a2a;
+}
+
+.expiry-meta {
+  color: #5d7488;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.expiry-values {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(92px, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.expiry-values > div {
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid #e0edf2;
+  border-radius: 10px;
+  background: #f8fcfe;
+}
+
+.expiry-values span {
+  display: block;
+  margin-bottom: 3px;
+  color: #7a8d9d;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.expiry-values strong {
+  color: #24435f;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.expiry-warning {
+  margin-top: 9px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: #fff6f8;
+  color: #9f2a2a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .year-end-section {
   padding-top: 8px;
   border-top: 1px solid #dceff5;
@@ -1254,6 +1418,43 @@
   margin-top: 14px;
 }
 
+.year-end-bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #dceff5;
+  border-radius: 14px;
+  background: #f5fbfd;
+}
+
+.year-end-bulk-info {
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.year-end-bulk-info small {
+  display: block;
+  margin-top: 2px;
+  color: #7a8d9d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.year-end-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.year-end-bulk-actions .btn {
+  min-height: 34px;
+  padding: 7px 11px;
+}
+
 .year-end-row {
   display: flex;
   flex-direction: column;
@@ -1262,6 +1463,10 @@
   border: 1px solid #d7e8ff;
   border-radius: 16px;
   background: #f8fbff;
+}
+
+.year-end-row.finalized {
+  opacity: 0.78;
 }
 
 .year-end-main {
@@ -1273,6 +1478,10 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.year-end-check {
+  flex-shrink: 0;
 }
 
 .year-end-name {
@@ -1369,6 +1578,15 @@
 }
 
 @media (max-width: 900px) {
+  .year-end-bulk-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .year-end-bulk-actions {
+    justify-content: flex-start;
+  }
+
   .yearly-grant-item {
     gap: 12px;
   }
@@ -1389,6 +1607,11 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .expiry-check-controls,
+  .expiry-values {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .year-end-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1403,6 +1626,8 @@
 
   .fifo-trial-controls,
   .fifo-trial-numbers,
+  .expiry-check-controls,
+  .expiry-values,
   .year-end-controls,
   .year-end-detail-grid {
     grid-template-columns: 1fr;
@@ -1411,6 +1636,14 @@
   .fifo-selected-employee {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .expiry-lot-heading {
+    flex-direction: column;
+  }
+
+  .expiry-badges {
+    justify-content: flex-start;
   }
 }
 

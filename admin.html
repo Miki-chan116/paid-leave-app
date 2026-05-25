@@ -331,6 +331,61 @@
       </div>
     </section>
 
+    <!-- ================= 期限切れ確認 ================= -->
+    <section class="admin-section expiry-check-section">
+      <div class="section-heading-row">
+        <div>
+          <div class="section-kicker">ロット確認</div>
+          <h2 class="section-heading">期限切れ確認</h2>
+          <p class="section-description">
+            残っている有給を付与単位で確認し、失効日が近いものを把握できます。
+          </p>
+        </div>
+      </div>
+
+      <div class="search-card expiry-check-card">
+        <div class="expiry-check-controls">
+          <div class="field">
+            <label for="expiryAsOfDate">確認日</label>
+            <input type="date" id="expiryAsOfDate">
+          </div>
+
+          <div class="field">
+            <label for="expirySoonDays">まもなく失効（日以内）</label>
+            <input type="number" id="expirySoonDays" min="0" value="30">
+          </div>
+
+          <div class="field">
+            <label for="expiryEmployeeKeyword">社員検索</label>
+            <input type="text" id="expiryEmployeeKeyword" placeholder="氏名・社員ID">
+          </div>
+
+          <div class="field">
+            <label for="expiryCompany">会社</label>
+            <select id="expiryCompany">
+              <option value="">すべて</option>
+              <option value="MAIN">MAIN</option>
+              <option value="PARTNER">PARTNER</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="search-actions">
+          <button class="btn btn-search" type="button" onclick="loadExpiryLots()">
+            確認する
+          </button>
+          <button class="btn btn-reset" type="button" onclick="clearExpiryLots()">
+            クリア
+          </button>
+        </div>
+
+        <div id="expirySummary" class="expiry-summary"></div>
+        <div id="expiryLots" class="expiry-lots">
+          <div class="empty-message">条件を設定して「確認する」を押してください</div>
+        </div>
+      </div>
+    </section>
+
     <!-- ================= 年度切替・繰越確認 ================= -->
     <section class="admin-section year-end-section">
       <div class="section-heading-row">
