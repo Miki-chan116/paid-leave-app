@@ -122,6 +122,22 @@
           <!-- 左側：申請操作 -->
           <div class="tablet-side-column">
 
+            <div id="editingRequestBanner"
+                 class="editing-request-banner"
+                 style="display:none;">
+              <div>
+                <div class="editing-request-title">現在、申請を修正しています</div>
+                <div id="editingRequestMeta"
+                     class="editing-request-meta"></div>
+              </div>
+
+              <button type="button"
+                      class="editing-cancel-btn"
+                      onclick="cancelEditingRequest()">
+                編集をやめる
+              </button>
+            </div>
+
             <div class="request-section request-type-section">
               <div class="request-section-title">1. 申請区分</div>
 

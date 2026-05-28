@@ -749,6 +749,45 @@ body {
   gap: 8px;
 }
 
+.editing-request-banner {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #f3c95f;
+  background: #fff8df;
+}
+
+.editing-request-title {
+  color: #6a4d00;
+  font-weight: bold;
+}
+
+.editing-request-meta {
+  margin-top: 3px;
+  color: #8a6b11;
+  font-size: 12px;
+}
+
+.editing-cancel-btn {
+  flex: 0 0 auto;
+  border: 1px solid #cfa33a;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: #ffffff;
+  color: #765600;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editing-cancel-btn:hover {
+  background: #fff3c4;
+}
+
 .history-row {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) 0.8fr 0.6fr 0.8fr auto;
@@ -763,6 +802,18 @@ body {
   border: 1px solid #e3f1f6;
 }
 
+.history-row.editing {
+  border-color: #f3c95f;
+  background: #fffaf0;
+  box-shadow: 0 0 0 2px rgba(243, 201, 95, 0.24);
+}
+
+.history-row-canceled {
+  background: #f4f6f8;
+  border-color: #dfe4ea;
+  color: #7b8794;
+}
+
 .history-status {
   text-align: center;
 
@@ -775,11 +826,12 @@ body {
 }
 
 .history-status.approved {
-  background: var(--primary);
+  background: #2f9e5f;
 }
 
 .history-status.pending {
-  background: var(--accent-blue);
+  background: #f2c94c;
+  color: #5c4500;
 }
 
 .history-status.rejected {
@@ -1099,6 +1151,11 @@ body.personal-page-mode #requestScreen {
   .history-row {
     grid-template-columns: 1fr 0.8fr;
     font-size: 12px;
+  }
+
+  .editing-request-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .history-actions {

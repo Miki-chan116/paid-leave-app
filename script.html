@@ -377,10 +377,89 @@ function isEditingRequest() {
 
 function clearEditingRequestState() {
   editingRequestId = "";
+  hideEditingRequestBanner();
+  clearEditingHistoryRow();
 
   const submitBtn = document.getElementById("submitBtn");
   if (submitBtn && !submitBtn.disabled) {
     submitBtn.textContent = "申請する";
+  }
+}
+
+function resetRequestFormForNewRequest() {
+  currentRequestType = "";
+
+  document.querySelectorAll(".type-btn").forEach(btn => {
+    btn.classList.remove("active");
+  });
+
+  const multiDayArea = document.getElementById("multiDayArea");
+  if (multiDayArea) {
+    multiDayArea.style.display = "none";
+  }
+
+  resetSelectedDates();
+
+  const reasonType = document.getElementById("reasonType");
+  if (reasonType) {
+    reasonType.value = "";
+  }
+
+  const reasonDetail = document.getElementById("reasonDetail");
+  if (reasonDetail) {
+    reasonDetail.value = "";
+  }
+
+  const reasonDetailWrap = document.getElementById("reasonDetailWrap");
+  if (reasonDetailWrap) {
+    reasonDetailWrap.style.display = "none";
+  }
+
+  updateHiddenDateInputs();
+  updateCalendarStatus();
+  renderRequestCalendar();
+}
+
+function cancelEditingRequest() {
+  clearEditingRequestState();
+  resetRequestFormForNewRequest();
+}
+
+function showEditingRequestBanner(item) {
+  const banner = document.getElementById("editingRequestBanner");
+  const meta = document.getElementById("editingRequestMeta");
+
+  if (!banner) return;
+
+  banner.style.display = "flex";
+
+  if (meta) {
+    meta.textContent = `${item.date_label || ""} / ${item.leave_type_label || ""}`;
+  }
+}
+
+function hideEditingRequestBanner() {
+  const banner = document.getElementById("editingRequestBanner");
+  if (banner) {
+    banner.style.display = "none";
+  }
+}
+
+function clearEditingHistoryRow() {
+  document.querySelectorAll(".history-row.editing").forEach(row => {
+    row.classList.remove("editing");
+  });
+}
+
+function setEditingHistoryRow(requestId) {
+  clearEditingHistoryRow();
+
+  const targetId = String(requestId || "");
+  const row = Array.from(document.querySelectorAll(".history-row"))
+    .find(item => String(item.dataset.requestId || "") === targetId);
+
+  if (row) {
+    row.classList.add("editing");
   }
 }
 
@@ -960,7 +1039,14 @@ function renderEmployeeLeaveHistory(data) {
 
   data.forEach(item => {
     const row = document.createElement("div");
-    row.className = "history-row";
+    const status = String(item.status || "");
+    row.className = `history-row history-row-${status}`;
+    row.dataset.requestId = item.request_id || "";
+
+    if (editingRequestId && String(item.request_id || "") === String(editingRequestId)) {
+      row.classList.add("editing");
+    }
+
     const requestId = escapeHtml(item.request_id);
     const actions = item.can_edit
       ? `
@@ -993,6 +1079,7 @@ function startEditLeaveRequest(requestId) {
   }
 
   editingRequestId = targetId;
+  showEditingRequestBanner(item);
 
   if (item.half_day === "am") {
     selectRequestType("half_am");
@@ -1031,6 +1118,8 @@ function startEditLeaveRequest(requestId) {
     submitBtn.textContent = "修正を保存";
   }
 
+  setEditingHistoryRow(targetId);
+
   const requestScreen = document.getElementById("requestScreen");
   if (requestScreen) {
     requestScreen.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1059,10 +1148,7 @@ function cancelLeaveRequestFromHistory(requestId) {
     .withSuccessHandler(() => {
       if (editingRequestId === targetId) {
         clearEditingRequestState();
-        resetSelectedDates();
-        updateHiddenDateInputs();
-        updateCalendarStatus();
-        renderRequestCalendar();
+        resetRequestFormForNewRequest();
       }
 
       loadedHistoryEmployeeId = "";
