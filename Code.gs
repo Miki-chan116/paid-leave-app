@@ -3641,6 +3641,104 @@ function getRequestsByStatus(status) {
 }
 
 /* =========================
+   管理画面用：承認待ち軽量一覧
+========================= */
+function getPendingRequestsForAdminLight() {
+  const range = getAdminPendingFocusRange();
+  const requestSheet = getSheet("leave_requests");
+  const requestHeaderInfo = requireHeaders(requestSheet, [
+    "request_id",
+    "employee_id",
+    "request_date",
+    "start_date",
+    "end_date",
+    "days",
+    "type",
+    "half_day",
+    "reason",
+    "reason_detail",
+    "status",
+    "year",
+    "created_at",
+    "updated_at"
+  ]);
+
+  const employeeSheet = getSheet("employees");
+  const employeeHeaderInfo = requireHeaders(employeeSheet, [
+    "employee_id",
+    "name"
+  ]);
+
+  const employeeValues = employeeSheet.getDataRange().getValues();
+  const employeeMap = {};
+
+  if (employeeValues.length > 1) {
+    employeeValues.slice(1).forEach(row => {
+      const rowObj = rowToObject(row, employeeHeaderInfo.headers);
+      const employeeId = String(rowObj.employee_id || "").trim();
+      if (!employeeId) return;
+
+      employeeMap[employeeId] = {
+        display_employee_id: String(rowObj.display_employee_id || "").trim(),
+        employee_name: String(rowObj.display_name || rowObj.name || employeeId).trim(),
+        company_name: String(rowObj.company_name || "").trim(),
+        department: String(rowObj.department || "").trim()
+      };
+    });
+  }
+
+  const values = requestSheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+
+  return values.slice(1)
+    .map(row => {
+      const rowObj = rowToObject(row, requestHeaderInfo.headers);
+      const rowStatus = norm(rowObj.status || STATUS.PENDING);
+
+      if (rowStatus !== STATUS.PENDING) return null;
+      if (!rowObj.start_date || !rowObj.end_date) return null;
+      if (!isRequestInDateRange(rowObj, range.start, range.end)) return null;
+
+      const employeeId = String(rowObj.employee_id || "").trim();
+      const employee = employeeMap[employeeId] || {};
+      const startText = formatDateValue(rowObj.start_date);
+      const endText = formatDateValue(rowObj.end_date);
+      const halfDay = String(rowObj.half_day || "");
+
+      return {
+        request_id: String(rowObj.request_id || ""),
+        employee_id: employeeId,
+        display_employee_id: employee.display_employee_id || "",
+        employee_name: employee.employee_name || employeeId || "Unknown",
+        start_date: startText,
+        end_date: endText,
+        days: rowObj.days || 0,
+        type: String(rowObj.type || "paid_leave"),
+        half_day: halfDay,
+        reason: String(rowObj.reason || ""),
+        reason_detail: String(rowObj.reason_detail || ""),
+        status: rowStatus,
+        request_date: formatDateValue(rowObj.request_date),
+        created_at: rowObj.created_at ? formatDateValue(rowObj.created_at) : "",
+        updated_at: rowObj.updated_at ? formatDateValue(rowObj.updated_at) : "",
+        year: rowObj.year || "",
+        date_label: startText !== endText ? startText + " 〜 " + endText : startText,
+        leave_type_label: getRequestHistoryLeaveTypeLabel_(halfDay, rowObj.start_date, rowObj.end_date),
+        status_label: getRequestHistoryStatusLabel_(rowStatus),
+        company_name: employee.company_name || "",
+        department: employee.department || "",
+        current_remaining_days: "",
+        used_days: ""
+      };
+    })
+    .filter(item => item)
+    .sort((a, b) => {
+      if (a.start_date !== b.start_date) return a.start_date < b.start_date ? 1 : -1;
+      return a.employee_id > b.employee_id ? 1 : -1;
+    });
+}
+
+/* =========================
    管理画面用：申請検索
 ========================= */
 function searchRequests(filters) {

@@ -130,6 +130,8 @@ function getRequestTypeLabel(halfDay, days) {
 }
 
 function formatDays(value) {
+  if (value === "" || value == null) return "-";
+
   const num = Number(value || 0);
   return `${num}日`;
 }
@@ -357,7 +359,7 @@ function loadRequests(status) {
 
   showLoading("requestView", "申請データを読み込み中です...");
 
-  google.script.run
+  const runner = google.script.run
     .withSuccessHandler(data => {
       renderCards(data);
       scheduleDashboardSummaryRefresh(300);
@@ -365,8 +367,13 @@ function loadRequests(status) {
     .withFailureHandler(err => {
       console.error("GASエラー:", err);
       showError("requestView", "申請データ取得でエラーが発生しました");
-    })
-    .getRequestsByStatus(status);
+    });
+
+  if (status === "pending") {
+    runner.getPendingRequestsForAdminLight();
+  } else {
+    runner.getRequestsByStatus(status);
+  }
 }
 
 function searchRequestList(options) {
