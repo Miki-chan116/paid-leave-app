@@ -1,6 +1,7 @@
 <script>
 let currentStatus = "pending";
 let currentMode = "recent";
+let dashboardSummaryTimer = null;
 
 const PAGE_SIZE = 20;
 const pageOffsets = {
@@ -321,6 +322,17 @@ function loadDashboardSummary() {
     .getAdminDashboardSummary();
 }
 
+function scheduleDashboardSummaryRefresh(delayMs) {
+  if (dashboardSummaryTimer) {
+    clearTimeout(dashboardSummaryTimer);
+  }
+
+  dashboardSummaryTimer = setTimeout(() => {
+    dashboardSummaryTimer = null;
+    loadDashboardSummary();
+  }, Number(delayMs || 300));
+}
+
 /* 申請一覧 */
 function loadRequests(status) {
   currentStatus = status;
@@ -333,7 +345,6 @@ function loadRequests(status) {
   setDefaultSearchDates(status);
   document.getElementById("searchKeyword").value = "";
   document.getElementById("searchStatus").value = status;
-  loadDashboardSummary();
 
   const start = document.getElementById("searchStartDate").value;
   const end = document.getElementById("searchEndDate").value;
@@ -347,7 +358,10 @@ function loadRequests(status) {
   showLoading("requestView", "申請データを読み込み中です...");
 
   google.script.run
-    .withSuccessHandler(renderCards)
+    .withSuccessHandler(data => {
+      renderCards(data);
+      scheduleDashboardSummaryRefresh(300);
+    })
     .withFailureHandler(err => {
       console.error("GASエラー:", err);
       showError("requestView", "申請データ取得でエラーが発生しました");
@@ -355,7 +369,9 @@ function loadRequests(status) {
     .getRequestsByStatus(status);
 }
 
-function searchRequestList() {
+function searchRequestList(options) {
+  const opts = options || {};
+
   document.getElementById("requestView").style.display = "flex";
   document.getElementById("logView").style.display = "none";
 
@@ -379,7 +395,12 @@ function searchRequestList() {
   showLoading("requestView", "検索しています...");
 
   google.script.run
-    .withSuccessHandler(renderCards)
+    .withSuccessHandler(data => {
+      renderCards(data);
+      if (opts.refreshSummary) {
+        scheduleDashboardSummaryRefresh(300);
+      }
+    })
     .withFailureHandler(err => {
       console.error("検索エラー:", err);
       showError("requestView", "検索でエラーが発生しました");
@@ -513,9 +534,11 @@ function renderCards(data) {
   });
 }
 
-function reloadCurrentView() {
+function reloadCurrentView(options) {
+  const opts = options || {};
+
   if (currentMode === "search") {
-    searchRequestList();
+    searchRequestList(opts);
   } else {
     loadRequests(currentStatus);
   }
@@ -530,8 +553,7 @@ function approveRequestAction(requestId) {
   google.script.run
     .withSuccessHandler(() => {
       alert("承認しました");
-      loadDashboardSummary();
-      reloadCurrentView();
+      reloadCurrentView({ refreshSummary: true });
 })
     .withFailureHandler(err => {
       console.error("承認エラー:", err);
@@ -551,10 +573,7 @@ function rejectRequestAction(requestId) {
   google.script.run
     .withSuccessHandler(() => {
       alert("否認しました");
-
-        loadDashboardSummary();
-
-        reloadCurrentView();
+      reloadCurrentView({ refreshSummary: true });
     })
     .withFailureHandler(err => {
       console.error("否認エラー:", err);
