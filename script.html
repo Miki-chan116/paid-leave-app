@@ -379,10 +379,24 @@ function clearEditingRequestState() {
   editingRequestId = "";
   hideEditingRequestBanner();
   clearEditingHistoryRow();
+  setRequestFormEditingMode(false);
 
   const submitBtn = document.getElementById("submitBtn");
   if (submitBtn && !submitBtn.disabled) {
     submitBtn.textContent = "申請する";
+  }
+}
+
+function setRequestFormEditingMode(enabled) {
+  const layout = document.querySelector(".tablet-request-layout");
+  const submitBtn = document.getElementById("submitBtn");
+
+  if (layout) {
+    layout.classList.toggle("editing", !!enabled);
+  }
+
+  if (submitBtn) {
+    submitBtn.classList.toggle("editing", !!enabled);
   }
 }
 
@@ -1037,7 +1051,25 @@ function renderEmployeeLeaveHistory(data) {
     return;
   }
 
-  data.forEach(item => {
+  const displayRows = data
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const aPending = String(a.item.status || "") === "pending";
+      const bPending = String(b.item.status || "") === "pending";
+
+      if (aPending !== bPending) return aPending ? -1 : 1;
+
+      if (aPending && bPending) {
+        const aDate = String(a.item.start_date || "");
+        const bDate = String(b.item.start_date || "");
+        if (aDate !== bDate) return aDate < bDate ? 1 : -1;
+      }
+
+      return a.index - b.index;
+    })
+    .map(row => row.item);
+
+  displayRows.forEach(item => {
     const row = document.createElement("div");
     const status = String(item.status || "");
     row.className = `history-row history-row-${status}`;
@@ -1080,6 +1112,7 @@ function startEditLeaveRequest(requestId) {
 
   editingRequestId = targetId;
   showEditingRequestBanner(item);
+  setRequestFormEditingMode(true);
 
   if (item.half_day === "am") {
     selectRequestType("half_am");
