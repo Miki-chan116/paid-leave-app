@@ -7,7 +7,8 @@ const OUTPUT_SS_ID = "1SP7kD0wuxKQAwJ5YrMBGj3HAkMHW2U6Rdwzfhlu_Z_E";
 const STATUS = {
   PENDING: "pending",
   APPROVED: "approved",
-  REJECTED: "rejected"
+  REJECTED: "rejected",
+  CANCELED: "canceled"
 };
 
 /* =========================
@@ -3413,6 +3414,177 @@ appendRowFast_(
 }
 
 /* =========================
+   個人ページ用：承認待ち申請の修正
+========================= */
+function updatePendingLeaveRequestForEmployee(requestId, employeeId, data) {
+  const targetRequestId = String(requestId || "").trim();
+  const targetEmployeeId = String(employeeId || "").trim();
+
+  if (!targetRequestId) throw new Error("requestId がありません");
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+  if (!data || typeof data !== "object") {
+    throw new Error("更新データがありません");
+  }
+  if (!data.start_date || !data.end_date) {
+    throw new Error("start_date または end_date がありません");
+  }
+
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id",
+    "employee_id",
+    "start_date",
+    "end_date",
+    "days",
+    "type",
+    "half_day",
+    "reason",
+    "reason_detail",
+    "status",
+    "year",
+    "updated_at"
+  ]);
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  if (lastRow <= 1) {
+    throw new Error("申請データがありません");
+  }
+
+  const values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  const map = headerInfo.map;
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const rowRequestId = String(row[map.request_id] || "").trim();
+    const rowEmployeeId = String(row[map.employee_id] || "").trim();
+
+    if (rowRequestId !== targetRequestId || rowEmployeeId !== targetEmployeeId) {
+      continue;
+    }
+
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const status = norm(rowObj.status || STATUS.PENDING);
+
+    if (status !== STATUS.PENDING) {
+      throw new Error("承認待ちの申請だけ修正できます");
+    }
+
+    const start = parseLocalDate(data.start_date);
+    const end = parseLocalDate(data.end_date);
+    const isHalf =
+      data.half_day === true ||
+      String(data.half_day || "").toLowerCase() === "true";
+    const effectiveEnd = isHalf ? start : end;
+
+    validateLeaveRequestDates(start, effectiveEnd, isHalf ? (data.half_type || "half") : "");
+
+    const days = isHalf ? 0.5 : calculateLeaveDays(start, effectiveEnd);
+    const employeeMap = getEmployeeDetailMap();
+    const fiscalStartMonth = getFiscalStartMonthByEmployeeId(targetEmployeeId, employeeMap);
+
+    rowObj.start_date = start;
+    rowObj.end_date = effectiveEnd;
+    rowObj.days = days;
+    rowObj.type = data.type || "paid_leave";
+    rowObj.half_day = isHalf ? (data.half_type || "") : "";
+    rowObj.reason = data.reason || "";
+    rowObj.reason_detail = data.reason_detail || "";
+    rowObj.status = STATUS.PENDING;
+    rowObj.year = getFiscalYearFromDateWithStart(start, fiscalStartMonth);
+    rowObj.updated_at = new Date();
+
+    updateSheetRowFast_(sheet, i + 1, objectToRow(rowObj, headerInfo.headers));
+
+    appendUsageLog({
+      request_id: targetRequestId,
+      action_type: "request_update",
+      operator_id: targetEmployeeId,
+      operator_name: "申請者",
+      comment: "Pending leave request updated"
+    });
+
+    clearAppCache();
+
+    return {
+      ok: true,
+      request_id: targetRequestId
+    };
+  }
+
+  throw new Error("対象の申請が見つかりません");
+}
+
+/* =========================
+   個人ページ用：承認待ち申請の取消
+========================= */
+function cancelPendingLeaveRequestForEmployee(requestId, employeeId) {
+  const targetRequestId = String(requestId || "").trim();
+  const targetEmployeeId = String(employeeId || "").trim();
+
+  if (!targetRequestId) throw new Error("requestId がありません");
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id",
+    "employee_id",
+    "status",
+    "updated_at"
+  ]);
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  if (lastRow <= 1) {
+    throw new Error("申請データがありません");
+  }
+
+  const values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  const map = headerInfo.map;
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const rowRequestId = String(row[map.request_id] || "").trim();
+    const rowEmployeeId = String(row[map.employee_id] || "").trim();
+
+    if (rowRequestId !== targetRequestId || rowEmployeeId !== targetEmployeeId) {
+      continue;
+    }
+
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const status = norm(rowObj.status || STATUS.PENDING);
+
+    if (status !== STATUS.PENDING) {
+      throw new Error("承認待ちの申請だけ取消できます");
+    }
+
+    rowObj.status = STATUS.CANCELED;
+    rowObj.updated_at = new Date();
+
+    updateSheetRowFast_(sheet, i + 1, objectToRow(rowObj, headerInfo.headers));
+
+    appendUsageLog({
+      request_id: targetRequestId,
+      action_type: "request_cancel",
+      operator_id: targetEmployeeId,
+      operator_name: "申請者",
+      comment: "Pending leave request canceled"
+    });
+
+    clearAppCache();
+
+    return {
+      ok: true,
+      request_id: targetRequestId
+    };
+  }
+
+  throw new Error("対象の申請が見つかりません");
+}
+
+/* =========================
    社員詳細MAP
 ========================= */
 function getEmployeeDetailMap() {
@@ -3580,11 +3752,14 @@ function getEmployeeLeaveHistoryForRequest(employeeId, limit) {
 
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
+    "request_id",
     "employee_id",
     "start_date",
     "end_date",
     "days",
     "half_day",
+    "reason",
+    "reason_detail",
     "status",
     "created_at"
   ]);
@@ -3612,11 +3787,14 @@ function getEmployeeLeaveHistoryForRequest(employeeId, limit) {
     const createdAt = row[map.created_at] ? new Date(row[map.created_at]) : startDate;
 
     rows.push({
+      requestId: String(row[map.request_id] || ""),
       startDate: startDate,
       endDate: endDate,
       createdAt: createdAt,
       days: row[map.days] || 0,
       halfDay: String(row[map.half_day] || ""),
+      reason: String(row[map.reason] || ""),
+      reasonDetail: String(row[map.reason_detail] || ""),
       status: norm(row[map.status] || STATUS.PENDING)
     });
   }
@@ -3632,20 +3810,28 @@ function getEmployeeLeaveHistoryForRequest(employeeId, limit) {
     const endText = formatDateValue(row.endDate);
 
     return {
+      request_id: row.requestId,
+      start_date: toDateKey(row.startDate),
+      end_date: toDateKey(row.endDate),
       date_label: startText !== endText ? startText + " 〜 " + endText : startText,
-      leave_type_label: getRequestHistoryLeaveTypeLabel_(row.halfDay),
+      leave_type_label: getRequestHistoryLeaveTypeLabel_(row.halfDay, row.startDate, row.endDate),
       days: row.days,
+      half_day: row.halfDay,
+      reason: row.reason,
+      reason_detail: row.reasonDetail,
       status: row.status,
-      status_label: getRequestHistoryStatusLabel_(row.status)
+      status_label: getRequestHistoryStatusLabel_(row.status),
+      can_edit: row.status === STATUS.PENDING
     };
   });
 }
 
-function getRequestHistoryLeaveTypeLabel_(halfDay) {
+function getRequestHistoryLeaveTypeLabel_(halfDay, startDate, endDate) {
   const value = norm(halfDay);
 
   if (value === "am") return "午前半休";
   if (value === "pm") return "午後半休";
+  if (toDateKey(startDate) !== toDateKey(endDate)) return "複数日有給";
 
   return "1日有給";
 }
@@ -3655,6 +3841,7 @@ function getRequestHistoryStatusLabel_(status) {
 
   if (value === STATUS.APPROVED) return "承認済み";
   if (value === STATUS.REJECTED) return "否認";
+  if (value === STATUS.CANCELED) return "取消済み";
 
   return "承認待ち";
 }

@@ -10,6 +10,8 @@ let companyCalendarMap = {};
 let selectedStartDateKey = "";
 let selectedEndDateKey = "";
 let loadedHistoryEmployeeId = "";
+let employeeLeaveHistoryRows = [];
+let editingRequestId = "";
 
 function isPersonalPageMode() {
   if (typeof INITIAL_EMPLOYEE_ID === "undefined") {
@@ -266,6 +268,7 @@ function escapeHtml(str) {
 ========================= */
 function selectEmployee(emp) {
   selectedEmployee = emp;
+  clearEditingRequestState();
 
   // 前の人の申請区分・選択状態をリセット
   currentRequestType = "";
@@ -366,6 +369,19 @@ function selectRequestType(type) {
   updateHiddenDateInputs();
   updateCalendarStatus();
   renderRequestCalendar();
+}
+
+function isEditingRequest() {
+  return !!String(editingRequestId || "").trim();
+}
+
+function clearEditingRequestState() {
+  editingRequestId = "";
+
+  const submitBtn = document.getElementById("submitBtn");
+  if (submitBtn && !submitBtn.disabled) {
+    submitBtn.textContent = "申請する";
+  }
 }
 
 /* =========================
@@ -710,34 +726,40 @@ function submitRequest() {
 
   const submitBtn = document.getElementById("submitBtn");
   const statusBox = document.getElementById("calendarStatus");
+  const isEditing = isEditingRequest();
+  const targetRequestId = editingRequestId;
+  const targetEmployeeId = selectedEmployee.employee_id;
 
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = "申請中...";
+    submitBtn.textContent = isEditing ? "保存中..." : "申請中...";
     submitBtn.classList.add("submitting");
     submitBtn.classList.remove("submitted");
   }
 
   if (statusBox) {
     statusBox.className = "calendar-selected-status ok";
-    statusBox.textContent = "申請を送信しています...";
+    statusBox.textContent = isEditing ? "修正を保存しています..." : "申請を送信しています...";
   }
 
-  google.script.run
+  const runner = google.script.run
     .withSuccessHandler(() => {
       if (statusBox) {
         statusBox.className = "calendar-selected-status success";
-        statusBox.textContent = "送信完了！申請を受け付けました。";
+        statusBox.textContent = isEditing ? "修正を保存しました。" : "送信完了！申請を受け付けました。";
       }
 
       if (submitBtn) {
-        submitBtn.textContent = "送信完了！";
+        submitBtn.textContent = isEditing ? "保存完了！" : "送信完了！";
         submitBtn.classList.remove("submitting");
         submitBtn.classList.add("submitted");
       }
 
+      clearEditingRequestState();
       resetSelectedDates();
       renderRequestCalendar();
+      loadedHistoryEmployeeId = "";
+      loadEmployeeLeaveHistory(targetEmployeeId);
 
       google.script.run
         .withSuccessHandler(data => {
@@ -812,7 +834,7 @@ function submitRequest() {
 }, 2500);
     })
     .withFailureHandler(err => {
-      console.error("submitLeaveRequest error:", err);
+      console.error(isEditing ? "updatePendingLeaveRequestForEmployee error:" : "submitLeaveRequest error:", err);
 
       let message = "エラーが発生しました";
 
@@ -833,11 +855,16 @@ function submitRequest() {
 
       if (submitBtn) {
         submitBtn.disabled = false;
-        submitBtn.textContent = "申請する";
+        submitBtn.textContent = isEditing ? "修正を保存" : "申請する";
         submitBtn.classList.remove("submitting", "submitted");
       }
-    })
-    .submitLeaveRequest(payload);
+    });
+
+  if (isEditing) {
+    runner.updatePendingLeaveRequestForEmployee(targetRequestId, targetEmployeeId, payload);
+  } else {
+    runner.submitLeaveRequest(payload);
+  }
 }
 
 /* =========================
@@ -880,6 +907,7 @@ function toggleHistorySection() {
 ========================= */
 function resetEmployeeLeaveHistory() {
   loadedHistoryEmployeeId = "";
+  employeeLeaveHistoryRows = [];
 
   const list = document.getElementById("leaveHistoryList");
   if (!list) return;
@@ -908,6 +936,7 @@ function loadEmployeeLeaveHistory(employeeId) {
     .withSuccessHandler(data => {
       loadedHistoryEmployeeId = targetEmployeeId;
       list.dataset.loaded = "true";
+      employeeLeaveHistoryRows = Array.isArray(data) ? data : [];
       renderEmployeeLeaveHistory(data);
     })
     .withFailureHandler(err => {
@@ -932,16 +961,132 @@ function renderEmployeeLeaveHistory(data) {
   data.forEach(item => {
     const row = document.createElement("div");
     row.className = "history-row";
+    const requestId = escapeHtml(item.request_id);
+    const actions = item.can_edit
+      ? `
+        <div class="history-actions">
+          <button type="button" class="history-action-btn" onclick="startEditLeaveRequest('${requestId}')">修正</button>
+          <button type="button" class="history-action-btn cancel" onclick="cancelLeaveRequestFromHistory('${requestId}')">取消</button>
+        </div>
+      `
+      : `<div class="history-actions history-actions-empty"></div>`;
 
     row.innerHTML = `
       <div class="history-date">${escapeHtml(item.date_label)}</div>
       <div class="history-type">${escapeHtml(item.leave_type_label)}</div>
       <div class="history-days">${escapeHtml(item.days)}日</div>
       <div class="history-status ${escapeHtml(item.status)}">${escapeHtml(item.status_label)}</div>
+      ${actions}
     `;
 
     list.appendChild(row);
   });
+}
+
+function startEditLeaveRequest(requestId) {
+  const targetId = String(requestId || "").trim();
+  const item = employeeLeaveHistoryRows.find(row => String(row.request_id || "").trim() === targetId);
+
+  if (!item || !item.can_edit) {
+    alert("承認待ちの申請だけ修正できます");
+    return;
+  }
+
+  editingRequestId = targetId;
+
+  if (item.half_day === "am") {
+    selectRequestType("half_am");
+  } else if (item.half_day === "pm") {
+    selectRequestType("half_pm");
+  } else if (item.start_date !== item.end_date) {
+    selectRequestType("multi_day");
+  } else {
+    selectRequestType("one_day");
+  }
+
+  selectedStartDateKey = item.start_date;
+  selectedEndDateKey = item.end_date;
+
+  if (selectedStartDateKey) {
+    calendarDisplayDate = new Date(selectedStartDateKey + "T00:00:00");
+  }
+
+  const reasonType = document.getElementById("reasonType");
+  if (reasonType) {
+    reasonType.value = item.reason || "";
+  }
+
+  const reasonDetail = document.getElementById("reasonDetail");
+  if (reasonDetail) {
+    reasonDetail.value = item.reason_detail || "";
+  }
+
+  handleReasonTypeChange();
+  updateHiddenDateInputs();
+  updateCalendarStatus();
+  renderRequestCalendar();
+
+  const submitBtn = document.getElementById("submitBtn");
+  if (submitBtn) {
+    submitBtn.textContent = "修正を保存";
+  }
+
+  const requestScreen = document.getElementById("requestScreen");
+  if (requestScreen) {
+    requestScreen.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function cancelLeaveRequestFromHistory(requestId) {
+  if (!selectedEmployee) {
+    alert("社員を選択してください");
+    return;
+  }
+
+  const targetId = String(requestId || "").trim();
+  const item = employeeLeaveHistoryRows.find(row => String(row.request_id || "").trim() === targetId);
+
+  if (!item || !item.can_edit) {
+    alert("承認待ちの申請だけ取消できます");
+    return;
+  }
+
+  if (!confirm("この申請を取消しますか？")) {
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(() => {
+      if (editingRequestId === targetId) {
+        clearEditingRequestState();
+        resetSelectedDates();
+        updateHiddenDateInputs();
+        updateCalendarStatus();
+        renderRequestCalendar();
+      }
+
+      loadedHistoryEmployeeId = "";
+      loadEmployeeLeaveHistory(selectedEmployee.employee_id);
+
+      const statusBox = document.getElementById("calendarStatus");
+      if (statusBox) {
+        statusBox.className = "calendar-selected-status success";
+        statusBox.textContent = "申請を取消しました。";
+      }
+    })
+    .withFailureHandler(err => {
+      console.error("cancelPendingLeaveRequestForEmployee error:", err);
+
+      let message = "取消でエラーが発生しました";
+      if (err && err.message) {
+        message = err.message;
+      } else if (typeof err === "string") {
+        message = err;
+      }
+
+      alert(message);
+    })
+    .cancelPendingLeaveRequestForEmployee(targetId, selectedEmployee.employee_id);
 }
 
 window.addEventListener("DOMContentLoaded", initPage);

@@ -751,7 +751,8 @@ body {
 
 .history-row {
   display: grid;
-  grid-template-columns: 1.4fr 0.8fr 0.6fr 0.8fr;
+  grid-template-columns: minmax(0, 1.4fr) 0.8fr 0.6fr 0.8fr auto;
+  align-items: center;
   gap: 8px;
 
   padding: 10px 12px;
@@ -783,6 +784,42 @@ body {
 
 .history-status.rejected {
   background: var(--accent-red);
+}
+
+.history-status.canceled {
+  background: #8b98a5;
+}
+
+.history-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 96px;
+}
+
+.history-action-btn {
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #ffffff;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.history-action-btn.cancel {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+.history-action-btn:hover {
+  background: #eef9fc;
+}
+
+.history-action-btn.cancel:hover {
+  background: #fff0f0;
 }
 
 /* =========================
@@ -1062,6 +1099,12 @@ body.personal-page-mode #requestScreen {
   .history-row {
     grid-template-columns: 1fr 0.8fr;
     font-size: 12px;
+  }
+
+  .history-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    min-width: 0;
   }
 }
 
