@@ -126,6 +126,10 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+function includeTemplate(filename) {
+  return HtmlService.createTemplateFromFile(filename).evaluate().getContent();
+}
+
 /* =========================
    シート取得
 ========================= */
@@ -4940,6 +4944,206 @@ function getCompanyCalendarMapForRequest() {
   });
 
   return result;
+}
+
+/* =========================
+   company_calendar 管理
+========================= */
+function ensureCompanyCalendarNotesColumn_() {
+  const sheet = getSheet("company_calendar");
+  const headerInfo = requireHeaders(sheet, ["date", "type"]);
+
+  if (!("notes" in headerInfo.map)) {
+    sheet.getRange(1, headerInfo.headers.length + 1).setValue("notes");
+  }
+
+  requireHeaders(sheet, ["date", "type", "notes"]);
+  return sheet;
+}
+
+function getCompanyCalendarDateRowMap_(sheet, headerInfo) {
+  const data = sheet.getDataRange().getValues();
+  const map = {};
+
+  if (data.length <= 1) return map;
+
+  data.slice(1).forEach((row, index) => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    if (!rowObj.date) return;
+    map[toDateKey(rowObj.date)] = {
+      rowNumber: index + 2,
+      row,
+      rowObj
+    };
+  });
+
+  return map;
+}
+
+function getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth) {
+  const year = Number(fiscalYear || 0);
+  const startMonth = Number(fiscalStartMonth || 4);
+
+  if (!year) throw new Error("年度を入力してください");
+  if (startMonth < 1 || startMonth > 12) {
+    throw new Error("年度開始月は1〜12で入力してください");
+  }
+
+  const range = getFiscalYearRangeWithStart(year, startMonth);
+  return {
+    fiscal_year: year,
+    fiscal_start_month: startMonth,
+    start: range.start,
+    end: range.end,
+    start_date: toDateKey(range.start),
+    end_date: toDateKey(range.end)
+  };
+}
+
+function getCompanyCalendarRowsForAdmin(fiscalYear, fiscalStartMonth) {
+  const period = getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth);
+  const sheet = ensureCompanyCalendarNotesColumn_();
+  const headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
+  const rowMap = getCompanyCalendarDateRowMap_(sheet, headerInfo);
+  const rows = [];
+  let cursor = new Date(period.start);
+
+  while (cursor <= period.end) {
+    const dateKey = toDateKey(cursor);
+    const existing = rowMap[dateKey];
+    const type = cursor.getDay() === 0
+      ? CALENDAR_TYPE.HOLIDAY
+      : (existing ? norm(existing.rowObj.type) : CALENDAR_TYPE.WORKDAY);
+
+    rows.push({
+      date: dateKey,
+      day_of_week: ["日", "月", "火", "水", "木", "金", "土"][cursor.getDay()],
+      type: type || CALENDAR_TYPE.WORKDAY,
+      notes: existing ? String(existing.rowObj.notes || "") : "",
+      registered: !!existing
+    });
+
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return {
+    fiscal_year: period.fiscal_year,
+    fiscal_start_month: period.fiscal_start_month,
+    start_date: period.start_date,
+    end_date: period.end_date,
+    rows
+  };
+}
+
+function generateCompanyCalendarFiscalYear(fiscalYear, fiscalStartMonth) {
+  const period = getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth);
+  const sheet = ensureCompanyCalendarNotesColumn_();
+  const headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
+  const rowMap = getCompanyCalendarDateRowMap_(sheet, headerInfo);
+  const rowsToAppend = [];
+  let skippedCount = 0;
+  let cursor = new Date(period.start);
+
+  while (cursor <= period.end) {
+    const dateKey = toDateKey(cursor);
+
+    if (rowMap[dateKey]) {
+      skippedCount++;
+      cursor.setDate(cursor.getDate() + 1);
+      continue;
+    }
+
+    const rowObj = createEmptyRowObject(headerInfo.headers);
+    rowObj.date = new Date(cursor);
+    rowObj.type = cursor.getDay() === 0
+      ? CALENDAR_TYPE.HOLIDAY
+      : CALENDAR_TYPE.WORKDAY;
+    rowObj.notes = "";
+    rowsToAppend.push(objectToRow(rowObj, headerInfo.headers));
+
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  if (rowsToAppend.length > 0) {
+    sheet
+      .getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headerInfo.headers.length)
+      .setValues(rowsToAppend);
+  }
+
+  clearAppCache();
+
+  return {
+    ok: true,
+    fiscal_year: period.fiscal_year,
+    fiscal_start_month: period.fiscal_start_month,
+    start_date: period.start_date,
+    end_date: period.end_date,
+    added_count: rowsToAppend.length,
+    skipped_count: skippedCount
+  };
+}
+
+function updateCompanyCalendarRowsForAdmin(rows) {
+  if (!Array.isArray(rows)) {
+    throw new Error("更新データが不正です");
+  }
+
+  const sheet = ensureCompanyCalendarNotesColumn_();
+  const headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
+  const rowMap = getCompanyCalendarDateRowMap_(sheet, headerInfo);
+  const validTypes = [
+    CALENDAR_TYPE.WORKDAY,
+    CALENDAR_TYPE.HOLIDAY,
+    CALENDAR_TYPE.NO_LEAVE
+  ];
+  let updatedCount = 0;
+  let addedCount = 0;
+
+  rows.forEach(item => {
+    const dateKey = toDateKey(item.date);
+    const type = norm(item.type);
+
+    if (validTypes.indexOf(type) === -1) {
+      throw new Error(dateKey + " の区分が不正です");
+    }
+
+    const notes = String(item.notes || "").trim();
+    const existing = rowMap[dateKey];
+    const rowObj = existing
+      ? rowToObject(existing.row, headerInfo.headers)
+      : createEmptyRowObject(headerInfo.headers);
+
+    rowObj.date = parseLocalDate(dateKey);
+    rowObj.type = type;
+    rowObj.notes = notes;
+
+    if (existing) {
+      updateSheetRowFast_(sheet, existing.rowNumber, objectToRow(rowObj, headerInfo.headers));
+      updatedCount++;
+    } else {
+      appendRowFast_(sheet, objectToRow(rowObj, headerInfo.headers));
+      addedCount++;
+    }
+  });
+
+  clearAppCache();
+
+  return {
+    ok: true,
+    updated_count: updatedCount,
+    added_count: addedCount
+  };
+}
+
+function overwriteCompanyCalendarFiscalYear_(fiscalYear, fiscalStartMonth) {
+  const data = getCompanyCalendarRowsForAdmin(fiscalYear, fiscalStartMonth);
+  const rows = data.rows.map(row => ({
+    date: row.date,
+    type: row.day_of_week === "日" ? CALENDAR_TYPE.HOLIDAY : CALENDAR_TYPE.WORKDAY,
+    notes: row.notes || ""
+  }));
+
+  return updateCompanyCalendarRowsForAdmin(rows);
 }
 
 /* =========================

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <?!= include('admin-style'); ?>
+  <?!= include('style'); ?>
+</head>
+
+<body>
+  <?!= includeTemplate('nav'); ?>
+
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <h1 class="login-title">年度・会社カレンダー設定</h1>
+      <p class="login-subtitle">管理者を選択してPINを入力してください</p>
+
+      <div class="field">
+        <label for="adminUserSelect">管理者</label>
+        <select id="adminUserSelect">
+          <option value="">読み込み中...</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="adminPinInput">PIN</label>
+        <input type="password" id="adminPinInput" inputmode="numeric" placeholder="PINを入力">
+      </div>
+
+      <button class="btn btn-search login-btn" type="button" onclick="loginAdmin()">
+        ログイン
+      </button>
+
+      <div id="loginMessage" class="login-message"></div>
+    </div>
+  </div>
+
+  <div id="adminApp" class="page admin-app-hidden">
+    <div id="loginUserBar" class="login-user-bar"></div>
+
+    <div class="header">
+      <h1 class="title">年度・会社カレンダー設定</h1>
+      <p class="subtitle">年度ごとの出勤日・会社休日・有給取得不可日を管理します。</p>
+    </div>
+
+    <section class="admin-section company-calendar-section">
+      <div class="section-heading-row">
+        <div>
+          <div class="section-kicker">会社休日</div>
+          <h2 class="section-heading">会社カレンダー設定</h2>
+          <p class="section-description">
+            年度ごとの出勤日・会社休日・有給取得不可日を設定します。
+          </p>
+        </div>
+      </div>
+
+      <div class="search-card company-calendar-card">
+        <div class="calendar-admin-controls">
+          <div class="field">
+            <label for="companyCalendarFiscalYear">年度</label>
+            <input type="number" id="companyCalendarFiscalYear" placeholder="例: 2026">
+          </div>
+
+          <div class="field">
+            <label for="companyCalendarFiscalStartMonth">年度開始月</label>
+            <select id="companyCalendarFiscalStartMonth">
+              <option value="1">1月</option>
+              <option value="2">2月</option>
+              <option value="3">3月</option>
+              <option value="4">4月</option>
+              <option value="5">5月</option>
+              <option value="6">6月</option>
+              <option value="7">7月</option>
+              <option value="8">8月</option>
+              <option value="9">9月</option>
+              <option value="10">10月</option>
+              <option value="11">11月</option>
+              <option value="12">12月</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="companyCalendarPeriod">生成期間</label>
+            <input type="text" id="companyCalendarPeriod" readonly>
+          </div>
+
+          <div class="calendar-admin-actions">
+            <button class="btn btn-search" type="button" onclick="generateCompanyCalendarForAdmin()">
+              生成する
+            </button>
+            <button class="btn btn-reset" type="button" onclick="loadCompanyCalendarAdminRows()">
+              一覧を表示
+            </button>
+          </div>
+        </div>
+
+        <div id="companyCalendarMessage" class="company-calendar-message"></div>
+
+        <div class="company-calendar-list-header">
+          <div class="search-title">カレンダー一覧</div>
+          <button class="btn btn-export-yearly" type="button" onclick="saveCompanyCalendarAdminRows()">
+            まとめて保存
+          </button>
+        </div>
+
+        <div id="companyCalendarTable" class="company-calendar-table-wrap">
+          <div class="empty-message">年度と年度開始月を確認して「一覧を表示」を押してください</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <?!= include('calendar-admin-script'); ?>
+</body>
+</html>

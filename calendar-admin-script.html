@@ -1,0 +1,394 @@
+<script>
+const ADMIN_LOGIN_KEY = "paid_leave_admin_login";
+
+let currentAdminUser = null;
+
+window.addEventListener("DOMContentLoaded", () => {
+  initAdminLogin();
+});
+
+function initAdminLogin() {
+  const saved = localStorage.getItem(ADMIN_LOGIN_KEY);
+
+  if (saved) {
+    try {
+      currentAdminUser = JSON.parse(saved);
+
+      if (currentAdminUser && currentAdminUser.admin_id) {
+        showAdminApp();
+        return;
+      }
+    } catch (e) {
+      localStorage.removeItem(ADMIN_LOGIN_KEY);
+    }
+  }
+
+  showLoginScreen();
+  loadAdminUsersForLogin();
+}
+
+function showLoginScreen() {
+  const loginScreen = document.getElementById("loginScreen");
+  const adminApp = document.getElementById("adminApp");
+
+  if (loginScreen) loginScreen.style.display = "flex";
+  if (adminApp) adminApp.classList.add("admin-app-hidden");
+}
+
+function showAdminApp() {
+  const loginScreen = document.getElementById("loginScreen");
+  const adminApp = document.getElementById("adminApp");
+
+  if (loginScreen) loginScreen.style.display = "none";
+  if (adminApp) adminApp.classList.remove("admin-app-hidden");
+
+  renderLoginUserBar();
+  setDefaultCompanyCalendarValues();
+  bindCompanyCalendarAdminEvents();
+}
+
+function renderLoginUserBar() {
+  const bar = document.getElementById("loginUserBar");
+  if (!bar) return;
+
+  const name = currentAdminUser ? currentAdminUser.admin_name : "";
+  bar.innerHTML = `
+    <span>ログイン中：${escapeHtml(name)}</span>
+    <button class="logout-btn" type="button" onclick="logoutAdmin()">ログアウト</button>
+  `;
+}
+
+function loadAdminUsersForLogin() {
+  const select = document.getElementById("adminUserSelect");
+  const message = document.getElementById("loginMessage");
+
+  google.script.run
+    .withSuccessHandler(users => {
+      if (!select) return;
+
+      select.innerHTML = `<option value="">選択してください</option>`;
+
+      (users || []).forEach(user => {
+        const option = document.createElement("option");
+        option.value = user.admin_id;
+        option.textContent = `${user.admin_name}（${user.admin_id}）`;
+        select.appendChild(option);
+      });
+    })
+    .withFailureHandler(err => {
+      console.error("管理者一覧取得エラー:", err);
+      if (message) message.textContent = "管理者一覧の取得でエラーが発生しました。";
+    })
+    .getAdminUsersForLogin();
+}
+
+function loginAdmin() {
+  const adminId = document.getElementById("adminUserSelect").value;
+  const pin = document.getElementById("adminPinInput").value;
+  const message = document.getElementById("loginMessage");
+
+  if (!adminId || !pin) {
+    if (message) message.textContent = "管理者とPINを入力してください。";
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(user => {
+      currentAdminUser = {
+        admin_id: user.admin_id,
+        admin_name: user.admin_name
+      };
+      localStorage.setItem(ADMIN_LOGIN_KEY, JSON.stringify(currentAdminUser));
+      showAdminApp();
+    })
+    .withFailureHandler(err => {
+      console.error("ログインエラー:", err);
+      if (message) {
+        message.textContent = err && err.message
+          ? err.message
+          : "ログインに失敗しました。";
+      }
+    })
+    .verifyAdminLogin(adminId, pin);
+}
+
+function logoutAdmin() {
+  localStorage.removeItem(ADMIN_LOGIN_KEY);
+  currentAdminUser = null;
+  showLoginScreen();
+}
+
+function setDefaultCompanyCalendarValues() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const fiscalYear = month >= 4 ? year : year - 1;
+  const fiscalYearEl = document.getElementById("companyCalendarFiscalYear");
+  const fiscalStartMonthEl = document.getElementById("companyCalendarFiscalStartMonth");
+
+  if (fiscalYearEl) fiscalYearEl.value = fiscalYear;
+  if (fiscalStartMonthEl) fiscalStartMonthEl.value = "4";
+  updateCompanyCalendarPeriodText();
+}
+
+function toInputDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatDisplayDate(value) {
+  if (!value) return "";
+  return String(value).replace(/-/g, "/");
+}
+
+function escapeHtml(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function showLoading(targetId, text) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.innerHTML = `
+    <div class="state-message loading-state">
+      <div class="state-title">${escapeHtml(text || "読み込み中...")}</div>
+      <div class="state-sub">少しお待ちください。</div>
+    </div>
+  `;
+}
+
+function showError(targetId, text) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.innerHTML = `
+    <div class="state-message error-state">
+      <div class="state-title">${escapeHtml(text || "エラーが発生しました")}</div>
+      <div class="state-sub">時間をおいて再度お試しください。</div>
+    </div>
+  `;
+}
+
+function bindCompanyCalendarAdminEvents() {
+  const fiscalYear = document.getElementById("companyCalendarFiscalYear");
+  const fiscalStartMonth = document.getElementById("companyCalendarFiscalStartMonth");
+
+  if (fiscalYear) fiscalYear.oninput = updateCompanyCalendarPeriodText;
+  if (fiscalStartMonth) fiscalStartMonth.onchange = updateCompanyCalendarPeriodText;
+}
+
+function getCompanyCalendarAdminParams() {
+  const fiscalYear = Number(document.getElementById("companyCalendarFiscalYear").value || 0);
+  const fiscalStartMonth = Number(document.getElementById("companyCalendarFiscalStartMonth").value || 4);
+
+  if (!fiscalYear) {
+    throw new Error("年度を入力してください。");
+  }
+
+  if (fiscalStartMonth < 1 || fiscalStartMonth > 12) {
+    throw new Error("年度開始月を選択してください。");
+  }
+
+  return { fiscalYear, fiscalStartMonth };
+}
+
+function getCompanyCalendarPeriodLabel(fiscalYear, fiscalStartMonth) {
+  if (!fiscalYear || !fiscalStartMonth) return "";
+
+  const start = new Date(Number(fiscalYear), Number(fiscalStartMonth) - 1, 1);
+  const end = new Date(Number(fiscalYear) + 1, Number(fiscalStartMonth) - 1, 0);
+
+  return `${formatDisplayDate(toInputDate(start))}〜${formatDisplayDate(toInputDate(end))}`;
+}
+
+function updateCompanyCalendarPeriodText() {
+  const period = document.getElementById("companyCalendarPeriod");
+  if (!period) return;
+
+  const fiscalYear = Number(document.getElementById("companyCalendarFiscalYear").value || 0);
+  const fiscalStartMonth = Number(document.getElementById("companyCalendarFiscalStartMonth").value || 4);
+  period.value = getCompanyCalendarPeriodLabel(fiscalYear, fiscalStartMonth);
+}
+
+function showCompanyCalendarMessage(message, type) {
+  const el = document.getElementById("companyCalendarMessage");
+  if (!el) return;
+
+  if (!message) {
+    el.innerHTML = "";
+    return;
+  }
+
+  const cls = type === "error" ? "message error" : "message success";
+  el.innerHTML = `<div class="${cls}">${escapeHtml(message)}</div>`;
+}
+
+function loadCompanyCalendarAdminRows() {
+  let params;
+
+  try {
+    params = getCompanyCalendarAdminParams();
+  } catch (err) {
+    showCompanyCalendarMessage(err.message, "error");
+    return;
+  }
+
+  showCompanyCalendarMessage("", "");
+  showLoading("companyCalendarTable", "会社カレンダーを読み込んでいます...");
+
+  google.script.run
+    .withSuccessHandler(data => {
+      renderCompanyCalendarAdminRows(data);
+    })
+    .withFailureHandler(err => {
+      console.error("会社カレンダー取得エラー:", err);
+      showError(
+        "companyCalendarTable",
+        err && err.message ? err.message : "会社カレンダーの取得でエラーが発生しました。"
+      );
+    })
+    .getCompanyCalendarRowsForAdmin(params.fiscalYear, params.fiscalStartMonth);
+}
+
+function generateCompanyCalendarForAdmin() {
+  let params;
+
+  try {
+    params = getCompanyCalendarAdminParams();
+  } catch (err) {
+    showCompanyCalendarMessage(err.message, "error");
+    return;
+  }
+
+  const period = getCompanyCalendarPeriodLabel(params.fiscalYear, params.fiscalStartMonth);
+  const ok = confirm(
+    `${params.fiscalYear}年度（${params.fiscalStartMonth}月開始）の会社カレンダーを生成します。\n` +
+    `期間: ${period}\n\n` +
+    "既に登録済みの日付は上書きせず、未登録の日付だけ追加します。"
+  );
+
+  if (!ok) return;
+
+  showCompanyCalendarMessage("会社カレンダーを生成しています...", "");
+
+  google.script.run
+    .withSuccessHandler(res => {
+      showCompanyCalendarMessage(
+        `生成しました。追加件数: ${res.added_count || 0}件 / 既存のためスキップ: ${res.skipped_count || 0}件`,
+        "success"
+      );
+      loadCompanyCalendarAdminRows();
+    })
+    .withFailureHandler(err => {
+      console.error("会社カレンダー生成エラー:", err);
+      showCompanyCalendarMessage(
+        err && err.message ? err.message : "会社カレンダーの生成でエラーが発生しました。",
+        "error"
+      );
+    })
+    .generateCompanyCalendarFiscalYear(params.fiscalYear, params.fiscalStartMonth);
+}
+
+function renderCompanyCalendarAdminRows(data) {
+  const container = document.getElementById("companyCalendarTable");
+  if (!container) return;
+
+  const rows = data && Array.isArray(data.rows) ? data.rows : [];
+
+  if (rows.length === 0) {
+    container.innerHTML = `<div class="empty-message">表示できる日付がありません。</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="company-calendar-table">
+      <thead>
+        <tr>
+          <th>日付</th>
+          <th>曜日</th>
+          <th>区分</th>
+          <th>備考</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(renderCompanyCalendarAdminRow).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderCompanyCalendarAdminRow(row) {
+  const date = escapeHtml(row.date || "");
+  const day = escapeHtml(row.day_of_week || "");
+  const type = String(row.type || "workday");
+  const notes = escapeHtml(row.notes || "");
+  const isSunday = row.day_of_week === "日";
+  const sundayClass = isSunday ? " sunday-row" : "";
+  const disabled = isSunday ? " disabled" : "";
+
+  return `
+    <tr class="company-calendar-row${sundayClass}" data-date="${date}" data-day="${day}">
+      <td class="calendar-date-cell">${formatDisplayDate(date)}</td>
+      <td>${day}</td>
+      <td>
+        <select class="company-calendar-type"${disabled}>
+          <option value="workday"${type === "workday" ? " selected" : ""}>出勤日</option>
+          <option value="holiday"${type === "holiday" ? " selected" : ""}>会社休日</option>
+          <option value="no_leave"${type === "no_leave" ? " selected" : ""}>有給取得不可日</option>
+        </select>
+      </td>
+      <td>
+        <input class="company-calendar-notes" type="text" value="${notes}" placeholder="備考">
+      </td>
+    </tr>
+  `;
+}
+
+function saveCompanyCalendarAdminRows() {
+  const rowEls = Array.from(document.querySelectorAll(".company-calendar-row"));
+
+  if (rowEls.length === 0) {
+    showCompanyCalendarMessage("保存するカレンダー行がありません。", "error");
+    return;
+  }
+
+  const ok = confirm("表示中の会社カレンダーをまとめて保存します。よろしいですか。");
+  if (!ok) return;
+
+  const rows = rowEls.map(rowEl => {
+    const day = rowEl.getAttribute("data-day");
+    const typeEl = rowEl.querySelector(".company-calendar-type");
+    const notesEl = rowEl.querySelector(".company-calendar-notes");
+
+    return {
+      date: rowEl.getAttribute("data-date"),
+      type: day === "日" ? "holiday" : typeEl.value,
+      notes: notesEl.value
+    };
+  });
+
+  showCompanyCalendarMessage("会社カレンダーを保存しています...", "");
+
+  google.script.run
+    .withSuccessHandler(res => {
+      showCompanyCalendarMessage(
+        `保存しました。更新: ${res.updated_count || 0}件 / 追加: ${res.added_count || 0}件`,
+        "success"
+      );
+      loadCompanyCalendarAdminRows();
+    })
+    .withFailureHandler(err => {
+      console.error("会社カレンダー保存エラー:", err);
+      showCompanyCalendarMessage(
+        err && err.message ? err.message : "会社カレンダーの保存でエラーが発生しました。",
+        "error"
+      );
+    })
+    .updateCompanyCalendarRowsForAdmin(rows);
+}
+</script>
