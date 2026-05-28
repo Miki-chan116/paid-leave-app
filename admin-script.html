@@ -25,10 +25,15 @@ function setDefaultReportValues() {
   document.getElementById("yearlyFiscalYear").value = fiscalYear;
 }
 
-function setDefaultSearchDates() {
+function setDefaultSearchDates(status) {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const isPending = String(status || "pending") === "pending";
+  const start = isPending
+    ? new Date(now.getFullYear(), now.getMonth(), 1)
+    : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = isPending
+    ? new Date(now.getFullYear(), now.getMonth() + 2, 0)
+    : new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   document.getElementById("searchStartDate").value = toInputDate(start);
   document.getElementById("searchEndDate").value = toInputDate(end);
@@ -54,6 +59,10 @@ function updateCurrentRangeText(text) {
 function updateSearchHint(text) {
   const el = document.getElementById("searchHint");
   if (el) el.textContent = text || "前月＋当月";
+}
+
+function getDefaultRangeLabel(status) {
+  return String(status || "") === "pending" ? "当月＋翌月" : "前月＋当月";
 }
 
 function setActiveTab(tabName) {
@@ -273,9 +282,17 @@ function loadDashboardSummary() {
       const pending = document.getElementById("pendingCount");
       const approved = document.getElementById("approvedCount");
       const rejected = document.getElementById("rejectedCount");
+      const pendingSub = document.querySelector(".pending-card .dashboard-sub");
 
       if (pending) {
         pending.textContent = summary.pending || 0;
+      }
+
+      if (pendingSub) {
+        const outOfRange = Number(summary.pending_out_of_range || 0);
+        pendingSub.textContent = outOfRange > 0
+          ? `期間外にも承認待ちがあります（${outOfRange}件）`
+          : "当月＋翌月の未対応";
       }
 
       if (approved) {
@@ -313,18 +330,19 @@ function loadRequests(status) {
   document.getElementById("logView").style.display = "none";
 
   setActiveTab(status);
-  setDefaultSearchDates();
+  setDefaultSearchDates(status);
   document.getElementById("searchKeyword").value = "";
   document.getElementById("searchStatus").value = status;
   loadDashboardSummary();
 
   const start = document.getElementById("searchStartDate").value;
   const end = document.getElementById("searchEndDate").value;
+  const rangeLabel = getDefaultRangeLabel(status);
 
   updateCurrentRangeText(
-    `現在表示中：${getStatusLabel(status)} / 前月＋当月（${formatDisplayDate(start)} ～ ${formatDisplayDate(end)}）`
+    `現在表示中：${getStatusLabel(status)} / ${rangeLabel}（${formatDisplayDate(start)} ～ ${formatDisplayDate(end)}）`
   );
-  updateSearchHint(`${getStatusLabel(status)} / 前月＋当月`);
+  updateSearchHint(`${getStatusLabel(status)} / ${rangeLabel}`);
 
   showLoading("requestView", "申請データを読み込み中です...");
 
@@ -375,9 +393,11 @@ function searchRequestList() {
 }
 
 function resetSearch() {
+  const resetStatus = currentStatus === "all" ? "pending" : currentStatus;
+
   document.getElementById("searchKeyword").value = "";
-  document.getElementById("searchStatus").value = currentStatus === "all" ? "pending" : currentStatus;
-  setDefaultSearchDates();
+  document.getElementById("searchStatus").value = resetStatus;
+  setDefaultSearchDates(resetStatus);
 
   if (currentStatus === "approved" || currentStatus === "rejected") {
     loadRequests(currentStatus);
@@ -411,8 +431,9 @@ function renderCards(data) {
   }
 
   if (data.length === 0) {
+    const rangeLabel = getDefaultRangeLabel(currentStatus);
     container.innerHTML = currentMode === "search"
-      ? renderEmptyState("検索条件に一致する申請はありません。", "条件を変えるか、前月＋当月に戻してください。")
+      ? renderEmptyState("検索条件に一致する申請はありません。", `条件を変えるか、${rangeLabel}に戻してください。`)
       : renderEmptyState("現在表示できる申請はありません。", "別のステータスを確認するか、検索条件を変更してください。");
     return;
   }

@@ -414,6 +414,14 @@ function getAdminRecentRange() {
   return { start, end };
 }
 
+function getAdminPendingFocusRange() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  const end = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+
+  return { start, end };
+}
+
 function isRequestInDateRange(rowObj, start, end) {
   if (!rowObj.start_date || !rowObj.end_date) return false;
 
@@ -3614,8 +3622,12 @@ function getFiscalStartMonthByEmployeeId(employeeId, employeeMap) {
 ========================= */
 function getRequestsByStatus(status) {
   if (norm(status) === STATUS.PENDING) {
+    const pendingRange = getAdminPendingFocusRange();
+
     return searchRequests({
-      status: status
+      status: status,
+      start_date: formatDateValue(pendingRange.start),
+      end_date: formatDateValue(pendingRange.end)
     });
   }
 
@@ -5911,6 +5923,7 @@ function addDaysLocal_(dateValue, days) {
 
 function getAdminDashboardSummary() {
   const range = getAdminRecentRange();
+  const pendingRange = getAdminPendingFocusRange();
 
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
@@ -5923,6 +5936,7 @@ function getAdminDashboardSummary() {
 
   const result = {
     pending: 0,
+    pending_out_of_range: 0,
     approved: 0,
     rejected: 0
   };
@@ -5934,9 +5948,18 @@ function getAdminDashboardSummary() {
     const status = norm(rowObj.status);
 
     if (!rowObj.start_date || !rowObj.end_date) return;
+
+    if (status === STATUS.PENDING) {
+      if (isRequestInDateRange(rowObj, pendingRange.start, pendingRange.end)) {
+        result.pending++;
+      } else {
+        result.pending_out_of_range++;
+      }
+      return;
+    }
+
     if (!isRequestInDateRange(rowObj, range.start, range.end)) return;
 
-    if (status === STATUS.PENDING) result.pending++;
     if (status === STATUS.APPROVED) result.approved++;
     if (status === STATUS.REJECTED) result.rejected++;
   });
