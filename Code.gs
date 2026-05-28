@@ -3669,61 +3669,126 @@ function getPendingRequestsForAdminLight() {
     "name"
   ]);
 
-  const employeeValues = employeeSheet.getDataRange().getValues();
+  const employeeColumns = [
+    "employee_id",
+    "name",
+    "display_name",
+    "display_employee_id",
+    "company_name",
+    "department"
+  ].filter(key => key in employeeHeaderInfo.map);
+  const employeeMinCol = Math.min(...employeeColumns.map(key => employeeHeaderInfo.map[key]));
+  const employeeMaxCol = Math.max(...employeeColumns.map(key => employeeHeaderInfo.map[key]));
+  const employeeLastRow = employeeSheet.getLastRow();
+  const employeeValues = employeeLastRow > 1
+    ? employeeSheet
+      .getRange(2, employeeMinCol + 1, employeeLastRow - 1, employeeMaxCol - employeeMinCol + 1)
+      .getValues()
+    : [];
+  const empIdx = key =>
+    key in employeeHeaderInfo.map ? employeeHeaderInfo.map[key] - employeeMinCol : -1;
   const employeeMap = {};
+  const empEmployeeIdIdx = empIdx("employee_id");
+  const empNameIdx = empIdx("name");
+  const empDisplayNameIdx = empIdx("display_name");
+  const empDisplayIdIdx = empIdx("display_employee_id");
+  const empCompanyNameIdx = empIdx("company_name");
+  const empDepartmentIdx = empIdx("department");
 
-  if (employeeValues.length > 1) {
-    employeeValues.slice(1).forEach(row => {
-      const rowObj = rowToObject(row, employeeHeaderInfo.headers);
-      const employeeId = String(rowObj.employee_id || "").trim();
-      if (!employeeId) return;
+  employeeValues.forEach(row => {
+    const employeeId = String(row[empEmployeeIdIdx] || "").trim();
+    if (!employeeId) return;
 
-      employeeMap[employeeId] = {
-        display_employee_id: String(rowObj.display_employee_id || "").trim(),
-        employee_name: String(rowObj.display_name || rowObj.name || employeeId).trim(),
-        company_name: String(rowObj.company_name || "").trim(),
-        department: String(rowObj.department || "").trim()
-      };
-    });
-  }
+    employeeMap[employeeId] = {
+      display_employee_id: empDisplayIdIdx >= 0 ? String(row[empDisplayIdIdx] || "").trim() : "",
+      employee_name: String(
+        (empDisplayNameIdx >= 0 ? row[empDisplayNameIdx] : "") ||
+        row[empNameIdx] ||
+        employeeId
+      ).trim(),
+      company_name: empCompanyNameIdx >= 0 ? String(row[empCompanyNameIdx] || "").trim() : "",
+      department: empDepartmentIdx >= 0 ? String(row[empDepartmentIdx] || "").trim() : ""
+    };
+  });
 
-  const values = requestSheet.getDataRange().getValues();
-  if (values.length <= 1) return [];
+  const requestColumns = [
+    "request_id",
+    "employee_id",
+    "request_date",
+    "start_date",
+    "end_date",
+    "days",
+    "type",
+    "half_day",
+    "reason",
+    "reason_detail",
+    "status",
+    "year",
+    "created_at",
+    "updated_at"
+  ];
+  const requestMinCol = Math.min(...requestColumns.map(key => requestHeaderInfo.map[key]));
+  const requestMaxCol = Math.max(...requestColumns.map(key => requestHeaderInfo.map[key]));
+  const requestLastRow = requestSheet.getLastRow();
+  const values = requestLastRow > 1
+    ? requestSheet
+      .getRange(2, requestMinCol + 1, requestLastRow - 1, requestMaxCol - requestMinCol + 1)
+      .getValues()
+    : [];
 
-  return values.slice(1)
+  if (values.length === 0) return [];
+
+  const reqIdx = key => requestHeaderInfo.map[key] - requestMinCol;
+  const requestIdIdx = reqIdx("request_id");
+  const employeeIdIdx = reqIdx("employee_id");
+  const requestDateIdx = reqIdx("request_date");
+  const startDateIdx = reqIdx("start_date");
+  const endDateIdx = reqIdx("end_date");
+  const daysIdx = reqIdx("days");
+  const typeIdx = reqIdx("type");
+  const halfDayIdx = reqIdx("half_day");
+  const reasonIdx = reqIdx("reason");
+  const reasonDetailIdx = reqIdx("reason_detail");
+  const statusIdx = reqIdx("status");
+  const yearIdx = reqIdx("year");
+  const createdAtIdx = reqIdx("created_at");
+  const updatedAtIdx = reqIdx("updated_at");
+
+  return values
     .map(row => {
-      const rowObj = rowToObject(row, requestHeaderInfo.headers);
-      const rowStatus = norm(rowObj.status || STATUS.PENDING);
+      const rowStatus = norm(row[statusIdx] || STATUS.PENDING);
+      const startDate = row[startDateIdx];
+      const endDate = row[endDateIdx];
 
       if (rowStatus !== STATUS.PENDING) return null;
-      if (!rowObj.start_date || !rowObj.end_date) return null;
-      if (!isRequestInDateRange(rowObj, range.start, range.end)) return null;
+      if (!startDate || !endDate) return null;
+      if (!isRequestInDateRange({ start_date: startDate, end_date: endDate }, range.start, range.end)) return null;
 
-      const employeeId = String(rowObj.employee_id || "").trim();
+      const employeeId = String(row[employeeIdIdx] || "").trim();
       const employee = employeeMap[employeeId] || {};
-      const startText = formatDateValue(rowObj.start_date);
-      const endText = formatDateValue(rowObj.end_date);
-      const halfDay = String(rowObj.half_day || "");
+      const startText = formatDateValue(startDate);
+      const endText = formatDateValue(endDate);
+      const halfDay = String(row[halfDayIdx] || "");
 
       return {
-        request_id: String(rowObj.request_id || ""),
+        request_id: String(row[requestIdIdx] || ""),
         employee_id: employeeId,
         display_employee_id: employee.display_employee_id || "",
         employee_name: employee.employee_name || employeeId || "Unknown",
         start_date: startText,
         end_date: endText,
-        days: rowObj.days || 0,
-        type: String(rowObj.type || "paid_leave"),
+        days: row[daysIdx] || 0,
+        type: String(row[typeIdx] || "paid_leave"),
         half_day: halfDay,
-        reason: String(rowObj.reason || ""),
-        reason_detail: String(rowObj.reason_detail || ""),
+        reason: String(row[reasonIdx] || ""),
+        reason_detail: String(row[reasonDetailIdx] || ""),
         status: rowStatus,
-        request_date: formatDateValue(rowObj.request_date),
-        created_at: rowObj.created_at ? formatDateValue(rowObj.created_at) : "",
-        updated_at: rowObj.updated_at ? formatDateValue(rowObj.updated_at) : "",
-        year: rowObj.year || "",
+        request_date: formatDateValue(row[requestDateIdx]),
+        created_at: row[createdAtIdx] ? formatDateValue(row[createdAtIdx]) : "",
+        updated_at: row[updatedAtIdx] ? formatDateValue(row[updatedAtIdx]) : "",
+        year: row[yearIdx] || "",
         date_label: startText !== endText ? startText + " 〜 " + endText : startText,
-        leave_type_label: getRequestHistoryLeaveTypeLabel_(halfDay, rowObj.start_date, rowObj.end_date),
+        leave_type_label: getRequestHistoryLeaveTypeLabel_(halfDay, startDate, endDate),
         status_label: getRequestHistoryStatusLabel_(rowStatus),
         company_name: employee.company_name || "",
         department: employee.department || "",
