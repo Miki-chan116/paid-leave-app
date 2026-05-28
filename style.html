@@ -244,8 +244,8 @@ body {
 }
 
 .employee-right {
-  width: 92px;
-  min-width: 92px;
+  width: 104px;
+  min-width: 104px;
 
   display: flex;
   flex-direction: column;
@@ -256,9 +256,25 @@ body {
 }
 
 .employee-days {
-  font-size: 22px;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 2px;
+  max-width: 100%;
+  white-space: nowrap;
+
   font-weight: 900;
   color: var(--primary-dark);
+  line-height: 1.1;
+}
+
+.employee-days-label,
+.employee-days-unit {
+  font-size: 15px;
+}
+
+.employee-days-value {
+  font-size: 20px;
 }
 
 .employee-days-sub {
@@ -840,6 +856,11 @@ body.personal-page-mode #requestScreen {
 
   .employee-name {
     font-size: 24px;
+  }
+
+  .employee-right {
+    width: 102px;
+    min-width: 102px;
   }
 
   .request-topbar {
