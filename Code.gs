@@ -3613,6 +3613,12 @@ function getFiscalStartMonthByEmployeeId(employeeId, employeeMap) {
    前月＋当月のみ
 ========================= */
 function getRequestsByStatus(status) {
+  if (norm(status) === STATUS.PENDING) {
+    return searchRequests({
+      status: status
+    });
+  }
+
   const range = getAdminRecentRange();
 
   return searchRequests({
