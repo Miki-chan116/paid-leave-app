@@ -1146,6 +1146,12 @@ function showCompanyCalendarMessage(message, type) {
   el.innerHTML = `<div class="${cls}">${escapeHtml(message)}</div>`;
 }
 
+function setCompanyCalendarSaveButtonVisible(visible) {
+  const button = document.getElementById("companyCalendarSaveButton");
+  if (!button) return;
+  button.style.display = visible ? "inline-flex" : "none";
+}
+
 function loadCompanyCalendarAdminRows() {
   let params;
 
@@ -1157,6 +1163,7 @@ function loadCompanyCalendarAdminRows() {
   }
 
   showCompanyCalendarMessage("", "");
+  setCompanyCalendarSaveButtonVisible(false);
   showLoading("companyCalendarTable", "会社カレンダーを読み込んでいます...");
 
   google.script.run
@@ -1165,6 +1172,7 @@ function loadCompanyCalendarAdminRows() {
     })
     .withFailureHandler(err => {
       console.error("会社カレンダー取得エラー:", err);
+      setCompanyCalendarSaveButtonVisible(false);
       showError(
         "companyCalendarTable",
         err && err.message ? err.message : "会社カレンダーの取得でエラーが発生しました。"
@@ -1219,6 +1227,7 @@ function renderCompanyCalendarAdminRows(data) {
   const rows = data && Array.isArray(data.rows) ? data.rows : [];
 
   if (rows.length === 0) {
+    setCompanyCalendarSaveButtonVisible(false);
     container.innerHTML = `<div class="empty-message">表示できる日付がありません。</div>`;
     return;
   }
@@ -1238,6 +1247,7 @@ function renderCompanyCalendarAdminRows(data) {
       </tbody>
     </table>
   `;
+  setCompanyCalendarSaveButtonVisible(true);
 }
 
 function renderCompanyCalendarAdminRow(row) {

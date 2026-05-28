@@ -269,8 +269,12 @@
 
         <div class="company-calendar-list-header">
           <div class="search-title">カレンダー一覧</div>
-          <button class="btn btn-export-yearly" type="button" onclick="saveCompanyCalendarAdminRows()">
-            まとめて保存
+          <button id="companyCalendarSaveButton"
+                  class="btn btn-export-yearly company-calendar-save-btn"
+                  type="button"
+                  onclick="saveCompanyCalendarAdminRows()"
+                  style="display:none;">
+            変更を保存
           </button>
         </div>
 
