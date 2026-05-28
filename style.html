@@ -460,6 +460,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .field label {
@@ -486,6 +487,14 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  min-width: 0;
+}
+
+.multi-day-grid input[type="date"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .hidden-date-field {
@@ -953,6 +962,16 @@ body.personal-page-mode #requestScreen {
 
   .multi-day-section {
     order: 2;
+  }
+
+  .multi-day-grid {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .multi-day-grid input[type="date"] {
+    width: 100%;
+    max-width: 100%;
   }
 
   .calendar-section {
