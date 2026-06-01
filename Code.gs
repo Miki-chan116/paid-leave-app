@@ -1041,6 +1041,9 @@ function finalizeYearEndCarryOver(employeeId, fiscalYear, adminUser) {
   const emp = employees.find(e => String(e.employee_id || "").trim() === targetEmployeeId);
 
   if (!emp) throw new Error("対象社員が見つかりません");
+  if (String(emp.company_code || "").trim().toUpperCase() === "PARTNER") {
+    throw new Error("PARTNER社員の年度切替は友尚建設専用パネルから実行してください");
+  }
   if (emp.leave_management_target !== true) throw new Error("有給管理対象外の社員です");
 
   const status = String(emp.employment_status || "").trim().toLowerCase();
@@ -1208,6 +1211,1034 @@ function buildYearEndCarryOverFinalizedNotes_(candidate, nextFiscalYear) {
     "消滅見込み: " + formatGrantDaysForNote_(candidate.expired_days) + "日",
     "新規付与: " + formatGrantDaysForNote_(candidate.new_grant_days) + "日"
   ].join(" / ");
+}
+
+/* =========================
+   会社別年度切替 dry-run
+   paid_leave_grants には書き込まない
+========================= */
+function getLeaveRolloverCompanyConfig_(companyCode) {
+  const code = String(companyCode || "").trim().toUpperCase();
+  const configs = {
+    MAIN: {
+      company_code: "MAIN",
+      company_name: "",
+      company_display_name: "正社員",
+      fiscal_start_month: 4,
+      expected_employee_count: null
+    },
+    PARTNER: {
+      company_code: "PARTNER",
+      company_name: "（有）友尚建設",
+      company_display_name: "友尚建設",
+      fiscal_start_month: 6,
+      expected_employee_count: 3
+    }
+  };
+
+  if (!configs[code]) {
+    throw new Error("年度切替に対応していない company_code です: " + code);
+  }
+
+  return Object.assign({}, configs[code]);
+}
+
+function getLeaveRolloverFiscalYearDates_(config, fiscalYear) {
+  const nextFiscalYear = Number(fiscalYear || 0);
+  const fiscalStartMonth = Number(config && config.fiscal_start_month || 0);
+
+  if (!nextFiscalYear) {
+    throw new Error("対象年度が不正です");
+  }
+
+  if (fiscalStartMonth < 1 || fiscalStartMonth > 12) {
+    throw new Error("fiscal_start_month が不正です");
+  }
+
+  const nextFiscalYearStartDate = new Date(nextFiscalYear, fiscalStartMonth - 1, 1);
+  const previousFiscalYearEndDate = addDaysLocal_(nextFiscalYearStartDate, -1);
+
+  return {
+    previous_fiscal_year: nextFiscalYear - 1,
+    next_fiscal_year: nextFiscalYear,
+    previous_fiscal_year_end_date: formatDateValue(previousFiscalYearEndDate),
+    next_fiscal_year_start_date: formatDateValue(nextFiscalYearStartDate)
+  };
+}
+
+function buildCompanyLeaveYearRolloverCandidate_(emp, fiscalYear, context, finalizedMap, config) {
+  const dates = getLeaveRolloverFiscalYearDates_(config, fiscalYear);
+  const errors = [];
+  const warnings = [];
+  let candidate = null;
+
+  if (!emp.hire_date) {
+    errors.push("入社日が未入力です");
+  }
+
+  try {
+    candidate = buildYearEndCarryOverCandidate_(
+      emp,
+      dates.previous_fiscal_year,
+      context,
+      finalizedMap
+    );
+
+    const companyBasisGrantInfo = getCompanyBasisYearlyGrantInfo_(
+      emp.hire_date,
+      parseLocalDate(dates.next_fiscal_year_start_date),
+      config.fiscal_start_month
+    );
+    candidate.new_grant_days = companyBasisGrantInfo.grant_days;
+    candidate.estimated_after_grant_days =
+      Number(candidate.carry_over_candidate_days || 0) +
+      Number(companyBasisGrantInfo.grant_days || 0);
+    candidate.company_basis_grant_number =
+      companyBasisGrantInfo.company_basis_grant_number;
+    candidate.company_basis_equivalent_months =
+      companyBasisGrantInfo.equivalent_months;
+  } catch (e) {
+    errors.push("候補計算エラー: " + (e && e.message ? e.message : String(e)));
+  }
+
+  const employeeId = String(emp.employee_id || "").trim();
+  const hasNextFiscalYearRecord = !!finalizedMap[employeeId];
+  if (hasNextFiscalYearRecord) {
+    warnings.push(
+      dates.next_fiscal_year +
+      "年度の yearly レコードがすでにあります。重複作成しません"
+    );
+  }
+
+  if (candidate && candidate.validity_warning) {
+    warnings.push(candidate.validity_warning);
+  }
+
+  return {
+    employee_id: employeeId,
+    name: String(emp.name || ""),
+    display_name: String(emp.display_name || ""),
+    company_code: String(emp.company_code || ""),
+    company_name: String(emp.company_name || ""),
+    fiscal_start_month: Number(emp.fiscal_start_month || 0),
+    fiscal_year: dates.previous_fiscal_year,
+    fiscal_year_end_date: candidate ? candidate.fiscal_year_end_date : "",
+    previous_remaining_days: candidate ? Number(candidate.previous_remaining_days || 0) : "",
+    carry_over_candidate_days: candidate ? Number(candidate.carry_over_candidate_days || 0) : "",
+    expired_days: candidate ? Number(candidate.expired_days || 0) : "",
+    new_grant_days: candidate ? Number(candidate.new_grant_days || 0) : "",
+    estimated_after_grant_days: candidate ? Number(candidate.estimated_after_grant_days || 0) : "",
+    company_basis_grant_number: candidate ? Number(candidate.company_basis_grant_number || 0) : "",
+    company_basis_equivalent_months: candidate ? Number(candidate.company_basis_equivalent_months || 0) : "",
+    has_next_fiscal_year_record: hasNextFiscalYearRecord,
+    has_2026_yearly_record: dates.next_fiscal_year === 2026 && hasNextFiscalYearRecord,
+    will_create_grant_record: !hasNextFiscalYearRecord && errors.length === 0 && warnings.length === 0,
+    can_execute: !hasNextFiscalYearRecord && errors.length === 0 && warnings.length === 0,
+    errors: errors,
+    warnings: warnings,
+    messages: errors.concat(warnings)
+  };
+}
+
+function getCompanyLeaveYearRolloverCandidates_(companyCode, fiscalYear) {
+  const config = getLeaveRolloverCompanyConfig_(companyCode);
+  const dates = getLeaveRolloverFiscalYearDates_(config, fiscalYear);
+  const employees = getEmployeesForAdmin();
+  const context = createFifoBalanceComparisonContext_(
+    parseLocalDate(dates.previous_fiscal_year_end_date)
+  );
+  const finalizedMap = getYearlyGrantFinalizedMap_(dates.next_fiscal_year);
+  const globalErrors = [];
+  const globalWarnings = [];
+
+  const relatedEmployees = employees.filter(emp =>
+    isCompanyLeaveYearRolloverRelatedEmployee_(emp, config)
+  );
+  const targetEmployees = employees.filter(emp =>
+    isCompanyLeaveYearRolloverTarget_(emp, config)
+  );
+
+  relatedEmployees.forEach(emp => {
+    const reasons = getCompanyLeaveYearRolloverTargetMismatchReasons_(emp, config);
+    if (reasons.length > 0) {
+      globalErrors.push(
+        String(emp.employee_id || "(社員IDなし)") +
+        " は " +
+        config.company_display_name +
+        " の社員ですが対象条件と一致しません: " +
+        reasons.join("、")
+      );
+    }
+  });
+
+  if (
+    config.expected_employee_count !== null &&
+    targetEmployees.length !== config.expected_employee_count
+  ) {
+    globalWarnings.push(
+      "対象社員数が想定と一致しません。想定 " +
+      config.expected_employee_count +
+      "名 / 実際 " +
+      targetEmployees.length +
+      "名"
+    );
+  }
+
+  const rows = targetEmployees
+    .sort((a, b) => String(a.employee_id || "").localeCompare(String(b.employee_id || "")))
+    .map(emp =>
+      buildCompanyLeaveYearRolloverCandidate_(
+        emp,
+        dates.next_fiscal_year,
+        context,
+        finalizedMap,
+        config
+      )
+    );
+  const rowErrorCount = rows.reduce((sum, row) => sum + row.errors.length, 0);
+  const rowWarningCount = rows.reduce((sum, row) => sum + row.warnings.length, 0);
+  const expectedCountMatches =
+    config.expected_employee_count === null ||
+    rows.length === config.expected_employee_count;
+
+  return {
+    ok: true,
+    dry_run: true,
+    data_changed: false,
+    company_code: config.company_code,
+    company_name: config.company_name || config.company_display_name,
+    company_display_name: config.company_display_name,
+    fiscal_start_month: config.fiscal_start_month,
+    previous_fiscal_year: dates.previous_fiscal_year,
+    next_fiscal_year: dates.next_fiscal_year,
+    previous_fiscal_year_end_date: dates.previous_fiscal_year_end_date,
+    next_fiscal_year_start_date: dates.next_fiscal_year_start_date,
+    expected_employee_count: config.expected_employee_count,
+    target_employee_count: rows.length,
+    error_count: globalErrors.length + rowErrorCount,
+    warning_count: globalWarnings.length + rowWarningCount,
+    can_execute:
+      rows.length > 0 &&
+      expectedCountMatches &&
+      globalErrors.length === 0 &&
+      globalWarnings.length === 0 &&
+      rowErrorCount === 0 &&
+      rowWarningCount === 0,
+    global_errors: globalErrors,
+    global_warnings: globalWarnings,
+    rows: rows
+  };
+}
+
+function dryRunCompanyLeaveYearRollover(companyCode, fiscalYear) {
+  const result = getCompanyLeaveYearRolloverCandidates_(companyCode, fiscalYear);
+  logCompanyLeaveYearRolloverDryRun_(result);
+  return result;
+}
+
+function dryRunMainLeaveYearRollover2026() {
+  return dryRunCompanyLeaveYearRollover("MAIN", 2026);
+}
+
+function executeCompanyLeaveYearRollover(companyCode, fiscalYear) {
+  const config = getLeaveRolloverCompanyConfig_(companyCode);
+  const dates = getLeaveRolloverFiscalYearDates_(config, fiscalYear);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    Logger.log(
+      "=== " +
+      config.company_display_name +
+      " " +
+      dates.next_fiscal_year +
+      "年度切替 本処理: 開始 ==="
+    );
+    Logger.log("本処理前に dry-run 相当の検証を再実行します。");
+
+    const dryRun = getCompanyLeaveYearRolloverCandidates_(
+      config.company_code,
+      dates.next_fiscal_year
+    );
+    logCompanyLeaveYearRolloverDryRun_(dryRun);
+    validateCompanyLeaveYearRolloverExecution_(dryRun, config);
+
+    const sheet = getSheet("paid_leave_grants");
+    const headerInfo = requireHeaders(sheet, [
+      "grant_id",
+      "employee_id",
+      "grant_date",
+      "grant_days",
+      "carry_over_days",
+      "valid_from",
+      "valid_to",
+      "grant_type",
+      "year",
+      "notes",
+      "created_at",
+      "updated_at"
+    ]);
+
+    // 付与行の追加後にログ不足で止まらないよう、先にログシートも検証する。
+    requireHeaders(getSheet("usage_log"), [
+      "log_id",
+      "request_id",
+      "action_type",
+      "operator_id",
+      "operator_name",
+      "action_date",
+      "comment"
+    ]);
+
+    dryRun.rows.forEach(row => {
+      if (hasYearlyGrantForFiscalYear_(row.employee_id, dates.next_fiscal_year)) {
+        throw new Error(
+          row.employee_id +
+          " は " +
+          dates.next_fiscal_year +
+          "年度の yearly レコードがすでにあります。本処理を停止しました。"
+        );
+      }
+    });
+
+    const grantIds = getNextGrantIds_(dryRun.rows.length);
+    const now = new Date();
+    const grantDate = parseLocalDate(dates.next_fiscal_year_start_date);
+    const validTo = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
+    const newRows = dryRun.rows.map((row, index) => {
+      const rowObj = createEmptyRowObject(headerInfo.headers);
+
+      rowObj.grant_id = grantIds[index];
+      rowObj.employee_id = row.employee_id;
+      rowObj.grant_date = grantDate;
+      rowObj.grant_days = Number(row.new_grant_days || 0);
+      rowObj.carry_over_days = Number(row.carry_over_candidate_days || 0);
+      rowObj.valid_from = grantDate;
+      rowObj.valid_to = validTo;
+      rowObj.grant_type = "yearly";
+      rowObj.year = dates.next_fiscal_year;
+      rowObj.notes = buildYearEndCarryOverFinalizedNotes_(
+        row,
+        dates.next_fiscal_year
+      );
+      rowObj.created_at = now;
+      rowObj.updated_at = now;
+
+      if ("is_finalized" in headerInfo.map) {
+        rowObj.is_finalized = true;
+      }
+
+      if ("finalized_at" in headerInfo.map) {
+        rowObj.finalized_at = now;
+      }
+
+      return objectToRow(rowObj, headerInfo.headers);
+    });
+
+    if (newRows.length > 0) {
+      sheet
+        .getRange(sheet.getLastRow() + 1, 1, newRows.length, headerInfo.headers.length)
+        .setValues(newRows);
+    }
+
+    dryRun.rows.forEach((row, index) => {
+      appendUsageLog({
+        request_id: row.employee_id,
+        action_type: "year_end_carry_over_finalized",
+        operator_id: "admin",
+        operator_name: "管理者",
+        comment:
+          (row.display_name || row.name || row.employee_id) +
+          " さんの " +
+          config.company_display_name +
+          dates.next_fiscal_year +
+          "年度切替を確定しました: " +
+          "grant_id=" +
+          grantIds[index] +
+          " / " +
+          buildYearEndCarryOverFinalizedNotes_(row, dates.next_fiscal_year)
+      });
+    });
+
+    clearAppCache();
+
+    const result = {
+      ok: true,
+      executed: true,
+      company_code: config.company_code,
+      company_name: config.company_name || config.company_display_name,
+      company_display_name: config.company_display_name,
+      next_fiscal_year: dates.next_fiscal_year,
+      grant_date: formatDateValue(grantDate),
+      created_count: newRows.length,
+      employee_ids: dryRun.rows.map(row => row.employee_id),
+      grant_ids: grantIds
+    };
+
+    Logger.log(config.company_display_name + " 年度切替 本処理が完了しました。");
+    Logger.log("追加件数: " + result.created_count);
+    Logger.log("社員ID: " + result.employee_ids.join(", "));
+    Logger.log("grant_id: " + result.grant_ids.join(", "));
+    Logger.log("=== 年度切替 本処理: 完了 ===");
+
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function validateCompanyLeaveYearRolloverExecution_(dryRun, config) {
+  const rows = dryRun && Array.isArray(dryRun.rows) ? dryRun.rows : [];
+  const expectedCountMatches =
+    config.expected_employee_count === null ||
+    rows.length === config.expected_employee_count;
+
+  if (!dryRun || dryRun.dry_run !== true) {
+    throw new Error("dry-run 相当の検証結果を確認できません。本処理を停止しました。");
+  }
+
+  if (
+    dryRun.company_code !== config.company_code ||
+    Number(dryRun.fiscal_start_month || 0) !== Number(config.fiscal_start_month)
+  ) {
+    throw new Error("会社条件が一致しません。本処理を停止しました。");
+  }
+
+  if (
+    !dryRun.can_execute ||
+    Number(dryRun.error_count || 0) !== 0 ||
+    Number(dryRun.warning_count || 0) !== 0 ||
+    rows.length === 0 ||
+    !expectedCountMatches ||
+    !rows.every(row => row.can_execute === true)
+  ) {
+    throw new Error(
+      config.company_display_name +
+      " " +
+      dryRun.next_fiscal_year +
+      "年度切替を停止しました。事前確認の注意・エラーを確認してください。"
+    );
+  }
+}
+
+function isCompanyLeaveYearRolloverRelatedEmployee_(emp, config) {
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+  const isActive = status === "active" || status === "在職";
+
+  if (emp.leave_management_target !== true || !isActive) {
+    return false;
+  }
+
+  if (config.company_name) {
+    return String(emp.company_name || "").trim() === config.company_name;
+  }
+
+  return (
+    String(emp.company_code || "").trim().toUpperCase() === config.company_code
+  );
+}
+
+function isCompanyLeaveYearRolloverTarget_(emp, config) {
+  return getCompanyLeaveYearRolloverTargetMismatchReasons_(emp, config).length === 0;
+}
+
+function getCompanyLeaveYearRolloverTargetMismatchReasons_(emp, config) {
+  const reasons = [];
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+
+  if (String(emp.company_code || "").trim().toUpperCase() !== config.company_code) {
+    reasons.push("company_code が " + config.company_code + " ではありません");
+  }
+
+  if (
+    config.company_name &&
+    String(emp.company_name || "").trim() !== config.company_name
+  ) {
+    reasons.push("company_name が " + config.company_name + " ではありません");
+  }
+
+  if (Number(emp.fiscal_start_month || 0) !== config.fiscal_start_month) {
+    reasons.push("fiscal_start_month が " + config.fiscal_start_month + " ではありません");
+  }
+
+  if (emp.leave_management_target !== true) {
+    reasons.push("leave_management_target が TRUE ではありません");
+  }
+
+  if (status !== "active" && status !== "在職") {
+    reasons.push("employment_status が active または 在職 ではありません");
+  }
+
+  return reasons;
+}
+
+function logCompanyLeaveYearRolloverDryRun_(result) {
+  Logger.log(
+    "=== " +
+    result.company_display_name +
+    " " +
+    result.next_fiscal_year +
+    "年度切替 dry-run ==="
+  );
+  Logger.log("データ変更: なし");
+  Logger.log(
+    "対象: " +
+    result.company_name +
+    " / company_code=" +
+    result.company_code +
+    " / fiscal_start_month=" +
+    result.fiscal_start_month
+  );
+  Logger.log(
+    "年度: " +
+    result.previous_fiscal_year +
+    "年度末 " +
+    result.previous_fiscal_year_end_date +
+    " → " +
+    result.next_fiscal_year +
+    "年度開始 " +
+    result.next_fiscal_year_start_date
+  );
+  Logger.log(
+    result.expected_employee_count === null
+      ? "対象人数: " + result.target_employee_count + "名"
+      : "対象人数: 想定 " +
+        result.expected_employee_count +
+        "名 / 実際 " +
+        result.target_employee_count +
+        "名"
+  );
+
+  result.global_errors.forEach(message => Logger.log("[全体エラー] " + message));
+  result.global_warnings.forEach(message => Logger.log("[全体注意] " + message));
+
+  Logger.log([
+    "employee_id",
+    "name",
+    "display_name",
+    "company_name",
+    "fiscal_start_month",
+    result.previous_fiscal_year + "年度の残日数",
+    "繰越予定日数",
+    result.next_fiscal_year + "年度の新規付与予定日数",
+    result.next_fiscal_year + "年度開始後の予定残日数",
+    "会社基準日付与回数",
+    result.next_fiscal_year + "年度レコードが既にあるか",
+    "付与レコードを新規作成するか",
+    "本処理可能か",
+    "注意・エラー内容"
+  ].join("\t"));
+
+  result.rows.forEach(row => {
+    Logger.log([
+      row.employee_id,
+      row.name,
+      row.display_name,
+      row.company_name,
+      row.fiscal_start_month,
+      row.previous_remaining_days,
+      row.carry_over_candidate_days,
+      row.new_grant_days,
+      row.estimated_after_grant_days,
+      row.company_basis_grant_number,
+      row.has_next_fiscal_year_record ? "はい" : "いいえ",
+      row.will_create_grant_record ? "はい" : "いいえ",
+      row.can_execute ? "はい" : "いいえ",
+      row.messages.length > 0 ? row.messages.join(" / ") : "なし"
+    ].join("\t"));
+  });
+
+  Logger.log("エラー件数: " + result.error_count + " / 注意件数: " + result.warning_count);
+  Logger.log("本処理可能か: " + (result.can_execute ? "はい" : "いいえ"));
+  Logger.log("=== dry-run 完了 ===");
+}
+
+/* =========================
+   友尚建設 2026年度切替
+   2025年度末: 2026-05-31
+   2026年度開始: 2026-06-01
+========================= */
+function dryRunPartnerLeaveYearRollover2026() {
+  return dryRunCompanyLeaveYearRollover("PARTNER", 2026);
+}
+
+function executePartnerLeaveYearRollover2026() {
+  return executeCompanyLeaveYearRollover("PARTNER", 2026);
+}
+
+function getPartnerLeaveYearRollover2026Config_() {
+  const config = getLeaveRolloverCompanyConfig_("PARTNER");
+  return Object.assign(
+    {},
+    config,
+    getLeaveRolloverFiscalYearDates_(config, 2026)
+  );
+}
+
+function buildPartnerLeaveYearRollover2026DryRun_() {
+  return getCompanyLeaveYearRolloverCandidates_("PARTNER", 2026);
+}
+
+function isPartnerLeaveYearRollover2026Target_(emp, config) {
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+  const isActive = status === "active" || status === "在職";
+
+  return (
+    String(emp.company_code || "").trim().toUpperCase() === config.company_code &&
+    String(emp.company_name || "").trim() === config.company_name &&
+    Number(emp.fiscal_start_month || 0) === config.fiscal_start_month &&
+    emp.leave_management_target === true &&
+    isActive
+  );
+}
+
+function getPartnerLeaveYearRollover2026TargetMismatchReasons_(emp, config) {
+  const reasons = [];
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+
+  if (String(emp.company_code || "").trim().toUpperCase() !== config.company_code) {
+    reasons.push("company_code が PARTNER ではありません");
+  }
+
+  if (Number(emp.fiscal_start_month || 0) !== config.fiscal_start_month) {
+    reasons.push("fiscal_start_month が 6 ではありません");
+  }
+
+  if (emp.leave_management_target !== true) {
+    reasons.push("leave_management_target が TRUE ではありません");
+  }
+
+  if (status !== "active" && status !== "在職") {
+    reasons.push("employment_status が active または 在職 ではありません");
+  }
+
+  return reasons;
+}
+
+function getCompanyBasisYearlyGrantInfo_(hireDateValue, fiscalYearStartDateValue, fiscalStartMonth) {
+  if (!hireDateValue) {
+    throw new Error("入社日が未入力です");
+  }
+
+  const hireDate = parseLocalDate(hireDateValue);
+  const fiscalYearStartDate = parseLocalDate(fiscalYearStartDateValue);
+  const startMonth = Number(fiscalStartMonth || 0);
+
+  if (startMonth < 1 || startMonth > 12) {
+    throw new Error("fiscal_start_month が不正です");
+  }
+
+  if (
+    fiscalYearStartDate.getMonth() + 1 !== startMonth ||
+    fiscalYearStartDate.getDate() !== 1
+  ) {
+    throw new Error("年度開始日と fiscal_start_month が一致しません");
+  }
+
+  let firstCompanyBasisDate = new Date(
+    hireDate.getFullYear(),
+    startMonth - 1,
+    1
+  );
+
+  if (firstCompanyBasisDate < hireDate) {
+    firstCompanyBasisDate = new Date(
+      hireDate.getFullYear() + 1,
+      startMonth - 1,
+      1
+    );
+  }
+
+  if (fiscalYearStartDate < firstCompanyBasisDate) {
+    return {
+      first_company_basis_date: firstCompanyBasisDate,
+      company_basis_grant_number: 0,
+      equivalent_months: 0,
+      grant_days: 0
+    };
+  }
+
+  const companyBasisGrantNumber =
+    fiscalYearStartDate.getFullYear() -
+    firstCompanyBasisDate.getFullYear() +
+    1;
+  const equivalentMonths = 6 + (companyBasisGrantNumber - 1) * 12;
+
+  return {
+    first_company_basis_date: firstCompanyBasisDate,
+    company_basis_grant_number: companyBasisGrantNumber,
+    equivalent_months: equivalentMonths,
+    grant_days: getYearlyGrantDays_(equivalentMonths)
+  };
+}
+
+function getNextGrantIds_(count) {
+  const total = Number(count || 0);
+  if (total <= 0) return [];
+
+  const firstId = getNextGrantId_();
+  const match = String(firstId || "").match(/^G(\d+)$/);
+
+  if (!match) {
+    throw new Error("grant_id の採番形式が不正です: " + firstId);
+  }
+
+  const firstNumber = Number(match[1]);
+  const width = Math.max(4, match[1].length);
+  const result = [];
+
+  for (let index = 0; index < total; index++) {
+    result.push("G" + String(firstNumber + index).padStart(width, "0"));
+  }
+
+  return result;
+}
+
+function logPartnerLeaveYearRollover2026DryRun_(result) {
+  Logger.log("=== 友尚建設 2026年度切替 dry-run ===");
+  Logger.log("データ変更: なし");
+  Logger.log(
+    "対象: " +
+    result.company_name +
+    " / company_code=" +
+    result.company_code +
+    " / fiscal_start_month=" +
+    result.fiscal_start_month
+  );
+  Logger.log(
+    "年度: " +
+    result.previous_fiscal_year +
+    "年度末 " +
+    result.previous_fiscal_year_end_date +
+    " → " +
+    result.next_fiscal_year +
+    "年度開始 " +
+    result.next_fiscal_year_start_date
+  );
+  Logger.log(
+    "対象人数: 想定 " +
+    result.expected_employee_count +
+    "名 / 実際 " +
+    result.target_employee_count +
+    "名"
+  );
+
+  result.global_errors.forEach(message => Logger.log("[全体エラー] " + message));
+  result.global_warnings.forEach(message => Logger.log("[全体注意] " + message));
+
+  Logger.log([
+    "employee_id",
+    "name",
+    "display_name",
+    "company_name",
+    "fiscal_start_month",
+    "2025年度の残日数",
+    "繰越予定日数",
+    "2026年度の新規付与予定日数",
+    "2026年度開始後の予定残日数",
+    "会社基準日付与回数",
+    "2026年度レコードが既にあるか",
+    "付与レコードを新規作成するか",
+    "本処理可能か",
+    "注意・エラー内容"
+  ].join("\t"));
+
+  result.rows.forEach(row => {
+    Logger.log([
+      row.employee_id,
+      row.name,
+      row.display_name,
+      row.company_name,
+      row.fiscal_start_month,
+      row.previous_remaining_days,
+      row.carry_over_candidate_days,
+      row.new_grant_days,
+      row.estimated_after_grant_days,
+      row.company_basis_grant_number,
+      row.has_2026_yearly_record ? "はい" : "いいえ",
+      row.will_create_grant_record ? "はい" : "いいえ",
+      row.can_execute ? "はい" : "いいえ",
+      row.messages.length > 0 ? row.messages.join(" / ") : "なし"
+    ].join("\t"));
+  });
+
+  Logger.log("エラー件数: " + result.error_count + " / 注意件数: " + result.warning_count);
+  Logger.log("本処理可能か: " + (result.can_execute ? "はい" : "いいえ"));
+  Logger.log("=== dry-run 完了 ===");
+}
+
+function debugPartnerLeaveGrantDays2026_EMP0062() {
+  const employeeId = "EMP0062";
+  const fiscalYearStartDate = parseLocalDate("2026-06-01");
+  const emp = getEmployeesForAdmin().find(row =>
+    String(row.employee_id || "").trim() === employeeId
+  );
+
+  Logger.log("=== EMP0062 2026年度新規付与日数 debug ===");
+  Logger.log("データ変更: なし");
+
+  if (!emp) {
+    Logger.log("employee_id: " + employeeId);
+    Logger.log("エラー: employees シートに EMP0062 が見つかりません");
+    Logger.log("=== debug 完了 ===");
+    return {
+      ok: false,
+      employee_id: employeeId,
+      error: "employees シートに EMP0062 が見つかりません"
+    };
+  }
+
+  const monthsWorked = emp.hire_date
+    ? getMonthsWorked_(parseLocalDate(emp.hire_date), fiscalYearStartDate)
+    : 0;
+  const yearlyGrantDays = getYearlyGrantDays_(monthsWorked);
+  const zeroReason = getPartnerLeaveGrantDaysZeroReason_(
+    emp.hire_date,
+    monthsWorked,
+    yearlyGrantDays
+  );
+  const initialGrantInfo = emp.hire_date
+    ? getInitialPaidLeaveGrantInfo_(emp)
+    : null;
+  const companyBasisGrantInfo = emp.hire_date
+    ? getCompanyBasisYearlyGrantInfo_(
+        emp.hire_date,
+        fiscalYearStartDate,
+        Number(emp.fiscal_start_month || 0)
+      )
+    : null;
+  const result = {
+    ok: true,
+    employee_id: String(emp.employee_id || ""),
+    name: String(emp.name || ""),
+    display_name: String(emp.display_name || ""),
+    hire_date: String(emp.hire_date || ""),
+    fiscal_start_month: Number(emp.fiscal_start_month || 0),
+    leave_management_target: emp.leave_management_target === true,
+    employment_status: String(emp.employment_status || ""),
+    company_code: String(emp.company_code || ""),
+    company_name: String(emp.company_name || ""),
+    fiscalYearStartDate: formatDateValue(fiscalYearStartDate),
+    monthsWorked: monthsWorked,
+    simpleMonthsWorkedGrantDays: yearlyGrantDays,
+    yearlyGrantDaysZeroReason: zeroReason,
+    firstCompanyBasisDate: companyBasisGrantInfo
+      ? formatDateValue(companyBasisGrantInfo.first_company_basis_date)
+      : "",
+    companyBasisGrantNumber: companyBasisGrantInfo
+      ? Number(companyBasisGrantInfo.company_basis_grant_number || 0)
+      : 0,
+    companyBasisEquivalentMonths: companyBasisGrantInfo
+      ? Number(companyBasisGrantInfo.equivalent_months || 0)
+      : 0,
+    yearlyGrantDays: companyBasisGrantInfo
+      ? Number(companyBasisGrantInfo.grant_days || 0)
+      : 0,
+    initialGrantDate: initialGrantInfo ? formatDateValue(initialGrantInfo.grant_date) : "",
+    sixMonthDate: initialGrantInfo ? formatDateValue(initialGrantInfo.six_month_date) : "",
+    companyBasisDate: initialGrantInfo ? formatDateValue(initialGrantInfo.company_basis_date) : "",
+    initialGrantReason: initialGrantInfo ? String(initialGrantInfo.grant_reason || "") : ""
+  };
+
+  Logger.log("employee_id: " + result.employee_id);
+  Logger.log("name: " + result.name);
+  Logger.log("display_name: " + result.display_name);
+  Logger.log("hire_date: " + result.hire_date);
+  Logger.log("fiscal_start_month: " + result.fiscal_start_month);
+  Logger.log("leave_management_target: " + result.leave_management_target);
+  Logger.log("employment_status: " + result.employment_status);
+  Logger.log("company_code: " + result.company_code);
+  Logger.log("company_name: " + result.company_name);
+  Logger.log("fiscalYearStartDate: " + result.fiscalYearStartDate);
+  Logger.log("monthsWorked: " + result.monthsWorked);
+  Logger.log("単純勤続月数での getYearlyGrantDays_ 戻り値: " + result.simpleMonthsWorkedGrantDays);
+  Logger.log(
+    "単純勤続月数方式で yearlyGrantDays が0になる理由: " +
+    (result.yearlyGrantDaysZeroReason || "0日ではありません")
+  );
+  Logger.log("最初の会社基準日: " + result.firstCompanyBasisDate);
+  Logger.log("会社基準日付与回数: " + result.companyBasisGrantNumber);
+  Logger.log("会社基準日方式の換算月数: " + result.companyBasisEquivalentMonths);
+  Logger.log("dry-run で適用する新規付与日数: " + result.yearlyGrantDays);
+  Logger.log("初回付与予定日: " + result.initialGrantDate);
+  Logger.log("入社6か月到達日: " + result.sixMonthDate);
+  Logger.log("会社基準日: " + result.companyBasisDate);
+  Logger.log("初回付与判定理由: " + result.initialGrantReason);
+  Logger.log("=== debug 完了 ===");
+
+  return result;
+}
+
+/**
+ * MAIN社員の2026年度付与日数を、現在方式と会社基準日方式で比較する読み取り専用debug。
+ * 年度切替の確定処理には接続しない。
+ */
+function debugMainLeaveGrantMethodDiff2026() {
+  const previousFiscalYear = 2025;
+  const nextFiscalYear = 2026;
+  const fiscalStartMonth = 4;
+  const nextFiscalYearStartDate = parseLocalDate("2026-04-01");
+  const previousFiscalYearEndDate = addDaysLocal_(nextFiscalYearStartDate, -1);
+  const context = createFifoBalanceComparisonContext_(previousFiscalYearEndDate);
+  const finalizedMap = getYearlyGrantFinalizedMap_(nextFiscalYear);
+
+  const rows = getEmployeesForAdmin()
+    .filter(emp => {
+      const status = String(emp.employment_status || "").trim().toLowerCase();
+      return (
+        String(emp.company_code || "").trim().toUpperCase() === "MAIN" &&
+        Number(emp.fiscal_start_month || 0) === fiscalStartMonth &&
+        emp.leave_management_target === true &&
+        (status === "active" || status === "在職")
+      );
+    })
+    .sort((a, b) =>
+      String(a.employee_id || "").localeCompare(String(b.employee_id || ""))
+    )
+    .map(emp => {
+      const errors = [];
+      let candidate = null;
+      let companyBasisInfo = null;
+
+      if (!emp.hire_date) {
+        errors.push("入社日が未入力です");
+      }
+
+      try {
+        candidate = buildYearEndCarryOverCandidate_(
+          emp,
+          previousFiscalYear,
+          context,
+          finalizedMap
+        );
+        companyBasisInfo = getCompanyBasisYearlyGrantInfo_(
+          emp.hire_date,
+          nextFiscalYearStartDate,
+          fiscalStartMonth
+        );
+      } catch (e) {
+        errors.push(e && e.message ? e.message : String(e));
+      }
+
+      const currentMethodDays = candidate
+        ? Number(candidate.new_grant_days || 0)
+        : "";
+      const companyBasisDays = companyBasisInfo
+        ? Number(companyBasisInfo.grant_days || 0)
+        : "";
+
+      return {
+        employee_id: String(emp.employee_id || ""),
+        name: String(emp.name || ""),
+        display_name: String(emp.display_name || ""),
+        hire_date: String(emp.hire_date || ""),
+        previous_remaining_days: candidate
+          ? Number(candidate.previous_remaining_days || 0)
+          : "",
+        current_method_new_grant_days: currentMethodDays,
+        company_basis_new_grant_days: companyBasisDays,
+        difference_days:
+          currentMethodDays === "" || companyBasisDays === ""
+            ? ""
+            : companyBasisDays - currentMethodDays,
+        company_basis_grant_number: companyBasisInfo
+          ? Number(companyBasisInfo.company_basis_grant_number || 0)
+          : "",
+        has_2026_yearly_record: !!finalizedMap[
+          String(emp.employee_id || "").trim()
+        ],
+        errors: errors
+      };
+    });
+
+  const differenceRows = rows.filter(
+    row => row.difference_days !== "" && Number(row.difference_days) !== 0
+  );
+  const errorRows = rows.filter(row => row.errors.length > 0);
+  const result = {
+    ok: errorRows.length === 0,
+    debug_only: true,
+    data_changed: false,
+    company_code: "MAIN",
+    fiscal_start_month: fiscalStartMonth,
+    previous_fiscal_year: previousFiscalYear,
+    next_fiscal_year: nextFiscalYear,
+    previous_fiscal_year_end_date: formatDateValue(previousFiscalYearEndDate),
+    next_fiscal_year_start_date: formatDateValue(nextFiscalYearStartDate),
+    target_employee_count: rows.length,
+    difference_count: differenceRows.length,
+    error_count: errorRows.length,
+    has_difference: differenceRows.length > 0,
+    rows: rows
+  };
+
+  Logger.log("=== MAIN 2026年度 付与判定方式差分 debug ===");
+  Logger.log("データ変更: なし");
+  Logger.log(
+    "対象: company_code=MAIN / fiscal_start_month=4 / " +
+      "leave_management_target=TRUE / employment_status=active または 在職"
+  );
+  Logger.log(
+    "期間: 2025年度末 " +
+      result.previous_fiscal_year_end_date +
+      " → 2026年度開始 " +
+      result.next_fiscal_year_start_date
+  );
+  Logger.log(
+    [
+      "employee_id",
+      "name",
+      "display_name",
+      "hire_date",
+      "2025年度末残日数",
+      "現在方式の新規付与日数",
+      "会社基準日方式の新規付与日数",
+      "差分",
+      "会社基準日付与回数",
+      "2026年度レコード有無",
+      "注意・エラー"
+    ].join("\t")
+  );
+  rows.forEach(row => {
+    Logger.log(
+      [
+        row.employee_id,
+        row.name,
+        row.display_name,
+        row.hire_date,
+        row.previous_remaining_days,
+        row.current_method_new_grant_days,
+        row.company_basis_new_grant_days,
+        row.difference_days,
+        row.company_basis_grant_number,
+        row.has_2026_yearly_record ? "あり" : "なし",
+        row.errors.length > 0 ? row.errors.join(" / ") : "なし"
+      ].join("\t")
+    );
+  });
+  Logger.log("対象人数: " + result.target_employee_count);
+  Logger.log("差分あり人数: " + result.difference_count);
+  Logger.log("エラー人数: " + result.error_count);
+  Logger.log(
+    "結論: " +
+      (result.has_difference
+        ? "MAINにも会社基準日方式との差分があります。統一UI実装前に対象社員を確認してください。"
+        : "MAINでは両方式の差分はありません。")
+  );
+  Logger.log("=== debug 完了 ===");
+
+  return result;
+}
+
+function getPartnerLeaveGrantDaysZeroReason_(hireDate, monthsWorked, yearlyGrantDays) {
+  if (Number(yearlyGrantDays || 0) > 0) return "";
+  if (!hireDate) return "employees シートの hire_date が空です";
+
+  return (
+    "2026-06-01 時点の勤続月数が " +
+    Number(monthsWorked || 0) +
+    "か月で、11日付与の条件である18か月以上を満たしていません"
+  );
 }
 
 /* =========================

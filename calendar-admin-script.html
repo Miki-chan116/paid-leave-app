@@ -4,6 +4,9 @@ const ADMIN_LOGIN_KEY = "paid_leave_admin_login";
 let currentAdminUser = null;
 let fifoEmployeeCandidates = [];
 let selectedFifoEmployee = null;
+let companyRolloverDryRunResult = null;
+let companyRolloverExecuted = false;
+let companyRolloverExecuting = false;
 
 const PAGE_SIZE = 20;
 const pageOffsets = {
@@ -710,6 +713,329 @@ function clearExpiryLots() {
 }
 
 /* =========================
+   会社別年度切替 dry-run
+========================= */
+function runCompanyLeaveYearRolloverDryRun() {
+  const button = document.getElementById("companyRolloverDryRunButton");
+  const summary = document.getElementById("companyRolloverSummary");
+  const container = document.getElementById("companyRolloverResults");
+  const companyCode = document.getElementById("companyRolloverCompanyCode").value;
+  const fiscalYear = Number(document.getElementById("companyRolloverFiscalYear").value || 0);
+
+  resetCompanyLeaveYearRolloverDryRun({ keepResults: true });
+
+  if (!companyCode || !fiscalYear) {
+    if (container) {
+      container.innerHTML = `<div class="message error">対象会社と年度を選択してください。</div>`;
+    }
+    return;
+  }
+
+  if (button) button.disabled = true;
+  if (summary) summary.innerHTML = "";
+  if (container) {
+    container.innerHTML = `<div class="message">${escapeHtml(companyCode)} / ${escapeHtml(fiscalYear)}年度の切替内容を確認しています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(result => {
+      companyRolloverDryRunResult = result || null;
+      renderCompanyLeaveYearRolloverDryRun(result);
+      if (button) button.disabled = false;
+      updateCompanyRolloverExecuteButtonState();
+    })
+    .withFailureHandler(err => {
+      console.error("会社別 年度切替事前確認エラー:", err);
+      const message = err && err.message
+        ? err.message
+        : "切替内容の確認中にエラーが発生しました。";
+      if (container) {
+        container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+      if (button) button.disabled = false;
+      updateCompanyRolloverExecuteButtonState();
+    })
+    .dryRunCompanyLeaveYearRollover(companyCode, fiscalYear);
+}
+
+function resetCompanyLeaveYearRolloverDryRun(options) {
+  const opts = options || {};
+  const summary = document.getElementById("companyRolloverSummary");
+  const container = document.getElementById("companyRolloverResults");
+  const executionResult = document.getElementById("companyRolloverExecutionResult");
+  const backupChecked = document.getElementById("companyRolloverBackupChecked");
+  const confirmText = document.getElementById("companyRolloverConfirmText");
+
+  companyRolloverDryRunResult = null;
+  companyRolloverExecuted = false;
+  if (backupChecked) backupChecked.checked = false;
+  if (confirmText) confirmText.value = "";
+  if (summary) summary.innerHTML = "";
+  if (executionResult) executionResult.innerHTML = "";
+  if (!opts.keepResults && container) {
+    container.innerHTML = `<div class="empty-message">会社と年度を選んで「切替内容を確認する」を押してください。</div>`;
+  }
+
+  renderCompanyLeaveYearRolloverTarget();
+  updateCompanyRolloverExecuteButtonState();
+}
+
+function renderCompanyLeaveYearRolloverTarget() {
+  const companyCode = document.getElementById("companyRolloverCompanyCode").value;
+  const fiscalYear = Number(document.getElementById("companyRolloverFiscalYear").value || 0);
+  const target = document.getElementById("companyRolloverTarget");
+  const confirmTextGuide = document.getElementById("companyRolloverConfirmTextGuide");
+  if (!target) return;
+
+  const isPartner = companyCode === "PARTNER";
+  const companyName = isPartner ? "（有）友尚建設" : "正社員";
+  const startMonth = isPartner ? 6 : 4;
+  const yearText = fiscalYear
+    ? `${escapeHtml(fiscalYear - 1)}年度末 → ${escapeHtml(fiscalYear)}年度`
+    : "年度を選択してください";
+
+  target.innerHTML = `
+    <strong>対象会社: ${escapeHtml(companyName)}</strong>
+    <span>company_code: ${escapeHtml(companyCode)}</span>
+    <span>年度開始: ${escapeHtml(startMonth)}月1日</span>
+    <span>${yearText}</span>
+  `;
+
+  if (confirmTextGuide) {
+    confirmTextGuide.textContent = getCompanyRolloverConfirmText_(companyCode, fiscalYear);
+  }
+}
+
+function renderCompanyLeaveYearRolloverDryRun(result) {
+  const summary = document.getElementById("companyRolloverSummary");
+  const container = document.getElementById("companyRolloverResults");
+  if (!container) return;
+
+  const data = result || {};
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  const previousFiscalYear = Number(data.previous_fiscal_year || 0);
+  const nextFiscalYear = Number(data.next_fiscal_year || 0);
+  const expectedCountText = data.expected_employee_count == null
+    ? "固定なし"
+    : `${escapeHtml(data.expected_employee_count)}名`;
+  const globalMessages = []
+    .concat(Array.isArray(data.global_errors) ? data.global_errors : [])
+    .concat(Array.isArray(data.global_warnings) ? data.global_warnings : []);
+
+  if (summary) {
+    summary.innerHTML = `
+      <div class="partner-rollover-status ${data.can_execute ? "ready" : "blocked"}">
+        <div class="company-rollover-result-heading">
+          <strong>${data.can_execute ? "確認結果に問題はありません" : "確認が必要な項目があります"}</strong>
+          <span>${data.can_execute ? "この内容で年度切替できる状態です。" : "注意・エラーの内容を確認してください。"}</span>
+        </div>
+        <div class="company-rollover-summary-grid">
+          <div class="company-rollover-summary-card">
+            <span>対象会社・年度</span>
+            <strong>${escapeHtml(data.company_code || "")} / ${escapeHtml(nextFiscalYear)}年度</strong>
+          </div>
+          <div class="company-rollover-summary-card">
+            <span>対象人数</span>
+            <strong>${escapeHtml(data.target_employee_count || 0)}名</strong>
+            <small>想定: ${expectedCountText}</small>
+          </div>
+          <div class="company-rollover-summary-card ${Number(data.error_count || 0) > 0 ? "needs-check" : ""}">
+            <span>エラー</span>
+            <strong>${escapeHtml(data.error_count || 0)}件</strong>
+          </div>
+          <div class="company-rollover-summary-card ${Number(data.warning_count || 0) > 0 ? "needs-check" : ""}">
+            <span>注意</span>
+            <strong>${escapeHtml(data.warning_count || 0)}件</strong>
+          </div>
+          <div class="company-rollover-summary-card">
+            <span>確定可否</span>
+            <strong>${data.can_execute ? "確定できる状態" : "要確認"}</strong>
+          </div>
+        </div>
+      </div>
+      ${globalMessages.length > 0 ? `
+        <div class="partner-rollover-global-messages">
+          ${globalMessages.map(message => `<div>${escapeHtml(message)}</div>`).join("")}
+        </div>
+      ` : ""}
+    `;
+  }
+
+  if (rows.length === 0) {
+    container.innerHTML = `<div class="message error">対象となる社員を確認できませんでした。会社と年度を確認してください。</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="partner-rollover-table-wrap">
+      <table class="partner-rollover-table">
+        <thead>
+          <tr>
+            <th>社員ID</th>
+            <th>氏名</th>
+            <th>${escapeHtml(previousFiscalYear)}年度残</th>
+            <th>繰越予定</th>
+            <th>${escapeHtml(nextFiscalYear)}年度新規付与</th>
+            <th>開始後予定残</th>
+            <th>基準日付与回数</th>
+            <th>${escapeHtml(nextFiscalYear)}年度レコード</th>
+            <th>注意・エラー</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr class="${row.can_execute ? "" : "blocked"}">
+              <td>${escapeHtml(row.employee_id || "")}</td>
+              <td>${escapeHtml(row.display_name || row.name || "")}</td>
+              <td>${escapeHtml(formatDays(row.previous_remaining_days))}</td>
+              <td>${escapeHtml(formatDays(row.carry_over_candidate_days))}</td>
+              <td>${escapeHtml(formatDays(row.new_grant_days))}</td>
+              <td>${escapeHtml(formatDays(row.estimated_after_grant_days))}</td>
+              <td>${escapeHtml(row.company_basis_grant_number || 0)}回目</td>
+              <td>${row.has_next_fiscal_year_record ? "あり" : "なし"}</td>
+              <td>${escapeHtml((row.messages || []).join(" / ") || "なし")}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function updateCompanyRolloverExecuteButtonState() {
+  const button = document.getElementById("companyRolloverExecuteButton");
+  if (!button) return;
+  button.disabled = !canExecuteCompanyLeaveYearRolloverFromAdmin();
+  button.textContent = "年度切替を確定する";
+}
+
+function canExecuteCompanyLeaveYearRolloverFromAdmin() {
+  const data = companyRolloverDryRunResult;
+  const rows = data && Array.isArray(data.rows) ? data.rows : [];
+  const companyCode = String(
+    document.getElementById("companyRolloverCompanyCode").value || ""
+  ).trim().toUpperCase();
+  const fiscalYear = Number(
+    document.getElementById("companyRolloverFiscalYear").value || 0
+  );
+  const backupChecked = document.getElementById("companyRolloverBackupChecked");
+  const confirmText = document.getElementById("companyRolloverConfirmText");
+
+  return (
+    !companyRolloverExecuted &&
+    !companyRolloverExecuting &&
+    !!data &&
+    data.dry_run === true &&
+    data.can_execute === true &&
+    String(data.company_code || "").trim().toUpperCase() === companyCode &&
+    Number(data.next_fiscal_year || 0) === fiscalYear &&
+    Number(data.error_count || 0) === 0 &&
+    Number(data.warning_count || 0) === 0 &&
+    rows.length > 0 &&
+    rows.every(row => row.can_execute === true) &&
+    (companyCode !== "PARTNER" || rows.length === 3) &&
+    !!(backupChecked && backupChecked.checked) &&
+    String(confirmText && confirmText.value || "").trim() ===
+      getCompanyRolloverConfirmText_(companyCode, fiscalYear)
+  );
+}
+
+function getCompanyRolloverConfirmText_(companyCode, fiscalYear) {
+  const code = String(companyCode || "").trim().toUpperCase();
+  const year = Number(fiscalYear || 0);
+  const companyLabel = code === "PARTNER" ? "友尚建設" : "MAIN";
+  return companyLabel + year + "年度切替";
+}
+
+function executeCompanyLeaveYearRolloverFromAdmin() {
+  const button = document.getElementById("companyRolloverExecuteButton");
+  const executionResult = document.getElementById("companyRolloverExecutionResult");
+  const companyCode = String(
+    document.getElementById("companyRolloverCompanyCode").value || ""
+  ).trim().toUpperCase();
+  const fiscalYear = Number(
+    document.getElementById("companyRolloverFiscalYear").value || 0
+  );
+  const data = companyRolloverDryRunResult || {};
+  const companyName = companyCode === "PARTNER" ? "（有）友尚建設" : "正社員";
+
+  if (!canExecuteCompanyLeaveYearRolloverFromAdmin()) {
+    alert("年度切替を確定する条件を満たしていません。事前確認、バックアップ、確認入力を見直してください。");
+    updateCompanyRolloverExecuteButtonState();
+    return;
+  }
+
+  if (!confirm(
+    companyName +
+    "の" +
+    fiscalYear +
+    "年度切替を確定します。\n" +
+    "対象社員: " +
+    Number(data.target_employee_count || 0) +
+    "名\n\n" +
+    "バックアップを取得済みであることを確認しましたか？"
+  )) return;
+
+  if (!confirm(
+    "最終確認です。\n" +
+    "paid_leave_grants に" +
+    fiscalYear +
+    "年度の付与レコードを追加します。\n" +
+    "実行後は元に戻せません。本当に実行しますか？"
+  )) return;
+
+  if (button) button.disabled = true;
+  setCompanyRolloverExecutingState_(true);
+  if (executionResult) {
+    executionResult.innerHTML = `<div class="message">${escapeHtml(companyName)}の${escapeHtml(fiscalYear)}年度切替を確定しています...</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(result => {
+      companyRolloverExecuted = true;
+      setCompanyRolloverExecutingState_(false);
+      const response = result || {};
+      if (executionResult) {
+        executionResult.innerHTML = `
+          <div class="partner-rollover-complete">
+            <strong>${escapeHtml(companyName)}の${escapeHtml(fiscalYear)}年度切替が完了しました。</strong>
+            <div>追加件数: ${escapeHtml(response.created_count || 0)}件</div>
+            <div>社員ID: ${escapeHtml((response.employee_ids || []).join(", "))}</div>
+            <div>grant_id: ${escapeHtml((response.grant_ids || []).join(", "))}</div>
+          </div>
+        `;
+      }
+      updateCompanyRolloverExecuteButtonState();
+    })
+    .withFailureHandler(err => {
+      setCompanyRolloverExecutingState_(false);
+      console.error("会社別 年度切替確定エラー:", err);
+      const message = err && err.message
+        ? err.message
+        : "年度切替の確定中にエラーが発生しました。";
+      if (executionResult) {
+        executionResult.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
+      }
+      updateCompanyRolloverExecuteButtonState();
+    })
+    .executeCompanyLeaveYearRollover(companyCode, fiscalYear);
+}
+
+function setCompanyRolloverExecutingState_(executing) {
+  companyRolloverExecuting = executing === true;
+  [
+    "companyRolloverCompanyCode",
+    "companyRolloverFiscalYear",
+    "companyRolloverDryRunButton",
+    "companyRolloverBackupChecked",
+    "companyRolloverConfirmText"
+  ].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.disabled = companyRolloverExecuting;
+  });
+}
+
+/* =========================
    年跨ぎ・繰越確認
 ========================= */
 function loadYearEndCarryOverCandidates(keepPage) {
@@ -785,7 +1111,7 @@ function renderYearEndCarryOverCandidates(response) {
     ${renderYearEndBulkActionBar(totalCount)}
     ${renderPager("yearEnd", response)}
     ${rows.map(row => `
-    <div class="year-end-row ${row.is_finalized ? "finalized" : ""}">
+    <div class="year-end-row ${row.is_finalized ? "finalized" : ""} audit-only">
       <div class="year-end-main">
         <div class="year-end-name-line">
           <label class="grant-candidate-check year-end-check">
@@ -802,13 +1128,14 @@ function renderYearEndCarryOverCandidates(response) {
               data-estimated-after-grant-days="${escapeHtml(row.estimated_after_grant_days)}"
               data-validity-warning="${escapeHtml(row.validity_warning || "")}"
               onchange="updateYearEndFinalizeSelectionCount()"
-              ${row.is_finalized ? "disabled" : ""}
+              disabled
             >
             <span>選択</span>
           </label>
           <span class="year-end-name">${escapeHtml(row.display_name || row.name || row.employee_id)}</span>
           <span class="year-end-id">${escapeHtml(row.employee_id || "")}</span>
           ${renderYearEndFinalizedBadge(row.is_finalized)}
+          <span class="year-end-status-badge partner">監査用一覧: 確定は会社別パネルで処理</span>
           ${row.validity_warning ? `<span class="fifo-reason-badge needs-check">期限要確認</span>` : ""}
         </div>
 
@@ -861,10 +1188,9 @@ function renderYearEndCarryOverCandidates(response) {
           data-new-grant-days="${escapeHtml(row.new_grant_days)}"
           data-estimated-after-grant-days="${escapeHtml(row.estimated_after_grant_days)}"
           data-validity-warning="${escapeHtml(row.validity_warning || "")}"
-          onclick="finalizeYearEndCarryOverActionFromButton(this)"
-          ${row.is_finalized ? "disabled" : ""}
+          disabled
         >
-          確定
+          監査用
         </button>
       </div>
     </div>
@@ -873,17 +1199,16 @@ function renderYearEndCarryOverCandidates(response) {
   `;
 }
 
+function isPartnerYearEndRow(row) {
+  return String(row && row.company_code || "").trim().toUpperCase() === "PARTNER";
+}
+
 function renderYearEndBulkActionBar(count) {
   return `
     <div class="year-end-bulk-action-bar">
       <div class="year-end-bulk-info">
-        <div>繰越候補 ${escapeHtml(count)}件 / 選択 <strong id="yearEndFinalizeSelectedCount">0</strong>名</div>
-        <small>表示中のみ対象</small>
-      </div>
-      <div class="year-end-bulk-actions">
-        <button class="btn btn-reset" type="button" onclick="toggleYearEndFinalizeSelection(true)">全選択</button>
-        <button class="btn btn-reset" type="button" onclick="toggleYearEndFinalizeSelection(false)">選択解除</button>
-        <button class="btn btn-approve" type="button" onclick="finalizeSelectedYearEndCarryOverAction()">選択した社員をまとめて確定</button>
+        <div>繰越候補 ${escapeHtml(count)}件</div>
+        <small>監査用一覧です。確定操作は会社別年度切替パネルへ集約します。</small>
       </div>
     </div>
   `;

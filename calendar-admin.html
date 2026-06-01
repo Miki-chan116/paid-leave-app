@@ -44,13 +44,113 @@
       <p class="subtitle">年度ごとの出勤日・会社休日・有給取得不可日を管理します。</p>
     </div>
 
+    <section class="admin-section partner-rollover-section">
+      <div class="section-heading-row">
+        <div>
+          <div class="section-kicker partner-rollover-kicker">事前確認</div>
+          <h2 class="section-heading">会社別 年度切替</h2>
+          <p class="section-description">
+            会社と年度を選んで、切替内容を確認します。
+            確認だけなので、この時点ではデータは変更されません。
+          </p>
+        </div>
+      </div>
+
+      <div class="search-card partner-rollover-card">
+        <div class="company-rollover-controls">
+          <div class="field">
+            <label for="companyRolloverCompanyCode">対象会社</label>
+            <select id="companyRolloverCompanyCode"
+                    onchange="resetCompanyLeaveYearRolloverDryRun()">
+              <option value="MAIN">MAIN / 正社員 / 4月1日基準</option>
+              <option value="PARTNER">PARTNER / （有）友尚建設 / 6月1日基準</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="companyRolloverFiscalYear">切替後の年度</label>
+            <input id="companyRolloverFiscalYear"
+                   type="number"
+                   value="2026"
+                   min="2020"
+                   max="2100"
+                   onchange="resetCompanyLeaveYearRolloverDryRun()">
+          </div>
+        </div>
+
+        <div id="companyRolloverTarget" class="partner-rollover-target">
+          <strong>対象会社: 正社員</strong>
+          <span>company_code: MAIN</span>
+          <span>年度開始: 4月1日</span>
+          <span>2025年度末 → 2026年度</span>
+        </div>
+
+        <div class="partner-rollover-notice">
+          <strong>操作の流れ</strong>
+          <span>①会社を選ぶ</span>
+          <span>②年度を選ぶ</span>
+          <span>③切替内容を確認する</span>
+          <span>④結果を見る</span>
+          <span>⑤バックアップ確認後に年度切替を確定する</span>
+        </div>
+
+        <div class="search-actions">
+          <button id="companyRolloverDryRunButton"
+                  class="btn btn-search"
+                  type="button"
+                  onclick="runCompanyLeaveYearRolloverDryRun()">
+            切替内容を確認する
+          </button>
+        </div>
+
+        <div id="companyRolloverSummary" class="partner-rollover-summary"></div>
+        <div id="companyRolloverResults" class="partner-rollover-results">
+          <div class="empty-message">会社と年度を選んで「切替内容を確認する」を押してください。</div>
+        </div>
+
+        <div class="partner-rollover-confirm-area">
+          <div class="company-rollover-coming-soon">
+            内容に問題がないことを確認し、バックアップ取得後に年度切替を確定してください。
+          </div>
+
+          <label class="partner-rollover-check">
+            <input id="companyRolloverBackupChecked"
+                   type="checkbox"
+                   onchange="updateCompanyRolloverExecuteButtonState()">
+            <span>年度切替を確定する前にバックアップを取得しました</span>
+          </label>
+
+          <div class="field partner-rollover-confirm-field">
+            <label for="companyRolloverConfirmText">
+              確認のため <strong id="companyRolloverConfirmTextGuide">MAIN2026年度切替</strong> と入力してください
+            </label>
+            <input id="companyRolloverConfirmText"
+                   type="text"
+                   autocomplete="off"
+                   placeholder="確認文字列を入力してください"
+                   oninput="updateCompanyRolloverExecuteButtonState()">
+          </div>
+
+          <button id="companyRolloverExecuteButton"
+                  class="btn partner-rollover-execute-btn"
+                  type="button"
+                  onclick="executeCompanyLeaveYearRolloverFromAdmin()"
+                  disabled>
+            年度切替を確定する
+          </button>
+        </div>
+
+        <div id="companyRolloverExecutionResult" class="partner-rollover-execution-result"></div>
+      </div>
+    </section>
+
 <section class="admin-section year-end-section">
       <div class="section-heading-row">
         <div>
           <div class="section-kicker">確認のみ</div>
           <h2 class="section-heading">年度切替・繰越確認</h2>
           <p class="section-description">
-            年度切替時の繰越日数と消滅見込みを確認します。ここではまだ確定登録は行いません。
+            年度切替時の繰越日数と消滅見込みを確認します。この一覧は監査用で、確定登録は行いません。
           </p>
         </div>
       </div>
