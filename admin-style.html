@@ -74,6 +74,49 @@
     font-size: 14px;
   }
 
+  .calendar-admin-detail-panel {
+    border: 1px solid #d8edf4;
+    border-radius: 10px;
+    background: #f7fbfd;
+    padding: 12px;
+  }
+
+  .calendar-admin-detail-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--primary-dark);
+    font-size: 17px;
+    font-weight: 900;
+    list-style: none;
+  }
+
+  .calendar-admin-detail-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .calendar-admin-detail-summary::before {
+    content: "▶";
+    color: var(--accent-blue);
+    font-size: 12px;
+    transition: transform 0.18s ease;
+  }
+
+  .calendar-admin-detail-panel[open] .calendar-admin-detail-summary::before {
+    transform: rotate(90deg);
+  }
+
+  .calendar-admin-detail-description {
+    margin: 8px 0 14px;
+    color: var(--text-sub);
+    font-size: 14px;
+  }
+
+  .calendar-admin-detail-panel .admin-section {
+    margin-top: 14px;
+  }
+
   .search-card,.tool-card { padding:14px; }
   .search-card { margin-bottom:18px; }
   .search-title,.tool-title { font-size:16px; font-weight:bold; color:var(--primary-dark); margin-bottom:10px; }
