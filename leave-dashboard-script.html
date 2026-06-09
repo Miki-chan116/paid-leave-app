@@ -1,6 +1,4 @@
 <script>
-const ADMIN_LOGIN_KEY = "paid_leave_admin_login";
-
 let currentAdminUser = null;
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -28,25 +26,11 @@ function toInputDate(date) {
   return `${y}-${m}-${d}`;
 }
 
-function formatDisplayDate(value) {
-  if (!value) return "";
-  return String(value).replace(/-/g, "/");
-}
-
 function formatDays(value) {
   if (value === "" || value == null) return "-";
 
   const num = Number(value || 0);
   return `${num}日`;
-}
-
-function escapeHtml(str) {
-  return String(str == null ? "" : str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
 
 /* =========================

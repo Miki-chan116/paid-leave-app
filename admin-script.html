@@ -47,11 +47,6 @@ function toInputDate(date) {
   return `${y}-${m}-${d}`;
 }
 
-function formatDisplayDate(value) {
-  if (!value) return "";
-  return String(value).replace(/-/g, "/");
-}
-
 function updateCurrentRangeText(text) {
   const el = document.getElementById("currentRangeBox");
   if (el) el.textContent = text;
@@ -74,42 +69,11 @@ function setActiveTab(tabName) {
   });
 }
 
-function showLoading(targetId, text) {
-  const el = document.getElementById(targetId);
-  if (!el) return;
-  el.innerHTML = `
-    <div class="state-message loading-state">
-      <div class="state-title">${escapeHtml(text || "読み込み中...")}</div>
-      <div class="state-sub">少しお待ちください。</div>
-    </div>
-  `;
-}
-
-function showError(targetId, text) {
-  const el = document.getElementById(targetId);
-  if (!el) return;
-  el.innerHTML = `
-    <div class="state-message error-state">
-      <div class="state-title">${escapeHtml(text || "エラーが発生しました")}</div>
-      <div class="state-sub">時間をおいて再度お試しください。</div>
-    </div>
-  `;
-}
-
 function showExportMessage(message, type) {
   const el = document.getElementById("exportMessage");
   if (!el) return;
   const cls = type === "error" ? "message error" : "message success";
   el.innerHTML = `<div class="${cls}">${escapeHtml(message)}</div>`;
-}
-
-function escapeHtml(str) {
-  return String(str == null ? "" : str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
 
 function getStatusLabel(status) {
@@ -148,8 +112,6 @@ function renderEmptyState(title, subText) {
 /* =========================
    簡易ログイン
 ========================= */
-const ADMIN_LOGIN_KEY = "paid_leave_admin_login";
-
 let currentAdminUser = null;
 
 function initAdminLogin() {
@@ -1224,11 +1186,6 @@ function renderGrantBulkActionBar(type, count) {
       </div>
     </div>
   `;
-}
-
-function getPagedRows(response) {
-  if (Array.isArray(response)) return response;
-  return Array.isArray(response && response.rows) ? response.rows : [];
 }
 
 function getPagedTotalCount(response, rows) {
