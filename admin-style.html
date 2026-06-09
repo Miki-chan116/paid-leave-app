@@ -495,6 +495,23 @@
   min-width: 0;
 }
 
+.paid-leave-summary-card.clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.paid-leave-summary-card.clickable:hover,
+.paid-leave-summary-card.clickable:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(44, 105, 131, 0.12);
+  outline: none;
+}
+
+.paid-leave-summary-card.clickable.active {
+  background: #eef8fb;
+  border-color: var(--accent-blue);
+}
+
 .paid-leave-summary-card span {
   display: block;
   color: var(--text-sub);

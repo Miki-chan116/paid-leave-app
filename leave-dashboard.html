@@ -55,23 +55,48 @@
 
       <div class="paid-leave-dashboard-card">
         <div class="paid-leave-summary-grid">
-          <div class="paid-leave-summary-card">
+          <div class="paid-leave-summary-card clickable"
+               role="button"
+               tabindex="0"
+               data-filter="all"
+               onclick="setPaidLeaveDashboardQuickFilter('all')"
+               onkeydown="handlePaidLeaveDashboardSummaryKey(event, 'all')">
             <span>有給管理対象者数</span>
             <strong id="pldTargetCount">-</strong>
           </div>
-          <div class="paid-leave-summary-card warning">
+          <div class="paid-leave-summary-card warning clickable"
+               role="button"
+               tabindex="0"
+               data-filter="five_day"
+               onclick="setPaidLeaveDashboardQuickFilter('five_day')"
+               onkeydown="handlePaidLeaveDashboardSummaryKey(event, 'five_day')">
             <span>5日取得が足りない可能性</span>
             <strong id="pldFiveDayIncompleteCount">-</strong>
           </div>
-          <div class="paid-leave-summary-card within-90">
+          <div class="paid-leave-summary-card within-90 clickable"
+               role="button"
+               tabindex="0"
+               data-filter="expiry_soon"
+               onclick="setPaidLeaveDashboardQuickFilter('expiry_soon')"
+               onkeydown="handlePaidLeaveDashboardSummaryKey(event, 'expiry_soon')">
             <span>90日以内期限切れ人数</span>
             <strong id="pldWithin90Count">-</strong>
           </div>
-          <div class="paid-leave-summary-card within-30">
+          <div class="paid-leave-summary-card within-30 clickable"
+               role="button"
+               tabindex="0"
+               data-filter="expiry_soon"
+               onclick="setPaidLeaveDashboardQuickFilter('expiry_soon')"
+               onkeydown="handlePaidLeaveDashboardSummaryKey(event, 'expiry_soon')">
             <span>30日以内期限切れ人数</span>
             <strong id="pldWithin30Count">-</strong>
           </div>
-          <div class="paid-leave-summary-card expired">
+          <div class="paid-leave-summary-card expired clickable"
+               role="button"
+               tabindex="0"
+               data-filter="needs_now"
+               onclick="setPaidLeaveDashboardQuickFilter('needs_now')"
+               onkeydown="handlePaidLeaveDashboardSummaryKey(event, 'needs_now')">
             <span>期限切れ残あり人数</span>
             <strong id="pldExpiredCount">-</strong>
           </div>

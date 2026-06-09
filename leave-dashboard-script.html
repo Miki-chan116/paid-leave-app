@@ -179,11 +179,25 @@ function setPaidLeaveDashboardQuickFilter(filterKey) {
   }
 }
 
+function handlePaidLeaveDashboardSummaryKey(event, filterKey) {
+  if (!event || (event.key !== "Enter" && event.key !== " ")) return;
+
+  event.preventDefault();
+  setPaidLeaveDashboardQuickFilter(filterKey);
+}
+
 function updatePaidLeaveDashboardQuickFilterButtons() {
   document.querySelectorAll(".paid-leave-quick-filter").forEach(button => {
     button.classList.toggle(
       "active",
       button.dataset.filter === currentPaidLeaveDashboardQuickFilter
+    );
+  });
+
+  document.querySelectorAll(".paid-leave-summary-card.clickable").forEach(card => {
+    card.classList.toggle(
+      "active",
+      card.dataset.filter === currentPaidLeaveDashboardQuickFilter
     );
   });
 }
