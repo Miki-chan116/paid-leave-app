@@ -559,6 +559,42 @@
   align-items: end;
 }
 
+.paid-leave-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.paid-leave-quick-filter {
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid #d8edf4;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.paid-leave-quick-filter:hover {
+  background: #f5fbfd;
+}
+
+.paid-leave-quick-filter.active {
+  background: #eef8fb;
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.paid-leave-dashboard-sort-note {
+  margin: 0 0 10px;
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .paid-leave-dashboard-caption {
   margin: 0 0 10px;
   color: var(--text-sub);

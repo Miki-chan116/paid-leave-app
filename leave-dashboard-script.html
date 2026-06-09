@@ -1,5 +1,7 @@
 <script>
 let currentAdminUser = null;
+let currentPaidLeaveDashboardData = null;
+let currentPaidLeaveDashboardQuickFilter = "all";
 const adminAuthConfig = {
   validateLoginInput: false,
   clearMessageBeforeLoadUsers: true,
@@ -119,9 +121,14 @@ function loadPaidLeaveDashboard() {
 function renderPaidLeaveDashboard(data) {
   const result = data || {};
   const summary = result.summary || {};
-  const rows = Array.isArray(result.rows) ? result.rows : [];
+  const rows = sortPaidLeaveDashboardRowsByPriority(
+    applyPaidLeaveDashboardQuickFilter(Array.isArray(result.rows) ? result.rows : [])
+  );
   const table = document.getElementById("paidLeaveDashboardTable");
   const caption = document.getElementById("paidLeaveDashboardCaption");
+
+  currentPaidLeaveDashboardData = result;
+  updatePaidLeaveDashboardQuickFilterButtons();
 
   setTextContent("pldTargetCount", summary.target_employee_count || 0);
   setTextContent("pldFiveDayIncompleteCount", summary.five_day_incomplete_count || 0);
@@ -161,6 +168,97 @@ function renderPaidLeaveDashboard(data) {
       </tr>
     `;
   }).join("");
+}
+
+function setPaidLeaveDashboardQuickFilter(filterKey) {
+  currentPaidLeaveDashboardQuickFilter = filterKey || "all";
+  updatePaidLeaveDashboardQuickFilterButtons();
+
+  if (currentPaidLeaveDashboardData) {
+    renderPaidLeaveDashboard(currentPaidLeaveDashboardData);
+  }
+}
+
+function updatePaidLeaveDashboardQuickFilterButtons() {
+  document.querySelectorAll(".paid-leave-quick-filter").forEach(button => {
+    button.classList.toggle(
+      "active",
+      button.dataset.filter === currentPaidLeaveDashboardQuickFilter
+    );
+  });
+}
+
+function applyPaidLeaveDashboardQuickFilter(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+
+  if (currentPaidLeaveDashboardQuickFilter === "needs_now") {
+    return list.filter(row =>
+      isPaidLeaveDashboardExpired(row) ||
+      isPaidLeaveDashboardWithin30(row) ||
+      isPaidLeaveDashboardFiveDayIncomplete(row)
+    );
+  }
+
+  if (currentPaidLeaveDashboardQuickFilter === "expiry_soon") {
+    return list.filter(row =>
+      isPaidLeaveDashboardExpired(row) ||
+      isPaidLeaveDashboardWithin30(row) ||
+      isPaidLeaveDashboardWithin90(row)
+    );
+  }
+
+  if (currentPaidLeaveDashboardQuickFilter === "five_day") {
+    return list.filter(row => isPaidLeaveDashboardFiveDayIncomplete(row));
+  }
+
+  return list;
+}
+
+function getPaidLeaveDashboardPriority(row) {
+  if (isPaidLeaveDashboardExpired(row)) return 1;
+  if (isPaidLeaveDashboardWithin30(row)) return 2;
+  if (isPaidLeaveDashboardWithin90(row)) return 3;
+  if (isPaidLeaveDashboardFiveDayIncomplete(row)) return 4;
+  return 5;
+}
+
+function sortPaidLeaveDashboardRowsByPriority(rows) {
+  return (Array.isArray(rows) ? rows.slice() : []).sort((a, b) => {
+    const priorityDiff =
+      getPaidLeaveDashboardPriority(a) - getPaidLeaveDashboardPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const aDays = getPaidLeaveDashboardNearestExpiryDays_(a);
+    const bDays = getPaidLeaveDashboardNearestExpiryDays_(b);
+    if (aDays !== bDays) return aDays - bDays;
+
+    return String(a.employee_id || "").localeCompare(String(b.employee_id || ""));
+  });
+}
+
+function isPaidLeaveDashboardExpired(row) {
+  return Number(row && row.expired_days || 0) > 0 ||
+    String(row && row.expiry_status || "") === "expired";
+}
+
+function isPaidLeaveDashboardWithin30(row) {
+  return String(row && row.expiry_status || "") === "within_30";
+}
+
+function isPaidLeaveDashboardWithin90(row) {
+  return String(row && row.expiry_status || "") === "within_90";
+}
+
+function isPaidLeaveDashboardFiveDayIncomplete(row) {
+  return row && row.five_day_completed !== true;
+}
+
+function getPaidLeaveDashboardNearestExpiryDays_(row) {
+  const value = row ? row.nearest_expiry_days : "";
+  if (value === "" || value == null) return Number.POSITIVE_INFINITY;
+
+  const num = Number(value);
+  return Number.isFinite(num) ? num : Number.POSITIVE_INFINITY;
 }
 
 function setTextContent(id, value) {

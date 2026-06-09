@@ -112,6 +112,37 @@
           </button>
         </div>
 
+        <div class="paid-leave-quick-filters" aria-label="有給状況のクイックフィルタ">
+          <button class="paid-leave-quick-filter active"
+                  type="button"
+                  data-filter="all"
+                  onclick="setPaidLeaveDashboardQuickFilter('all')">
+            すべて
+          </button>
+          <button class="paid-leave-quick-filter"
+                  type="button"
+                  data-filter="needs_now"
+                  onclick="setPaidLeaveDashboardQuickFilter('needs_now')">
+            今すぐ確認
+          </button>
+          <button class="paid-leave-quick-filter"
+                  type="button"
+                  data-filter="expiry_soon"
+                  onclick="setPaidLeaveDashboardQuickFilter('expiry_soon')">
+            期限が近い
+          </button>
+          <button class="paid-leave-quick-filter"
+                  type="button"
+                  data-filter="five_day"
+                  onclick="setPaidLeaveDashboardQuickFilter('five_day')">
+            5日取得が足りない可能性
+          </button>
+        </div>
+
+        <div class="paid-leave-dashboard-sort-note">
+          確認が必要な社員から順に表示しています。
+        </div>
+
         <div id="paidLeaveDashboardMessage" class="message-area"></div>
         <div id="paidLeaveDashboardCaption" class="paid-leave-dashboard-caption"></div>
 
