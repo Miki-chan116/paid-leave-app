@@ -7017,6 +7017,176 @@ function getAdminDashboardSummary() {
   return result;
 }
 
+function getPaidLeaveDashboardData(filters) {
+  const opts = filters || {};
+  const fiscalYear = Number(opts.fiscal_year || getFiscalYearFromDate(new Date()));
+  const companyCodeFilter = String(opts.company_code || "").trim().toUpperCase();
+  const keyword = norm(opts.keyword || "");
+  const fiveDayIncompleteOnly = opts.five_day_incomplete_only === true;
+  const expiredOnly = opts.expired_only === true;
+  const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate(new Date());
+
+  const employees = getEmployeesForAdmin()
+    .filter(emp => isFifoBalanceCompareTargetEmployee_(emp))
+    .filter(emp => {
+      const empCompanyCode = String(emp.company_code || "").trim().toUpperCase();
+      if (companyCodeFilter && companyCodeFilter !== "ALL" && empCompanyCode !== companyCodeFilter) {
+        return false;
+      }
+
+      if (!keyword) return true;
+
+      const targetText = norm(
+        String(emp.employee_id || "") +
+        String(emp.display_employee_id || "") +
+        String(emp.name || "") +
+        String(emp.display_name || "") +
+        String(emp.name_kana || "") +
+        String(emp.company_name || "") +
+        String(emp.company_code || "")
+      );
+
+      return targetText.indexOf(keyword) !== -1;
+    })
+    .sort((a, b) => String(a.employee_id || "").localeCompare(String(b.employee_id || "")));
+
+  const employeeIds = employees.map(emp => String(emp.employee_id || "").trim()).filter(Boolean);
+  const fiscalBalanceMap = getEmployeeBalanceMapForEmployeeIdsForFiscalYear(
+    fiscalYear,
+    employeeIds
+  );
+  const context = createFifoBalanceComparisonContext_(asOfDate);
+
+  const allRows = employees.map(emp => {
+    const employeeId = String(emp.employee_id || "").trim();
+    const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(
+      employeeId,
+      asOfDate,
+      context
+    );
+    const fiscalBalance = fiscalBalanceMap[employeeId] || {
+      used_days: 0
+    };
+    const usedDays = Number(fiscalBalance.used_days || 0);
+    const fiveDayRemaining = Math.max(0, 5 - usedDays);
+    const expiryInfo = buildPaidLeaveDashboardExpiryInfo_(fifoBalance, asOfDate);
+
+    return {
+      employee_id: employeeId,
+      display_employee_id: String(emp.display_employee_id || ""),
+      name: String(emp.name || ""),
+      display_name: String(emp.display_name || ""),
+      employee_name: getDisplayName(emp) || employeeId,
+      company_code: String(emp.company_code || ""),
+      company_name: String(emp.company_name || ""),
+      current_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+      fiscal_used_days: usedDays,
+      five_day_used: Math.min(usedDays, 5),
+      five_day_remaining: fiveDayRemaining,
+      five_day_completed: fiveDayRemaining === 0,
+      expired_days: Number(fifoBalance.expired_days || 0),
+      nearest_expiry_date: expiryInfo.nearest_expiry_date,
+      nearest_expiry_days: expiryInfo.nearest_expiry_days,
+      expiry_status: expiryInfo.expiry_status,
+      expiry_status_label: expiryInfo.expiry_status_label
+    };
+  });
+
+  const summary = {
+    target_employee_count: allRows.length,
+    five_day_incomplete_count: allRows.filter(row => !row.five_day_completed).length,
+    within_90_count: allRows.filter(row =>
+      row.expiry_status === "within_90" ||
+      row.expiry_status === "within_30"
+    ).length,
+    within_30_count: allRows.filter(row =>
+      row.expiry_status === "within_30"
+    ).length,
+    expired_count: allRows.filter(row => Number(row.expired_days || 0) > 0).length
+  };
+
+  const rows = allRows.filter(row => {
+    if (fiveDayIncompleteOnly && row.five_day_completed) return false;
+    if (expiredOnly && Number(row.expired_days || 0) <= 0) return false;
+    return true;
+  });
+
+  return {
+    ok: true,
+    fiscal_year: fiscalYear,
+    as_of_date: formatDateValue(asOfDate),
+    company_code: companyCodeFilter || "ALL",
+    keyword: String(opts.keyword || ""),
+    summary: summary,
+    row_count: rows.length,
+    rows: rows
+  };
+}
+
+function buildPaidLeaveDashboardExpiryInfo_(fifoBalance, asOfDate) {
+  const activeLots = (fifoBalance.grant_details || [])
+    .map(lot => {
+      const remainingDays = Number(lot.active_remaining_days || 0);
+      if (remainingDays <= 0) return null;
+
+      const validTo = parseLocalDate(lot.valid_to);
+      const daysUntilExpiry = Math.round(
+        (validTo.getTime() - asOfDate.getTime()) / (24 * 60 * 60 * 1000)
+      );
+
+      return {
+        valid_to: formatDateValue(validTo),
+        days_until_expiry: daysUntilExpiry
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.days_until_expiry - b.days_until_expiry);
+
+  if (Number(fifoBalance.expired_days || 0) > 0) {
+    return {
+      nearest_expiry_date: activeLots.length > 0 ? activeLots[0].valid_to : "",
+      nearest_expiry_days: activeLots.length > 0 ? activeLots[0].days_until_expiry : "",
+      expiry_status: "expired",
+      expiry_status_label: "期限切れ"
+    };
+  }
+
+  if (activeLots.length === 0) {
+    return {
+      nearest_expiry_date: "",
+      nearest_expiry_days: "",
+      expiry_status: "normal",
+      expiry_status_label: "正常"
+    };
+  }
+
+  const nearest = activeLots[0];
+  if (nearest.days_until_expiry <= 30) {
+    return {
+      nearest_expiry_date: nearest.valid_to,
+      nearest_expiry_days: nearest.days_until_expiry,
+      expiry_status: "within_30",
+      expiry_status_label: "30日以内"
+    };
+  }
+
+  if (nearest.days_until_expiry <= 90) {
+    return {
+      nearest_expiry_date: nearest.valid_to,
+      nearest_expiry_days: nearest.days_until_expiry,
+      expiry_status: "within_90",
+      expiry_status_label: "90日以内"
+    };
+  }
+
+  return {
+    nearest_expiry_date: nearest.valid_to,
+    nearest_expiry_days: nearest.days_until_expiry,
+    expiry_status: "normal",
+    expiry_status_label: "正常"
+  };
+}
+
 /* =========================
    年次付与候補取得
 ========================= */

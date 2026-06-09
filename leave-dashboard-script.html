@@ -1,0 +1,287 @@
+<script>
+const ADMIN_LOGIN_KEY = "paid_leave_admin_login";
+
+let currentAdminUser = null;
+
+window.addEventListener("DOMContentLoaded", () => {
+  initAdminLogin();
+});
+
+function getCurrentFiscalYear() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  return month >= 4 ? year : year - 1;
+}
+
+function setDefaultDashboardValues() {
+  const fiscalYear = document.getElementById("pldFiscalYear");
+  if (fiscalYear && !fiscalYear.value) {
+    fiscalYear.value = getCurrentFiscalYear();
+  }
+}
+
+function toInputDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatDisplayDate(value) {
+  if (!value) return "";
+  return String(value).replace(/-/g, "/");
+}
+
+function formatDays(value) {
+  if (value === "" || value == null) return "-";
+
+  const num = Number(value || 0);
+  return `${num}日`;
+}
+
+function escapeHtml(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/* =========================
+   簡易ログイン
+========================= */
+function initAdminLogin() {
+  const saved = localStorage.getItem(ADMIN_LOGIN_KEY);
+
+  if (saved) {
+    try {
+      currentAdminUser = JSON.parse(saved);
+
+      if (currentAdminUser && currentAdminUser.admin_id) {
+        showAdminApp();
+        return;
+      }
+    } catch (e) {
+      localStorage.removeItem(ADMIN_LOGIN_KEY);
+    }
+  }
+
+  showLoginScreen();
+  loadAdminUsersForLogin();
+}
+
+function showLoginScreen() {
+  const loginScreen = document.getElementById("loginScreen");
+  const adminApp = document.getElementById("adminApp");
+
+  if (loginScreen) loginScreen.style.display = "flex";
+  if (adminApp) adminApp.classList.add("admin-app-hidden");
+}
+
+function showAdminApp() {
+  const loginScreen = document.getElementById("loginScreen");
+  const adminApp = document.getElementById("adminApp");
+
+  if (loginScreen) loginScreen.style.display = "none";
+  if (adminApp) adminApp.classList.remove("admin-app-hidden");
+
+  renderLoginUserBar();
+  setDefaultDashboardValues();
+  loadPaidLeaveDashboard();
+}
+
+function renderLoginUserBar() {
+  const bar = document.getElementById("loginUserBar");
+  if (!bar) return;
+
+  const name = currentAdminUser ? currentAdminUser.admin_name : "";
+
+  bar.innerHTML = `
+    <span>ログイン中：${escapeHtml(name)}</span>
+    <button class="logout-btn" type="button" onclick="logoutAdmin()">ログアウト</button>
+  `;
+}
+
+function loadAdminUsersForLogin() {
+  const select = document.getElementById("adminUserSelect");
+  const message = document.getElementById("loginMessage");
+
+  if (message) message.textContent = "";
+
+  google.script.run
+    .withSuccessHandler(users => {
+      if (!select) return;
+
+      if (!Array.isArray(users) || users.length === 0) {
+        select.innerHTML = `<option value="">有効な管理者がいません</option>`;
+        return;
+      }
+
+      select.innerHTML = `<option value="">選択してください</option>`;
+
+      users.forEach(user => {
+        const option = document.createElement("option");
+        option.value = user.admin_id;
+        option.textContent = `${user.admin_name}（${user.admin_id}）`;
+        select.appendChild(option);
+      });
+    })
+    .withFailureHandler(err => {
+      console.error("管理者一覧取得エラー:", err);
+      if (message) message.textContent = "管理者一覧の取得でエラーが発生しました。";
+    })
+    .getAdminUsersForLogin();
+}
+
+function loginAdmin() {
+  const adminId = document.getElementById("adminUserSelect").value;
+  const pin = document.getElementById("adminPinInput").value;
+  const message = document.getElementById("loginMessage");
+
+  if (message) message.textContent = "";
+
+  google.script.run
+    .withSuccessHandler(user => {
+      currentAdminUser = user;
+
+      localStorage.setItem(ADMIN_LOGIN_KEY, JSON.stringify({
+        admin_id: user.admin_id,
+        admin_name: user.admin_name
+      }));
+
+      showAdminApp();
+    })
+    .withFailureHandler(err => {
+      console.error("ログインエラー:", err);
+      if (message) {
+        message.textContent = err && err.message ? err.message : "ログインできませんでした。";
+      }
+    })
+    .verifyAdminLogin(adminId, pin);
+}
+
+function logoutAdmin() {
+  localStorage.removeItem(ADMIN_LOGIN_KEY);
+  currentAdminUser = null;
+
+  const pin = document.getElementById("adminPinInput");
+  if (pin) pin.value = "";
+
+  showLoginScreen();
+  loadAdminUsersForLogin();
+}
+
+/* =========================
+   有給管理ダッシュボード
+========================= */
+function getPaidLeaveDashboardFilters() {
+  return {
+    fiscal_year: Number(document.getElementById("pldFiscalYear").value || getCurrentFiscalYear()),
+    company_code: document.getElementById("pldCompany").value || "ALL",
+    keyword: document.getElementById("pldKeyword").value || "",
+    five_day_incomplete_only: document.getElementById("pldFiveDayOnly").checked,
+    expired_only: document.getElementById("pldExpiredOnly").checked,
+    as_of_date: toInputDate(new Date())
+  };
+}
+
+function loadPaidLeaveDashboard() {
+  const table = document.getElementById("paidLeaveDashboardTable");
+  const message = document.getElementById("paidLeaveDashboardMessage");
+  const caption = document.getElementById("paidLeaveDashboardCaption");
+
+  if (!table) return;
+
+  table.innerHTML = `<tr><td colspan="7">読み込み中...</td></tr>`;
+  if (message) message.innerHTML = "";
+  if (caption) caption.textContent = "";
+
+  google.script.run
+    .withSuccessHandler(data => {
+      renderPaidLeaveDashboard(data);
+    })
+    .withFailureHandler(err => {
+      console.error("有給管理ダッシュボード取得エラー:", err);
+      table.innerHTML = `<tr><td colspan="7">データ取得でエラーが発生しました。</td></tr>`;
+      if (message) {
+        message.innerHTML = `<div class="message error">${escapeHtml(err && err.message ? err.message : "有給管理ダッシュボードを取得できませんでした。")}</div>`;
+      }
+    })
+    .getPaidLeaveDashboardData(getPaidLeaveDashboardFilters());
+}
+
+function renderPaidLeaveDashboard(data) {
+  const result = data || {};
+  const summary = result.summary || {};
+  const rows = Array.isArray(result.rows) ? result.rows : [];
+  const table = document.getElementById("paidLeaveDashboardTable");
+  const caption = document.getElementById("paidLeaveDashboardCaption");
+
+  setTextContent("pldTargetCount", summary.target_employee_count || 0);
+  setTextContent("pldFiveDayIncompleteCount", summary.five_day_incomplete_count || 0);
+  setTextContent("pldWithin90Count", summary.within_90_count || 0);
+  setTextContent("pldWithin30Count", summary.within_30_count || 0);
+  setTextContent("pldExpiredCount", summary.expired_count || 0);
+
+  if (caption) {
+    caption.textContent = `${result.fiscal_year || ""}年度 / ${result.company_code || "ALL"} / ${rows.length}件表示 / 基準日 ${formatDisplayDate(result.as_of_date)}`;
+  }
+
+  if (!table) return;
+
+  if (rows.length === 0) {
+    table.innerHTML = `<tr><td colspan="7">条件に一致する社員はいません。</td></tr>`;
+    return;
+  }
+
+  table.innerHTML = rows.map(row => {
+    const status = row.expiry_status || "normal";
+    const nearest = row.nearest_expiry_date
+      ? `${formatDisplayDate(row.nearest_expiry_date)}${row.nearest_expiry_days !== "" && row.nearest_expiry_days != null ? `（あと${row.nearest_expiry_days}日）` : ""}`
+      : "-";
+
+    return `
+      <tr class="expiry-${escapeHtml(status)}">
+        <td>
+          <div class="pld-employee-name">${escapeHtml(row.employee_name || row.name || row.employee_id)}</div>
+          <div class="pld-employee-id">${escapeHtml(row.display_employee_id || row.employee_id || "")}</div>
+        </td>
+        <td>${escapeHtml(getPaidLeaveDashboardCompanyLabel(row))}</td>
+        <td>${escapeHtml(formatDays(row.current_remaining_days))}</td>
+        <td>${escapeHtml(formatDays(row.fiscal_used_days))}</td>
+        <td>${renderFiveDayStatus(row)}</td>
+        <td><span class="pld-expiry-badge ${Number(row.expired_days || 0) > 0 ? "expired" : "normal"}">${escapeHtml(formatDays(row.expired_days))}</span></td>
+        <td><span class="pld-expiry-badge ${escapeHtml(status)}">${escapeHtml(nearest)}</span></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function setTextContent(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function getPaidLeaveDashboardCompanyLabel(row) {
+  const code = String(row.company_code || "").trim();
+  const name = String(row.company_name || "").trim();
+  if (name && code) return `${name}（${code}）`;
+  return name || code || "-";
+}
+
+function renderFiveDayStatus(row) {
+  const completed = row.five_day_completed === true;
+  const used = Number(row.five_day_used || 0);
+  const remaining = Number(row.five_day_remaining || 0);
+  const cls = completed ? "complete" : "incomplete";
+  const label = completed ? "達成" : `未達（あと${remaining}日）`;
+
+  return `
+    <span class="pld-five-day ${cls}">
+      ${escapeHtml(label)} / ${escapeHtml(formatDays(used))}
+    </span>
+  `;
+}
+</script>

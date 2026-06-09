@@ -422,14 +422,217 @@
   background: var(--accent-orange);
 }
 
+.paid-leave-dashboard-section {
+  padding-top: 8px;
+  border-top: 1px solid #dceff5;
+}
+
+.paid-leave-dashboard-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 14px;
+  margin-bottom: 18px;
+}
+
+.paid-leave-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.paid-leave-summary-card {
+  border: 1px solid #dceff5;
+  border-left: 6px solid var(--primary);
+  border-radius: 12px;
+  background: #f8fcfe;
+  padding: 12px;
+  min-width: 0;
+}
+
+.paid-leave-summary-card span {
+  display: block;
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.paid-leave-summary-card strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-main);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.paid-leave-summary-card.warning {
+  border-left-color: #d8b23f;
+}
+
+.paid-leave-summary-card.within-90 {
+  border-left-color: #e0c94b;
+}
+
+.paid-leave-summary-card.within-30 {
+  border-left-color: var(--accent-orange);
+}
+
+.paid-leave-summary-card.expired {
+  border-left-color: var(--accent-red);
+}
+
+.paid-leave-dashboard-filters {
+  display: grid;
+  grid-template-columns: 120px 140px minmax(180px, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.paid-leave-dashboard-filters .field {
+  margin-bottom: 0;
+}
+
+.paid-leave-filter-check {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.paid-leave-filter-actions {
+  display: flex;
+  align-items: end;
+}
+
+.paid-leave-dashboard-caption {
+  margin: 0 0 10px;
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.paid-leave-dashboard-table-wrap {
+  overflow-x: auto;
+}
+
+.paid-leave-dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 820px;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+
+.paid-leave-dashboard-table th,
+.paid-leave-dashboard-table td {
+  padding: 10px 11px;
+  border-bottom: 1px solid #e5f0f4;
+  text-align: left;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.paid-leave-dashboard-table th {
+  background: #eef8fb;
+  color: var(--primary-dark);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.paid-leave-dashboard-table tbody tr.expiry-expired {
+  background: #fff5f7;
+}
+
+.paid-leave-dashboard-table tbody tr.expiry-within_30 {
+  background: #fff8ed;
+}
+
+.paid-leave-dashboard-table tbody tr.expiry-within_90 {
+  background: #fffdec;
+}
+
+.pld-employee-name {
+  font-weight: 900;
+  color: var(--text-main);
+}
+
+.pld-employee-id {
+  margin-top: 3px;
+  color: var(--text-sub);
+  font-size: 12px;
+}
+
+.pld-five-day,
+.pld-expiry-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.pld-five-day.complete,
+.pld-expiry-badge.normal {
+  color: var(--primary-dark);
+  background: #edf8f1;
+  border: 1px solid #cfe8d8;
+}
+
+.pld-five-day.incomplete,
+.pld-expiry-badge.within_90 {
+  color: #7b6d00;
+  background: #fff9cf;
+  border: 1px solid #eee4a3;
+}
+
+.pld-expiry-badge.within_30 {
+  color: #9a5a10;
+  background: #fff1dc;
+  border: 1px solid #efcf9e;
+}
+
+.pld-expiry-badge.expired {
+  color: var(--accent-red);
+  background: #fff0f4;
+  border: 1px solid #efbed0;
+}
+
 @media (max-width: 900px) {
   .admin-dashboard {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .paid-leave-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .paid-leave-dashboard-filters {
     grid-template-columns: 1fr 1fr;
   }
 }
 
 @media (max-width: 560px) {
   .admin-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .paid-leave-summary-grid,
+  .paid-leave-dashboard-filters {
     grid-template-columns: 1fr;
   }
 }
