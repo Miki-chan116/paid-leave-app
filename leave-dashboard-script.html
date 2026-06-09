@@ -194,6 +194,7 @@ function openPaidLeaveDashboardEmployeeDetail(employeeId) {
 
   const modal = document.getElementById("paidLeaveEmployeeDetailModal");
   const message = document.getElementById("paidLeaveDetailMessage");
+  const status = document.getElementById("paidLeaveDetailStatus");
   const summary = document.getElementById("paidLeaveDetailSummary");
   const grants = document.getElementById("paidLeaveDetailGrants");
   const title = document.getElementById("paidLeaveDetailTitle");
@@ -208,6 +209,7 @@ function openPaidLeaveDashboardEmployeeDetail(employeeId) {
 
   if (title) title.textContent = "社員の有給詳細";
   if (message) message.innerHTML = `<div class="message">詳しい有給状況を読み込んでいます...</div>`;
+  if (status) status.innerHTML = "";
   if (summary) {
     summary.innerHTML = row
       ? renderPaidLeaveDetailSummaryCards_(row)
@@ -247,16 +249,19 @@ function renderPaidLeaveDashboardEmployeeDetail(detail) {
   const title = document.getElementById("paidLeaveDetailTitle");
   const subtitle = document.getElementById("paidLeaveDetailSubtitle");
   const message = document.getElementById("paidLeaveDetailMessage");
+  const statusArea = document.getElementById("paidLeaveDetailStatus");
   const summaryArea = document.getElementById("paidLeaveDetailSummary");
   const grantsArea = document.getElementById("paidLeaveDetailGrants");
   const employeeName = employee.employee_name || employee.display_name || employee.name || employee.employee_id || "";
   const companyLabel = getPaidLeaveDashboardCompanyLabel(employee);
+  const statusInfo = getPaidLeaveDetailStatusInfo(summary, grants);
 
   if (title) title.textContent = employeeName ? `${employeeName}さんの有給詳細` : "社員の有給詳細";
   if (subtitle) {
     subtitle.textContent = `${companyLabel} / 古い有給から順番に使った場合の残りを表示しています。`;
   }
   if (message) message.innerHTML = "";
+  if (statusArea) statusArea.innerHTML = renderPaidLeaveDetailStatusNotice(statusInfo);
   if (summaryArea) summaryArea.innerHTML = renderPaidLeaveDetailSummaryCards_(summary);
   if (!grantsArea) return;
 
@@ -279,7 +284,7 @@ function renderPaidLeaveDashboardEmployeeDetail(detail) {
         </thead>
         <tbody>
           ${grants.map(grant => `
-            <tr>
+            <tr class="status-${escapeHtml(grant.status || "normal")}">
               <td>${escapeHtml(formatDisplayDate(grant.grant_date))}</td>
               <td>${escapeHtml(formatDays(grant.grant_days))}</td>
               <td>${escapeHtml(formatDays(grant.remaining_days))}</td>
@@ -293,6 +298,62 @@ function renderPaidLeaveDashboardEmployeeDetail(detail) {
           `).join("")}
         </tbody>
       </table>
+    </div>
+  `;
+}
+
+function getPaidLeaveDetailStatusInfo(summary, grants) {
+  const data = summary || {};
+  const grantRows = Array.isArray(grants) ? grants : [];
+  const hasExpired = Number(data.expired_days || 0) > 0 ||
+    grantRows.some(grant => String(grant.status || "") === "expired");
+  const hasWithin30 = String(data.expiry_status || "") === "within_30" ||
+    grantRows.some(grant => String(grant.status || "") === "within_30");
+  const hasWithin90 = String(data.expiry_status || "") === "within_90" ||
+    grantRows.some(grant => String(grant.status || "") === "within_90");
+  const hasFiveDayIncomplete = data.five_day_completed !== true;
+  const reasons = [];
+
+  if (hasExpired) reasons.push("期限切れの有給があります。");
+  if (hasWithin30) reasons.push("30日以内に期限が近い有給があります。");
+  if (hasWithin90) reasons.push("90日以内に期限が近い有給があります。");
+  if (hasFiveDayIncomplete) reasons.push("5日取得が足りない可能性があります。");
+
+  if (hasExpired || hasWithin30) {
+    return { status: "needs_check", label: "要確認", reasons };
+  }
+
+  if (hasWithin90) {
+    return { status: "near_expiry", label: "期限が近い", reasons };
+  }
+
+  if (hasFiveDayIncomplete) {
+    return { status: "needs_check", label: "要確認", reasons };
+  }
+
+  return {
+    status: "ok",
+    label: "問題なし",
+    reasons: ["現時点で大きな確認事項はありません。"]
+  };
+}
+
+function renderPaidLeaveDetailStatusNotice(statusInfo) {
+  const info = statusInfo || {};
+  const status = info.status || "ok";
+  const label = info.label || "問題なし";
+  const reasons = Array.isArray(info.reasons) && info.reasons.length
+    ? info.reasons
+    : ["現時点で大きな確認事項はありません。"];
+
+  return `
+    <div class="paid-leave-detail-status-notice-inner ${escapeHtml(status)}">
+      <span class="paid-leave-detail-overall-badge ${escapeHtml(status)}">
+        ${escapeHtml(label)}
+      </span>
+      <div class="paid-leave-detail-status-reasons">
+        ${reasons.map(reason => `<div>${escapeHtml(reason)}</div>`).join("")}
+      </div>
     </div>
   `;
 }

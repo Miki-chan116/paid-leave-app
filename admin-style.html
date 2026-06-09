@@ -782,6 +782,73 @@
   margin-bottom: 10px;
 }
 
+.paid-leave-detail-status-notice {
+  margin-bottom: 12px;
+}
+
+.paid-leave-detail-status-notice-inner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border-radius: 10px;
+  border: 1px solid #dceff5;
+  background: #f8fcfe;
+  padding: 11px;
+}
+
+.paid-leave-detail-status-notice-inner.needs_check {
+  border-color: #f2c2c2;
+  background: #fff5f5;
+}
+
+.paid-leave-detail-status-notice-inner.near_expiry {
+  border-color: #efd98a;
+  background: #fffbea;
+}
+
+.paid-leave-detail-status-notice-inner.ok {
+  border-color: #cfe8dc;
+  background: #f5fbf7;
+}
+
+.paid-leave-detail-overall-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.paid-leave-detail-overall-badge.needs_check {
+  background: #ffe4e4;
+  color: #b42318;
+  border: 1px solid #f1b8b8;
+}
+
+.paid-leave-detail-overall-badge.near_expiry {
+  background: #fff3c4;
+  color: #876400;
+  border: 1px solid #e8cc6b;
+}
+
+.paid-leave-detail-overall-badge.ok {
+  background: #e9f8ef;
+  color: #246b42;
+  border: 1px solid #c8e6d3;
+}
+
+.paid-leave-detail-status-reasons {
+  display: grid;
+  gap: 4px;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .paid-leave-detail-summary {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -840,6 +907,22 @@
   background: #eef8fb;
   color: var(--primary-dark);
   font-weight: 900;
+}
+
+.paid-leave-detail-grant-table tr.status-expired td {
+  background: #fff5f7;
+}
+
+.paid-leave-detail-grant-table tr.status-within_30 td {
+  background: #fff8ed;
+}
+
+.paid-leave-detail-grant-table tr.status-within_90 td {
+  background: #fffdea;
+}
+
+.paid-leave-detail-grant-table tr.status-normal td {
+  background: #fbfefc;
 }
 
 .paid-leave-detail-status {
