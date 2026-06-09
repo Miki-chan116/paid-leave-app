@@ -4574,6 +4574,120 @@ function getPaidLeaveDashboardData(filters) {
   };
 }
 
+function getPaidLeaveDashboardEmployeeDetail(employeeId, filters) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) throw new Error("社員IDがありません。");
+
+  const opts = filters || {};
+  const fiscalYear = Number(opts.fiscal_year || getFiscalYearFromDate(new Date()));
+  const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate(new Date());
+  const emp = getEmployeesForAdmin().find(row =>
+    String(row.employee_id || "").trim() === targetEmployeeId
+  );
+
+  if (!emp || !isFifoBalanceCompareTargetEmployee_(emp)) {
+    throw new Error("対象社員が見つかりません。");
+  }
+
+  const context = createFifoBalanceComparisonContext_(asOfDate);
+  const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(
+    targetEmployeeId,
+    asOfDate,
+    context
+  );
+  const fiscalBalanceMap = getEmployeeBalanceMapForEmployeeIdsForFiscalYear(
+    fiscalYear,
+    [targetEmployeeId]
+  );
+  const fiscalBalance = fiscalBalanceMap[targetEmployeeId] || {
+    used_days: 0
+  };
+  const usedDays = Number(fiscalBalance.used_days || 0);
+  const fiveDayRemaining = Math.max(0, 5 - usedDays);
+  const expiryInfo = buildPaidLeaveDashboardExpiryInfo_(fifoBalance, asOfDate);
+  const grantDetails = (fifoBalance.grant_details || [])
+    .map(lot => buildPaidLeaveDashboardGrantDetail_(lot, asOfDate))
+    .filter(Boolean)
+    .sort((a, b) => {
+      const priority = {
+        expired: 1,
+        within_30: 2,
+        within_90: 3,
+        normal: 4
+      };
+      const priorityDiff = (priority[a.status] || 9) - (priority[b.status] || 9);
+      if (priorityDiff !== 0) return priorityDiff;
+      if (a.days_until_expiry !== b.days_until_expiry) {
+        return a.days_until_expiry - b.days_until_expiry;
+      }
+      if (a.grant_date === b.grant_date) return 0;
+      return a.grant_date < b.grant_date ? -1 : 1;
+    });
+
+  return {
+    ok: true,
+    fiscal_year: fiscalYear,
+    as_of_date: formatDateValue(asOfDate),
+    employee: {
+      employee_id: targetEmployeeId,
+      display_employee_id: String(emp.display_employee_id || ""),
+      name: String(emp.name || ""),
+      display_name: String(emp.display_name || ""),
+      employee_name: getDisplayName(emp) || targetEmployeeId,
+      company_code: String(emp.company_code || ""),
+      company_name: String(emp.company_name || "")
+    },
+    summary: {
+      current_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+      fiscal_used_days: usedDays,
+      five_day_used: Math.min(usedDays, 5),
+      five_day_remaining: fiveDayRemaining,
+      five_day_completed: fiveDayRemaining === 0,
+      expired_days: Number(fifoBalance.expired_days || 0),
+      nearest_expiry_date: expiryInfo.nearest_expiry_date,
+      nearest_expiry_days: expiryInfo.nearest_expiry_days,
+      expiry_status: expiryInfo.expiry_status,
+      expiry_status_label: expiryInfo.expiry_status_label
+    },
+    grant_details: grantDetails
+  };
+}
+
+function buildPaidLeaveDashboardGrantDetail_(lot, asOfDate) {
+  const remainingDays = lot && lot.is_expired
+    ? Number(lot.expired_days || 0)
+    : Number(lot && lot.active_remaining_days || 0);
+  if (remainingDays <= 0) return null;
+
+  const validTo = parseLocalDate(lot.valid_to);
+  const daysUntilExpiry = Math.round(
+    (validTo.getTime() - asOfDate.getTime()) / (24 * 60 * 60 * 1000)
+  );
+  let status = "normal";
+  let statusLabel = "通常";
+
+  if (lot.is_expired || daysUntilExpiry < 0) {
+    status = "expired";
+    statusLabel = "期限切れ";
+  } else if (daysUntilExpiry <= 30) {
+    status = "within_30";
+    statusLabel = "期限が近い（30日以内）";
+  } else if (daysUntilExpiry <= 90) {
+    status = "within_90";
+    statusLabel = "期限が近い（90日以内）";
+  }
+
+  return {
+    grant_date: String(lot.grant_date || ""),
+    grant_days: Number(lot.total_days || 0),
+    remaining_days: remainingDays,
+    valid_to: formatDateValue(validTo),
+    status: status,
+    status_label: statusLabel,
+    days_until_expiry: daysUntilExpiry
+  };
+}
+
 function buildPaidLeaveDashboardExpiryInfo_(fifoBalance, asOfDate) {
   const activeLots = (fifoBalance.grant_details || [])
     .map(lot => {

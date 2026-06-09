@@ -659,6 +659,16 @@
   background: #fffdec;
 }
 
+.paid-leave-dashboard-row {
+  cursor: pointer;
+}
+
+.paid-leave-dashboard-row:hover,
+.paid-leave-dashboard-row:focus-visible {
+  outline: 2px solid #b9ddea;
+  outline-offset: -2px;
+}
+
 .pld-employee-name {
   font-weight: 900;
   color: var(--text-main);
@@ -708,6 +718,165 @@
   border: 1px solid #efbed0;
 }
 
+.paid-leave-detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.paid-leave-detail-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 36, 48, 0.38);
+}
+
+.paid-leave-detail-dialog {
+  position: relative;
+  width: min(920px, 100%);
+  max-height: min(88vh, 820px);
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid #d8edf4;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(26, 60, 75, 0.22);
+  padding: 18px;
+}
+
+.paid-leave-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.paid-leave-detail-header h2 {
+  margin: 0;
+  color: var(--primary-dark);
+  font-size: 22px;
+}
+
+.paid-leave-detail-header p {
+  margin: 5px 0 0;
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.paid-leave-detail-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #d8edf4;
+  background: #f7fbfd;
+  color: var(--primary-dark);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.paid-leave-detail-message {
+  margin-bottom: 10px;
+}
+
+.paid-leave-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.paid-leave-detail-summary-card {
+  border: 1px solid #dceff5;
+  border-radius: 10px;
+  background: #f8fcfe;
+  padding: 11px;
+}
+
+.paid-leave-detail-summary-card span {
+  display: block;
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.paid-leave-detail-summary-card strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-main);
+  font-size: 16px;
+}
+
+.paid-leave-detail-section-heading {
+  margin: 6px 0 10px;
+  color: var(--primary-dark);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.paid-leave-detail-grant-table-wrap {
+  overflow-x: auto;
+}
+
+.paid-leave-detail-grant-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+  border: 1px solid var(--border);
+}
+
+.paid-leave-detail-grant-table th,
+.paid-leave-detail-grant-table td {
+  padding: 10px;
+  border-bottom: 1px solid #e5f0f4;
+  text-align: left;
+  font-size: 13px;
+}
+
+.paid-leave-detail-grant-table th {
+  background: #eef8fb;
+  color: var(--primary-dark);
+  font-weight: 900;
+}
+
+.paid-leave-detail-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.paid-leave-detail-status.normal {
+  background: #eef8fb;
+  color: var(--primary-dark);
+  border: 1px solid #d8edf4;
+}
+
+.paid-leave-detail-status.within_90 {
+  background: #fffbe6;
+  color: #8a6d00;
+  border: 1px solid #f5df8a;
+}
+
+.paid-leave-detail-status.within_30 {
+  background: #fff3e3;
+  color: #a85600;
+  border: 1px solid #ffd4a3;
+}
+
+.paid-leave-detail-status.expired {
+  background: #fff0f4;
+  color: var(--accent-red);
+  border: 1px solid #efbed0;
+}
+
 @media (max-width: 900px) {
   .admin-dashboard {
     grid-template-columns: 1fr 1fr;
@@ -719,6 +888,10 @@
 
   .paid-leave-dashboard-filters {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .paid-leave-detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

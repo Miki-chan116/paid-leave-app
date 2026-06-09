@@ -193,6 +193,38 @@
         </div>
       </div>
     </section>
+
+    <div id="paidLeaveEmployeeDetailModal"
+         class="paid-leave-detail-modal"
+         aria-hidden="true"
+         style="display:none;">
+      <div class="paid-leave-detail-backdrop" onclick="closePaidLeaveDashboardEmployeeDetail()"></div>
+      <div class="paid-leave-detail-dialog"
+           role="dialog"
+           aria-modal="true"
+           aria-labelledby="paidLeaveDetailTitle">
+        <div class="paid-leave-detail-header">
+          <div>
+            <h2 id="paidLeaveDetailTitle">社員の有給詳細</h2>
+            <p id="paidLeaveDetailSubtitle">古い有給から順番に使った場合の残りを表示しています。</p>
+          </div>
+          <button class="paid-leave-detail-close"
+                  type="button"
+                  aria-label="閉じる"
+                  onclick="closePaidLeaveDashboardEmployeeDetail()">
+            ×
+          </button>
+        </div>
+
+        <div id="paidLeaveDetailMessage" class="paid-leave-detail-message"></div>
+        <div id="paidLeaveDetailSummary" class="paid-leave-detail-summary"></div>
+
+        <div class="paid-leave-detail-section-heading">付与ごとの有給</div>
+        <div id="paidLeaveDetailGrants" class="paid-leave-detail-grants">
+          <div class="empty-message">社員を選択してください。</div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <?!= include('admin-common-script'); ?>

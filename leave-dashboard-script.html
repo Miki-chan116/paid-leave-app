@@ -2,6 +2,7 @@
 let currentAdminUser = null;
 let currentPaidLeaveDashboardData = null;
 let currentPaidLeaveDashboardQuickFilter = "all";
+let currentPaidLeaveDashboardDetailEmployeeId = "";
 const adminAuthConfig = {
   validateLoginInput: false,
   clearMessageBeforeLoadUsers: true,
@@ -17,6 +18,12 @@ const adminAuthConfig = {
 
 window.addEventListener("DOMContentLoaded", () => {
   initAdminLogin();
+});
+
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    closePaidLeaveDashboardEmployeeDetail();
+  }
 });
 
 function getCurrentFiscalYear() {
@@ -154,7 +161,11 @@ function renderPaidLeaveDashboard(data) {
       : "-";
 
     return `
-      <tr class="expiry-${escapeHtml(status)}">
+      <tr class="expiry-${escapeHtml(status)} paid-leave-dashboard-row"
+          tabindex="0"
+          data-employee-id="${escapeHtml(row.employee_id || "")}"
+          onclick="openPaidLeaveDashboardEmployeeDetail(this.dataset.employeeId)"
+          onkeydown="handlePaidLeaveDashboardRowKey(event, this.dataset.employeeId)">
         <td>
           <div class="pld-employee-name">${escapeHtml(row.employee_name || row.name || row.employee_id)}</div>
           <div class="pld-employee-id">${escapeHtml(row.display_employee_id || row.employee_id || "")}</div>
@@ -168,6 +179,157 @@ function renderPaidLeaveDashboard(data) {
       </tr>
     `;
   }).join("");
+}
+
+function handlePaidLeaveDashboardRowKey(event, employeeId) {
+  if (!event || (event.key !== "Enter" && event.key !== " ")) return;
+
+  event.preventDefault();
+  openPaidLeaveDashboardEmployeeDetail(employeeId);
+}
+
+function openPaidLeaveDashboardEmployeeDetail(employeeId) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) return;
+
+  const modal = document.getElementById("paidLeaveEmployeeDetailModal");
+  const message = document.getElementById("paidLeaveDetailMessage");
+  const summary = document.getElementById("paidLeaveDetailSummary");
+  const grants = document.getElementById("paidLeaveDetailGrants");
+  const title = document.getElementById("paidLeaveDetailTitle");
+  const row = findPaidLeaveDashboardRowByEmployeeId_(targetEmployeeId);
+
+  currentPaidLeaveDashboardDetailEmployeeId = targetEmployeeId;
+
+  if (modal) {
+    modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
+  }
+
+  if (title) title.textContent = "社員の有給詳細";
+  if (message) message.innerHTML = `<div class="message">詳しい有給状況を読み込んでいます...</div>`;
+  if (summary) {
+    summary.innerHTML = row
+      ? renderPaidLeaveDetailSummaryCards_(row)
+      : `<div class="empty-message">社員情報を読み込んでいます。</div>`;
+  }
+  if (grants) {
+    grants.innerHTML = `<div class="empty-message">付与ごとの有給を読み込んでいます。</div>`;
+  }
+
+  google.script.run
+    .withSuccessHandler(detail => {
+      if (currentPaidLeaveDashboardDetailEmployeeId !== targetEmployeeId) return;
+      renderPaidLeaveDashboardEmployeeDetail(detail);
+    })
+    .withFailureHandler(err => {
+      if (message) {
+        message.innerHTML = `<div class="message error">${escapeHtml(err && err.message ? err.message : "社員の有給詳細を取得できませんでした。")}</div>`;
+      }
+    })
+    .getPaidLeaveDashboardEmployeeDetail(targetEmployeeId, getPaidLeaveDashboardFilters());
+}
+
+function closePaidLeaveDashboardEmployeeDetail() {
+  const modal = document.getElementById("paidLeaveEmployeeDetailModal");
+  if (!modal || modal.style.display === "none") return;
+
+  currentPaidLeaveDashboardDetailEmployeeId = "";
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function renderPaidLeaveDashboardEmployeeDetail(detail) {
+  const data = detail || {};
+  const employee = data.employee || {};
+  const summary = data.summary || {};
+  const grants = Array.isArray(data.grant_details) ? data.grant_details : [];
+  const title = document.getElementById("paidLeaveDetailTitle");
+  const subtitle = document.getElementById("paidLeaveDetailSubtitle");
+  const message = document.getElementById("paidLeaveDetailMessage");
+  const summaryArea = document.getElementById("paidLeaveDetailSummary");
+  const grantsArea = document.getElementById("paidLeaveDetailGrants");
+  const employeeName = employee.employee_name || employee.display_name || employee.name || employee.employee_id || "";
+  const companyLabel = getPaidLeaveDashboardCompanyLabel(employee);
+
+  if (title) title.textContent = employeeName ? `${employeeName}さんの有給詳細` : "社員の有給詳細";
+  if (subtitle) {
+    subtitle.textContent = `${companyLabel} / 古い有給から順番に使った場合の残りを表示しています。`;
+  }
+  if (message) message.innerHTML = "";
+  if (summaryArea) summaryArea.innerHTML = renderPaidLeaveDetailSummaryCards_(summary);
+  if (!grantsArea) return;
+
+  if (grants.length === 0) {
+    grantsArea.innerHTML = `<div class="empty-message">残っている付与ごとの有給はありません。</div>`;
+    return;
+  }
+
+  grantsArea.innerHTML = `
+    <div class="paid-leave-detail-grant-table-wrap">
+      <table class="paid-leave-detail-grant-table">
+        <thead>
+          <tr>
+            <th>付与日</th>
+            <th>付与日数</th>
+            <th>残日数</th>
+            <th>有効期限</th>
+            <th>状態</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${grants.map(grant => `
+            <tr>
+              <td>${escapeHtml(formatDisplayDate(grant.grant_date))}</td>
+              <td>${escapeHtml(formatDays(grant.grant_days))}</td>
+              <td>${escapeHtml(formatDays(grant.remaining_days))}</td>
+              <td>${escapeHtml(formatDisplayDate(grant.valid_to))}</td>
+              <td>
+                <span class="paid-leave-detail-status ${escapeHtml(grant.status || "normal")}">
+                  ${escapeHtml(grant.status_label || "通常")}
+                </span>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderPaidLeaveDetailSummaryCards_(summary) {
+  const nearest = summary.nearest_expiry_date
+    ? `${formatDisplayDate(summary.nearest_expiry_date)}${summary.nearest_expiry_days !== "" && summary.nearest_expiry_days != null ? `（あと${summary.nearest_expiry_days}日）` : ""}`
+    : "-";
+
+  return `
+    <div class="paid-leave-detail-summary-card">
+      <span>現在の残日数</span>
+      <strong>${escapeHtml(formatDays(summary.current_remaining_days))}</strong>
+    </div>
+    <div class="paid-leave-detail-summary-card">
+      <span>今年使った日数</span>
+      <strong>${escapeHtml(formatDays(summary.fiscal_used_days))}</strong>
+    </div>
+    <div class="paid-leave-detail-summary-card">
+      <span>5日取得状況</span>
+      <strong>${renderFiveDayStatus(summary)}</strong>
+    </div>
+    <div class="paid-leave-detail-summary-card">
+      <span>期限切れ日数</span>
+      <strong>${escapeHtml(formatDays(summary.expired_days))}</strong>
+    </div>
+    <div class="paid-leave-detail-summary-card">
+      <span>最短期限日</span>
+      <strong>${escapeHtml(nearest)}</strong>
+    </div>
+  `;
+}
+
+function findPaidLeaveDashboardRowByEmployeeId_(employeeId) {
+  const data = currentPaidLeaveDashboardData || {};
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  return rows.find(row => String(row.employee_id || "") === String(employeeId || "")) || null;
 }
 
 function setPaidLeaveDashboardQuickFilter(filterKey) {
