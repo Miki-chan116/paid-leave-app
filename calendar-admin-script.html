@@ -142,7 +142,7 @@ function changePagedView(type, direction) {
 }
 
 /* =========================
-   FIFO残日数 試算
+   残日数の詳しい確認
 ========================= */
 function loadFifoTrialDifferences(keepPage) {
   pageOffsets.fifo = keepPage === true
@@ -168,7 +168,7 @@ function loadFifoTrialDifferences(keepPage) {
 
   if (summary) summary.innerHTML = "";
   if (results) {
-    results.innerHTML = `<div class="message">FIFO残日数を試算しています...</div>`;
+    results.innerHTML = `<div class="message">現在の残日数を確認しています...</div>`;
   }
 
   google.script.run
@@ -178,7 +178,7 @@ function loadFifoTrialDifferences(keepPage) {
       if (results) {
         const message = err && err.message
           ? err.message
-          : "FIFO残日数の試算でエラーが発生しました。";
+          : "現在の残日数の確認でエラーが発生しました。";
         results.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
       }
     })
@@ -231,7 +231,7 @@ function renderFifoTrialDifferences(response) {
     results.innerHTML = `
       ${renderPager("fifo", response)}
       <div class="empty-message">
-        このページでは旧計算との差分・期限要確認はありません。
+        このページでは計算結果の確認が必要なもの・期限の確認が必要なものはありません。
       </div>
       ${renderPager("fifo", response)}
     `;
@@ -269,7 +269,7 @@ function renderFifoTrialDifferences(response) {
             <strong>${escapeHtml(formatDays(row.legacy_current_remaining_days))}</strong>
           </div>
           <div class="fifo-number-item">
-            <span>FIFO残日数</span>
+            <span>現在の残日数</span>
             <strong>${escapeHtml(formatDays(row.fifo_current_remaining_days))}</strong>
           </div>
           <div class="fifo-number-item difference ${differenceClass}">
@@ -721,7 +721,7 @@ function renderCompanyLeaveYearRolloverDryRun(result) {
   const rows = Array.isArray(data.rows) ? data.rows : [];
   const previousFiscalYear = Number(data.previous_fiscal_year || 0);
   const nextFiscalYear = Number(data.next_fiscal_year || 0);
-  const targetCountBasis = data.target_count_basis || "社員マスターから自動判定";
+  const targetCountBasis = data.target_count_basis || "社員情報から自動判定";
   const targetConditionLabel = data.target_condition_label || getCompanyRolloverTargetConditionText_(data.company_code);
   const globalMessages = []
     .concat(Array.isArray(data.global_errors) ? data.global_errors : [])
@@ -732,7 +732,7 @@ function renderCompanyLeaveYearRolloverDryRun(result) {
       <div class="partner-rollover-status ${data.can_execute ? "ready" : "blocked"}">
         <div class="company-rollover-result-heading">
           <strong>${data.can_execute ? "確認結果に問題はありません" : "確認が必要な項目があります"}</strong>
-          <span>${data.can_execute ? "この内容で年度切替できる状態です。" : "注意・エラーの内容を確認してください。"}</span>
+          <span>${data.can_execute ? "この内容で年度切替できる状態です。" : "要確認・確認事項の内容を確認してください。"}</span>
         </div>
         <div class="company-rollover-summary-grid">
           <div class="company-rollover-summary-card">
@@ -745,21 +745,21 @@ function renderCompanyLeaveYearRolloverDryRun(result) {
             <small>${escapeHtml(targetCountBasis)}</small>
           </div>
           <div class="company-rollover-summary-card ${Number(data.error_count || 0) > 0 ? "needs-check" : ""}">
-            <span>エラー</span>
+            <span>要確認</span>
             <strong>${escapeHtml(data.error_count || 0)}件</strong>
           </div>
           <div class="company-rollover-summary-card ${Number(data.warning_count || 0) > 0 ? "needs-check" : ""}">
-            <span>注意</span>
+            <span>確認事項</span>
             <strong>${escapeHtml(data.warning_count || 0)}件</strong>
           </div>
           <div class="company-rollover-summary-card">
-            <span>確定可否</span>
+            <span>実行できるか</span>
             <strong>${data.can_execute ? "確定できる状態" : "要確認"}</strong>
           </div>
         </div>
       </div>
       <div class="partner-rollover-global-messages">
-        <div>対象人数は社員マスターから自動判定しています</div>
+        <div>対象人数は社員情報から自動判定しています</div>
         <div>対象条件: ${escapeHtml(targetConditionLabel)}</div>
       </div>
       ${globalMessages.length > 0 ? `
@@ -788,7 +788,7 @@ function renderCompanyLeaveYearRolloverDryRun(result) {
             <th>開始後予定残</th>
             <th>基準日付与回数</th>
             <th>${escapeHtml(nextFiscalYear)}年度レコード</th>
-            <th>注意・エラー</th>
+            <th>確認事項</th>
           </tr>
         </thead>
         <tbody>
@@ -988,7 +988,7 @@ function loadYearEndCarryOverCandidates(keepPage) {
 
   if (summary) summary.innerHTML = "";
   if (container) {
-    container.innerHTML = `<div class="message">年跨ぎ・繰越候補を生成しています...</div>`;
+    container.innerHTML = `<div class="message">来年度へ残す予定の日数を確認しています...</div>`;
   }
 
   google.script.run
@@ -997,7 +997,7 @@ function loadYearEndCarryOverCandidates(keepPage) {
       console.error("年跨ぎ・繰越候補取得エラー:", err);
       const message = err && err.message
         ? err.message
-        : "年跨ぎ・繰越候補の取得でエラーが発生しました。";
+        : "来年度へ残す予定の日数の確認でエラーが発生しました。";
       if (container) {
         container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
       }
@@ -1038,7 +1038,7 @@ function renderYearEndCarryOverCandidates(response) {
   }
 
   if (rows.length === 0) {
-    container.innerHTML = `<div class="empty-message">年跨ぎ・繰越候補はありません。</div>`;
+    container.innerHTML = `<div class="empty-message">来年度へ残す予定の日数はありません。</div>`;
     return;
   }
 
@@ -1070,7 +1070,7 @@ function renderYearEndCarryOverCandidates(response) {
           <span class="year-end-name">${escapeHtml(row.display_name || row.name || row.employee_id)}</span>
           <span class="year-end-id">${escapeHtml(row.employee_id || "")}</span>
           ${renderYearEndFinalizedBadge(row.is_finalized)}
-          <span class="year-end-status-badge partner">監査用一覧: 確定は会社別パネルで処理</span>
+          <span class="year-end-status-badge partner">確認用一覧: 確定は会社別パネルで処理</span>
           ${row.validity_warning ? `<span class="fifo-reason-badge needs-check">期限要確認</span>` : ""}
         </div>
 
@@ -1093,7 +1093,7 @@ function renderYearEndCarryOverCandidates(response) {
             <strong>${escapeHtml(formatDays(row.previous_remaining_days))}</strong>
           </div>
           <div class="year-end-detail-item highlight">
-            <span>繰越候補</span>
+            <span>来年度へ残す予定</span>
             <strong>${escapeHtml(formatDays(row.carry_over_candidate_days))}</strong>
           </div>
           <div class="year-end-detail-item expired">
@@ -1142,8 +1142,8 @@ function renderYearEndBulkActionBar(count) {
   return `
     <div class="year-end-bulk-action-bar">
       <div class="year-end-bulk-info">
-        <div>繰越候補 ${escapeHtml(count)}件</div>
-        <small>監査用一覧です。確定操作は会社別年度切替パネルへ集約します。</small>
+        <div>来年度へ残す予定 ${escapeHtml(count)}件</div>
+        <small>確認用一覧です。確定操作は会社別年度切替パネルへ集約します。</small>
       </div>
     </div>
   `;
@@ -1200,7 +1200,7 @@ function buildYearEndFinalizeConfirmMessage(item) {
     `消滅見込み: ${formatDays(item.expired_days)}`,
     `新規付与: ${formatDays(item.new_grant_days)}`,
     `付与後見込み: ${formatDays(item.estimated_after_grant_days)}`,
-    item.validity_warning ? `注意: ${item.validity_warning}` : "",
+    item.validity_warning ? `確認事項: ${item.validity_warning}` : "",
     "",
     "この内容で年跨ぎ・繰越を確定しますか？"
   ].join("\n");
@@ -1211,7 +1211,7 @@ function buildBulkYearEndFinalizeConfirmMessage(items) {
   const detailRows = rows.slice(0, 10).map((item, index) => [
     `${index + 1}. ${item.name || ""} / ${item.employee_id || ""}`,
     `   繰越: ${formatDays(item.carry_over_candidate_days)} / 消滅: ${formatDays(item.expired_days)} / 新規付与: ${formatDays(item.new_grant_days)}`,
-    item.validity_warning ? `   注意: ${item.validity_warning}` : ""
+    item.validity_warning ? `   確認事項: ${item.validity_warning}` : ""
   ].join("\n"));
 
   if (rows.length > 10) {

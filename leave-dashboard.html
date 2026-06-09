@@ -13,7 +13,7 @@
 
   <div id="loginScreen" class="login-screen">
     <div class="login-card">
-      <h1 class="login-title">有給管理ダッシュボード</h1>
+      <h1 class="login-title">社員の有給状況</h1>
       <p class="login-subtitle">管理者を選択してPINを入力してください</p>
 
       <div class="field">
@@ -40,7 +40,7 @@
     <div id="loginUserBar" class="login-user-bar"></div>
 
     <div class="header">
-      <h1 class="title">有給管理ダッシュボード</h1>
+      <h1 class="title">社員の有給状況</h1>
       <p class="subtitle">全社員の有給残数、期限、5日取得状況を確認できます。</p>
     </div>
 
@@ -48,7 +48,7 @@
       <div class="section-heading-row">
         <div>
           <div class="section-kicker">有給状況</div>
-          <h2 class="section-heading">有給管理ダッシュボード</h2>
+          <h2 class="section-heading">社員の有給状況</h2>
           <p class="section-description">有給管理対象者の残日数、年度取得日数、期限、5日取得状況を一覧で確認します。</p>
         </div>
       </div>
@@ -60,7 +60,7 @@
             <strong id="pldTargetCount">-</strong>
           </div>
           <div class="paid-leave-summary-card warning">
-            <span>5日取得目安未達人数</span>
+            <span>5日取得が足りない可能性</span>
             <strong id="pldFiveDayIncompleteCount">-</strong>
           </div>
           <div class="paid-leave-summary-card within-90">
@@ -104,7 +104,7 @@
 
           <label class="paid-leave-filter-check">
             <input type="checkbox" id="pldExpiredOnly">
-            <span>期限切れありのみ</span>
+            <span>期限切れ・期限間近のみ</span>
           </label>
 
           <button class="btn btn-search" type="button" onclick="loadPaidLeaveDashboard()">

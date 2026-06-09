@@ -13,7 +13,7 @@
 
   <div id="loginScreen" class="login-screen">
     <div class="login-card">
-      <h1 class="login-title">年度・会社カレンダー設定</h1>
+      <h1 class="login-title">年度切替・会社休日</h1>
       <p class="login-subtitle">管理者を選択してPINを入力してください</p>
 
       <div class="field">
@@ -40,15 +40,15 @@
     <div id="loginUserBar" class="login-user-bar"></div>
 
     <div class="header">
-      <h1 class="title">年度・会社カレンダー設定</h1>
-      <p class="subtitle">年度ごとの出勤日・会社休日・有給取得不可日を管理します。</p>
+      <h1 class="title">年度切替・会社休日</h1>
+      <p class="subtitle">年度切替、出勤日、会社休日、有給取得不可日を管理します。</p>
     </div>
 
     <section class="admin-section partner-rollover-section">
       <div class="section-heading-row">
         <div>
           <div class="section-kicker partner-rollover-kicker">事前確認</div>
-          <h2 class="section-heading">会社別 年度切替</h2>
+          <h2 class="section-heading">年度切替を行う</h2>
           <p class="section-description">
             会社と年度を選んで、切替内容を確認します。
             確認だけなので、この時点ではデータは変更されません。
@@ -147,9 +147,9 @@
       <div class="section-heading-row">
         <div>
           <div class="section-kicker">確認のみ</div>
-          <h2 class="section-heading">年度切替・繰越確認</h2>
+          <h2 class="section-heading">年度切替内容の確認</h2>
           <p class="section-description">
-            年度切替時の繰越日数と消滅見込みを確認します。この一覧は監査用で、確定登録は行いません。
+            年度切替時に来年度へ残す日数と期限が切れる見込みを確認します。この一覧は確認用で、確定登録は行いません。
           </p>
         </div>
       </div>
@@ -157,7 +157,7 @@
       <div class="search-card year-end-card">
         <div class="search-card-header">
           <div>
-            <div class="search-title">繰越候補を確認</div>
+            <div class="search-title">来年度へ残す予定の日数を確認</div>
             <p class="subtitle">対象年度を入力して、表示専用の候補一覧を表示します。</p>
           </div>
         </div>
@@ -190,9 +190,9 @@
       <div class="section-heading-row">
         <div>
           <div class="section-kicker">試算</div>
-          <h2 class="section-heading">繰越・期限確認</h2>
+          <h2 class="section-heading">有給の期限確認</h2>
           <p class="section-description">
-            有給の繰越・期限切れ・残日数を確認するための試算画面です。
+            古い有給から順番に使用した場合の残日数や期限を確認します。
           </p>
         </div>
       </div>
@@ -260,7 +260,7 @@
 <section class="admin-section expiry-check-section">
       <div class="section-heading-row">
         <div>
-          <div class="section-kicker">有給まとまり確認</div>
+          <div class="section-kicker">付与ごとの期限確認</div>
           <h2 class="section-heading">期限切れ確認</h2>
           <p class="section-description">
             残っている有給を付与単位で確認し、期限切れや期限が近いものを把握できます。

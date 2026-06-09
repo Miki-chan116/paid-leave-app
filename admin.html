@@ -41,8 +41,8 @@
     <div id="loginUserBar" class="login-user-bar"></div>
 
     <div class="header">
-      <h1 class="title">有給申請 管理画面</h1>
-      <p class="subtitle">承認待ち・承認済み・否認・ログ・出力機能をここで管理できます。</p>
+      <h1 class="title">申請の承認・却下</h1>
+      <p class="subtitle">承認待ち・承認済み・否認・処理履歴・出力機能をここで管理できます。</p>
     </div>
 
     <div id="currentRangeBox" class="current-range-box">
@@ -73,7 +73,7 @@
 
       <div class="dashboard-card log-card-mini" onclick="loadLogs()">
         <div class="dashboard-label">記録確認</div>
-        <div class="dashboard-title">ログ</div>
+        <div class="dashboard-title">処理履歴</div>
         <div class="dashboard-count">📋</div>
         <div class="dashboard-sub">操作履歴を見る</div>
       </div>
@@ -93,7 +93,7 @@
         <button id="tab-pending" class="tab-btn" type="button" onclick="loadRequests('pending')">承認待ち</button>
         <button id="tab-approved" class="tab-btn" type="button" onclick="loadRequests('approved')">承認済み</button>
         <button id="tab-rejected" class="tab-btn" type="button" onclick="loadRequests('rejected')">否認</button>
-        <button id="tab-logs" class="tab-btn" type="button" onclick="loadLogs()">ログ</button>
+        <button id="tab-logs" class="tab-btn" type="button" onclick="loadLogs()">処理履歴</button>
       </div>
 
       <div class="search-card request-search-card">
@@ -187,7 +187,7 @@
       <div class="section-heading-row">
         <div>
           <div class="section-kicker">必要時のみ</div>
-          <h2 class="section-heading">有給付与チェック</h2>
+          <h2 class="section-heading">有給を付与する対象者の確認</h2>
           <p class="section-description">日常の承認作業とは分けて、対象者がいる時だけ確認します。</p>
         </div>
       </div>
@@ -195,7 +195,7 @@
       <div class="grant-check-grid">
 
         <div class="search-card yearly-grant-card">
-          <div class="search-title">年次有給付与チェック</div>
+          <div class="search-title">年次有給を付与する対象者</div>
           <p class="subtitle">
             基準日を迎えた社員を確認して、有給を付与できます。
           </p>
@@ -226,7 +226,7 @@
         </div>
 
         <div class="search-card six-month-card">
-          <div class="search-title">6か月到達 有給付与チェック</div>
+          <div class="search-title">入社6か月で有給を付与する対象者</div>
           <p class="subtitle">
             入社から6か月経過した社員を確認して、初回有給を付与できます。
           </p>
