@@ -1224,15 +1224,13 @@ function getLeaveRolloverCompanyConfig_(companyCode) {
       company_code: "MAIN",
       company_name: "",
       company_display_name: "正社員",
-      fiscal_start_month: 4,
-      expected_employee_count: null
+      fiscal_start_month: 4
     },
     PARTNER: {
       company_code: "PARTNER",
       company_name: "（有）友尚建設",
       company_display_name: "友尚建設",
-      fiscal_start_month: 6,
-      expected_employee_count: 3
+      fiscal_start_month: 6
     }
   };
 
@@ -1371,19 +1369,6 @@ function getCompanyLeaveYearRolloverCandidates_(companyCode, fiscalYear) {
     }
   });
 
-  if (
-    config.expected_employee_count !== null &&
-    targetEmployees.length !== config.expected_employee_count
-  ) {
-    globalWarnings.push(
-      "対象社員数が想定と一致しません。想定 " +
-      config.expected_employee_count +
-      "名 / 実際 " +
-      targetEmployees.length +
-      "名"
-    );
-  }
-
   const rows = targetEmployees
     .sort((a, b) => String(a.employee_id || "").localeCompare(String(b.employee_id || "")))
     .map(emp =>
@@ -1397,10 +1382,6 @@ function getCompanyLeaveYearRolloverCandidates_(companyCode, fiscalYear) {
     );
   const rowErrorCount = rows.reduce((sum, row) => sum + row.errors.length, 0);
   const rowWarningCount = rows.reduce((sum, row) => sum + row.warnings.length, 0);
-  const expectedCountMatches =
-    config.expected_employee_count === null ||
-    rows.length === config.expected_employee_count;
-
   return {
     ok: true,
     dry_run: true,
@@ -1413,13 +1394,13 @@ function getCompanyLeaveYearRolloverCandidates_(companyCode, fiscalYear) {
     next_fiscal_year: dates.next_fiscal_year,
     previous_fiscal_year_end_date: dates.previous_fiscal_year_end_date,
     next_fiscal_year_start_date: dates.next_fiscal_year_start_date,
-    expected_employee_count: config.expected_employee_count,
+    target_count_basis: "社員マスターから自動判定",
+    target_condition_label: buildCompanyLeaveYearRolloverTargetConditionLabel_(config),
     target_employee_count: rows.length,
     error_count: globalErrors.length + rowErrorCount,
     warning_count: globalWarnings.length + rowWarningCount,
     can_execute:
       rows.length > 0 &&
-      expectedCountMatches &&
       globalErrors.length === 0 &&
       globalWarnings.length === 0 &&
       rowErrorCount === 0 &&
@@ -1589,9 +1570,6 @@ function executeCompanyLeaveYearRollover(companyCode, fiscalYear) {
 
 function validateCompanyLeaveYearRolloverExecution_(dryRun, config) {
   const rows = dryRun && Array.isArray(dryRun.rows) ? dryRun.rows : [];
-  const expectedCountMatches =
-    config.expected_employee_count === null ||
-    rows.length === config.expected_employee_count;
 
   if (!dryRun || dryRun.dry_run !== true) {
     throw new Error("dry-run 相当の検証結果を確認できません。本処理を停止しました。");
@@ -1609,7 +1587,6 @@ function validateCompanyLeaveYearRolloverExecution_(dryRun, config) {
     Number(dryRun.error_count || 0) !== 0 ||
     Number(dryRun.warning_count || 0) !== 0 ||
     rows.length === 0 ||
-    !expectedCountMatches ||
     !rows.every(row => row.can_execute === true)
   ) {
     throw new Error(
@@ -1622,6 +1599,13 @@ function validateCompanyLeaveYearRolloverExecution_(dryRun, config) {
 }
 
 function isCompanyLeaveYearRolloverRelatedEmployee_(emp, config) {
+  if (config.company_code === "PARTNER") {
+    return (
+      String(emp.company_code || "").trim().toUpperCase() === config.company_code ||
+      String(emp.company_name || "").trim() === config.company_name
+    );
+  }
+
   const status = String(emp.employment_status || "").trim().toLowerCase();
   const isActive = status === "active" || status === "在職";
 
@@ -1672,6 +1656,17 @@ function getCompanyLeaveYearRolloverTargetMismatchReasons_(emp, config) {
   return reasons;
 }
 
+function buildCompanyLeaveYearRolloverTargetConditionLabel_(config) {
+  const parts = [];
+
+  parts.push(config.company_display_name || config.company_code);
+  parts.push(config.fiscal_start_month + "月開始");
+  parts.push("有給管理対象");
+  parts.push("在職");
+
+  return parts.join(" / ");
+}
+
 function logCompanyLeaveYearRolloverDryRun_(result) {
   Logger.log(
     "=== " +
@@ -1700,14 +1695,11 @@ function logCompanyLeaveYearRolloverDryRun_(result) {
     result.next_fiscal_year_start_date
   );
   Logger.log(
-    result.expected_employee_count === null
-      ? "対象人数: " + result.target_employee_count + "名"
-      : "対象人数: 想定 " +
-        result.expected_employee_count +
-        "名 / 実際 " +
-        result.target_employee_count +
-        "名"
+    "対象人数: 社員マスターから自動判定 " +
+      result.target_employee_count +
+      "名"
   );
+  Logger.log("対象条件: " + result.target_condition_label);
 
   result.global_errors.forEach(message => Logger.log("[全体エラー] " + message));
   result.global_warnings.forEach(message => Logger.log("[全体注意] " + message));
@@ -1916,12 +1908,11 @@ function logPartnerLeaveYearRollover2026DryRun_(result) {
     result.next_fiscal_year_start_date
   );
   Logger.log(
-    "対象人数: 想定 " +
-    result.expected_employee_count +
-    "名 / 実際 " +
+    "対象人数: 社員マスターから自動判定 " +
     result.target_employee_count +
     "名"
   );
+  Logger.log("対象条件: " + result.target_condition_label);
 
   result.global_errors.forEach(message => Logger.log("[全体エラー] " + message));
   result.global_warnings.forEach(message => Logger.log("[全体注意] " + message));

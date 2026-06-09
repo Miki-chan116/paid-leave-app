@@ -815,9 +815,8 @@ function renderCompanyLeaveYearRolloverDryRun(result) {
   const rows = Array.isArray(data.rows) ? data.rows : [];
   const previousFiscalYear = Number(data.previous_fiscal_year || 0);
   const nextFiscalYear = Number(data.next_fiscal_year || 0);
-  const expectedCountText = data.expected_employee_count == null
-    ? "固定なし"
-    : `${escapeHtml(data.expected_employee_count)}名`;
+  const targetCountBasis = data.target_count_basis || "社員マスターから自動判定";
+  const targetConditionLabel = data.target_condition_label || getCompanyRolloverTargetConditionText_(data.company_code);
   const globalMessages = []
     .concat(Array.isArray(data.global_errors) ? data.global_errors : [])
     .concat(Array.isArray(data.global_warnings) ? data.global_warnings : []);
@@ -837,7 +836,7 @@ function renderCompanyLeaveYearRolloverDryRun(result) {
           <div class="company-rollover-summary-card">
             <span>対象人数</span>
             <strong>${escapeHtml(data.target_employee_count || 0)}名</strong>
-            <small>想定: ${expectedCountText}</small>
+            <small>${escapeHtml(targetCountBasis)}</small>
           </div>
           <div class="company-rollover-summary-card ${Number(data.error_count || 0) > 0 ? "needs-check" : ""}">
             <span>エラー</span>
@@ -852,6 +851,10 @@ function renderCompanyLeaveYearRolloverDryRun(result) {
             <strong>${data.can_execute ? "確定できる状態" : "要確認"}</strong>
           </div>
         </div>
+      </div>
+      <div class="partner-rollover-global-messages">
+        <div>対象人数は社員マスターから自動判定しています</div>
+        <div>対象条件: ${escapeHtml(targetConditionLabel)}</div>
       </div>
       ${globalMessages.length > 0 ? `
         <div class="partner-rollover-global-messages">
@@ -933,11 +936,18 @@ function canExecuteCompanyLeaveYearRolloverFromAdmin() {
     Number(data.warning_count || 0) === 0 &&
     rows.length > 0 &&
     rows.every(row => row.can_execute === true) &&
-    (companyCode !== "PARTNER" || rows.length === 3) &&
     !!(backupChecked && backupChecked.checked) &&
     String(confirmText && confirmText.value || "").trim() ===
       getCompanyRolloverConfirmText_(companyCode, fiscalYear)
   );
+}
+
+function getCompanyRolloverTargetConditionText_(companyCode) {
+  const code = String(companyCode || "").trim().toUpperCase();
+  if (code === "PARTNER") {
+    return "友尚建設 / 6月開始 / 有給管理対象 / 在職";
+  }
+  return "MAIN / 4月開始 / 有給管理対象 / 在職";
 }
 
 function getCompanyRolloverConfirmText_(companyCode, fiscalYear) {
