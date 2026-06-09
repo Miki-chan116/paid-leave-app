@@ -1027,178 +1027,11 @@ function buildYearEndCarryOverCandidate_(emp, fiscalYear, context, finalizedMap)
 }
 
 function finalizeYearEndCarryOver(employeeId, fiscalYear, adminUser) {
-  const targetEmployeeId = String(employeeId || "").trim();
-  const targetFiscalYear = Number(fiscalYear || 0);
-
-  if (!targetEmployeeId) throw new Error("employeeId がありません");
-  if (!targetFiscalYear) throw new Error("対象年度がありません");
-
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-
-  try {
-  const employees = getEmployeesForAdmin();
-  const emp = employees.find(e => String(e.employee_id || "").trim() === targetEmployeeId);
-
-  if (!emp) throw new Error("対象社員が見つかりません");
-  if (String(emp.company_code || "").trim().toUpperCase() === "PARTNER") {
-    throw new Error("PARTNER社員の年度切替は友尚建設専用パネルから実行してください");
-  }
-  if (emp.leave_management_target !== true) throw new Error("有給管理対象外の社員です");
-
-  const status = String(emp.employment_status || "").trim().toLowerCase();
-  if (status !== "active" && status !== "在職") {
-    throw new Error("在職中の社員ではありません");
-  }
-
-  const nextFiscalYear = targetFiscalYear + 1;
-
-  if (hasYearlyGrantForFiscalYear_(targetEmployeeId, nextFiscalYear)) {
-    throw new Error("この社員は次年度の年次付与がすでに確定済みです");
-  }
-
-  const context = createFifoBalanceComparisonContext_(new Date());
-  const candidate = buildYearEndCarryOverCandidate_(
-    emp,
-    targetFiscalYear,
-    context,
-    {}
-  );
-
-  if (hasYearlyGrantForFiscalYear_(targetEmployeeId, nextFiscalYear)) {
-    throw new Error("この社員は次年度の年次付与がすでに確定済みです");
-  }
-
-  const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
-  const grantDate = getFiscalYearRangeWithStart(nextFiscalYear, fiscalStartMonth).start;
-  const now = new Date();
-  const sheet = getSheet("paid_leave_grants");
-  const headerInfo = requireHeaders(sheet, [
-    "grant_id",
-    "employee_id",
-    "grant_date",
-    "grant_days",
-    "carry_over_days",
-    "valid_from",
-    "valid_to",
-    "grant_type",
-    "year",
-    "notes",
-    "created_at",
-    "updated_at"
-  ]);
-  const rowObj = createEmptyRowObject(headerInfo.headers);
-
-  rowObj.grant_id = getNextGrantId_();
-  rowObj.employee_id = targetEmployeeId;
-  rowObj.grant_date = grantDate;
-  rowObj.grant_days = Number(candidate.new_grant_days || 0);
-  rowObj.carry_over_days = Number(candidate.carry_over_candidate_days || 0);
-  rowObj.valid_from = grantDate;
-  rowObj.valid_to = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
-  rowObj.grant_type = "yearly";
-  rowObj.year = nextFiscalYear;
-  rowObj.notes = buildYearEndCarryOverFinalizedNotes_(candidate, nextFiscalYear);
-  rowObj.created_at = now;
-  rowObj.updated_at = now;
-
-  if ("is_finalized" in headerInfo.map) {
-    rowObj.is_finalized = true;
-  }
-
-  if ("finalized_at" in headerInfo.map) {
-    rowObj.finalized_at = now;
-  }
-
-  appendRowFast_(
-    sheet,
-    objectToRow(rowObj, headerInfo.headers)
-  );
-
-  const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
-  const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
-  const displayName = getDisplayName(emp) || emp.name || targetEmployeeId;
-
-  appendUsageLog({
-    request_id: targetEmployeeId,
-    action_type: "year_end_carry_over_finalized",
-    operator_id: operatorId,
-    operator_name: operatorName,
-    comment: displayName +
-      " さんの年跨ぎ・繰越を確定しました: " +
-      rowObj.notes
-  });
-
-  clearAppCache();
-
-  return {
-    ok: true,
-    employee_id: targetEmployeeId,
-    name: displayName,
-    fiscal_year: targetFiscalYear,
-    next_fiscal_year: nextFiscalYear,
-    grant_date: formatDateValue(grantDate),
-    grant_days: Number(candidate.new_grant_days || 0),
-    carry_over_days: Number(candidate.carry_over_candidate_days || 0),
-    expired_days: Number(candidate.expired_days || 0),
-    previous_remaining_days: Number(candidate.previous_remaining_days || 0),
-    estimated_after_grant_days: Number(candidate.estimated_after_grant_days || 0)
-  };
-  } finally {
-    lock.releaseLock();
-  }
+  throw new Error("この年度切替確定処理は廃止されました。会社別年度切替パネルを使用してください。");
 }
 
 function finalizeSelectedYearEndCarryOver(employeeIds, fiscalYear, adminUser) {
-  const ids = (employeeIds || [])
-    .map(id => String(
-      id && typeof id === "object" ? id.employee_id : id
-    ).trim())
-    .filter(Boolean);
-  const result = {
-    ok: true,
-    total_count: ids.length,
-    success_count: 0,
-    skipped_count: 0,
-    error_count: 0,
-    results: []
-  };
-
-  ids.forEach(employeeId => {
-    try {
-      const res = finalizeYearEndCarryOver(employeeId, fiscalYear, adminUser);
-      result.success_count++;
-      result.results.push({
-        employee_id: employeeId,
-        status: "success",
-        message: "確定しました",
-        detail: res || null
-      });
-    } catch (e) {
-      const message = e && e.message ? e.message : String(e);
-      const isSkipped =
-        message.indexOf("すでに") !== -1 ||
-        message.indexOf("確定済み") !== -1;
-
-      if (isSkipped) {
-        result.skipped_count++;
-        result.results.push({
-          employee_id: employeeId,
-          status: "skipped",
-          message: message
-        });
-      } else {
-        result.error_count++;
-        result.results.push({
-          employee_id: employeeId,
-          status: "error",
-          message: message
-        });
-      }
-    }
-  });
-
-  return result;
+  throw new Error("この年度切替確定処理は廃止されました。会社別年度切替パネルを使用してください。");
 }
 
 function buildYearEndCarryOverFinalizedNotes_(candidate, nextFiscalYear) {
@@ -1421,13 +1254,19 @@ function dryRunMainLeaveYearRollover2026() {
   return dryRunCompanyLeaveYearRollover("MAIN", 2026);
 }
 
-function executeCompanyLeaveYearRollover(companyCode, fiscalYear) {
+function executeCompanyLeaveYearRollover(companyCode, fiscalYear, options) {
   const config = getLeaveRolloverCompanyConfig_(companyCode);
   const dates = getLeaveRolloverFiscalYearDates_(config, fiscalYear);
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
   try {
+    validateCompanyLeaveYearRolloverConfirmation_(
+      config,
+      dates.next_fiscal_year,
+      options || {}
+    );
+
     Logger.log(
       "=== " +
       config.company_display_name +
@@ -1566,6 +1405,32 @@ function executeCompanyLeaveYearRollover(companyCode, fiscalYear) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function validateCompanyLeaveYearRolloverConfirmation_(config, fiscalYear, options) {
+  const opts = options || {};
+  const expectedConfirmText = buildCompanyLeaveYearRolloverConfirmText_(
+    config,
+    fiscalYear
+  );
+
+  if (opts.backup_confirmed !== true) {
+    throw new Error("年度切替前のバックアップ確認が完了していません。本処理を停止しました。");
+  }
+
+  if (String(opts.confirm_text || "").trim() !== expectedConfirmText) {
+    throw new Error(
+      "確認文字列が一致しません。本処理を停止しました。確認文字列: " +
+      expectedConfirmText
+    );
+  }
+}
+
+function buildCompanyLeaveYearRolloverConfirmText_(config, fiscalYear) {
+  const code = String(config && config.company_code || "").trim().toUpperCase();
+  const year = Number(fiscalYear || 0);
+  const companyLabel = code === "PARTNER" ? "友尚建設" : "MAIN";
+  return companyLabel + year + "年度切替";
 }
 
 function validateCompanyLeaveYearRolloverExecution_(dryRun, config) {
@@ -1755,7 +1620,7 @@ function dryRunPartnerLeaveYearRollover2026() {
 }
 
 function executePartnerLeaveYearRollover2026() {
-  return executeCompanyLeaveYearRollover("PARTNER", 2026);
+  throw new Error("2026専用の年度切替実行関数は廃止されました。会社別年度切替パネルを使用してください。");
 }
 
 function getPartnerLeaveYearRollover2026Config_() {

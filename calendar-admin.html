@@ -61,7 +61,7 @@
           <div class="field">
             <label for="companyRolloverCompanyCode">対象会社</label>
             <select id="companyRolloverCompanyCode"
-                    onchange="resetCompanyLeaveYearRolloverDryRun()">
+                    onchange="handleCompanyRolloverCompanyChange()">
               <option value="MAIN">MAIN / 正社員 / 4月1日基準</option>
               <option value="PARTNER">PARTNER / （有）友尚建設 / 6月1日基準</option>
             </select>
@@ -71,7 +71,6 @@
             <label for="companyRolloverFiscalYear">切替後の年度</label>
             <input id="companyRolloverFiscalYear"
                    type="number"
-                   value="2026"
                    min="2020"
                    max="2100"
                    onchange="resetCompanyLeaveYearRolloverDryRun()">
@@ -82,7 +81,7 @@
           <strong>対象会社: 正社員</strong>
           <span>company_code: MAIN</span>
           <span>年度開始: 4月1日</span>
-          <span>2025年度末 → 2026年度</span>
+          <span>年度を選択してください</span>
         </div>
 
         <div class="partner-rollover-notice">
@@ -122,7 +121,7 @@
 
           <div class="field partner-rollover-confirm-field">
             <label for="companyRolloverConfirmText">
-              確認のため <strong id="companyRolloverConfirmTextGuide">MAIN2026年度切替</strong> と入力してください
+              確認のため <strong id="companyRolloverConfirmTextGuide">年度を選択してください</strong> と入力してください
             </label>
             <input id="companyRolloverConfirmText"
                    type="text"
@@ -166,7 +165,7 @@
         <div class="year-end-controls">
           <div class="field">
             <label for="yearEndFiscalYear">対象年度</label>
-            <input type="number" id="yearEndFiscalYear" placeholder="例: 2026">
+            <input type="number" id="yearEndFiscalYear" placeholder="年度を入力">
           </div>
         </div>
 
@@ -230,7 +229,7 @@
 
           <div class="field">
             <label for="fifoFiscalYear">対象年度</label>
-            <input type="number" id="fifoFiscalYear" placeholder="例: 2026">
+            <input type="number" id="fifoFiscalYear" placeholder="年度を入力">
           </div>
 
           <div class="field">
@@ -329,7 +328,7 @@
         <div class="calendar-admin-controls">
           <div class="field">
             <label for="companyCalendarFiscalYear">年度</label>
-            <input type="number" id="companyCalendarFiscalYear" placeholder="例: 2026">
+            <input type="number" id="companyCalendarFiscalYear" placeholder="年度を入力">
           </div>
 
           <div class="field">

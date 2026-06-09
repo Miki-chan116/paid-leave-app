@@ -142,6 +142,8 @@ function setDefaultCalendarAdminValues() {
   const fifoAsOfDate = document.getElementById("fifoAsOfDate");
   const expiryAsOfDate = document.getElementById("expiryAsOfDate");
   const yearEndFiscalYear = document.getElementById("yearEndFiscalYear");
+  const companyRolloverFiscalYear = document.getElementById("companyRolloverFiscalYear");
+  const companyRolloverCompanyCode = document.getElementById("companyRolloverCompanyCode");
 
   if (fiscalYearEl) fiscalYearEl.value = fiscalYear;
   if (fiscalStartMonthEl) fiscalStartMonthEl.value = "4";
@@ -149,6 +151,13 @@ function setDefaultCalendarAdminValues() {
   if (fifoAsOfDate) fifoAsOfDate.value = toInputDate(now);
   if (expiryAsOfDate) expiryAsOfDate.value = toInputDate(now);
   if (yearEndFiscalYear) yearEndFiscalYear.value = fiscalYear;
+  if (companyRolloverFiscalYear) {
+    companyRolloverFiscalYear.value = getDefaultCompanyRolloverFiscalYear_(
+      now,
+      companyRolloverCompanyCode ? companyRolloverCompanyCode.value : "MAIN"
+    );
+  }
+  renderCompanyLeaveYearRolloverTarget();
   updateCompanyCalendarPeriodText();
 }
 
@@ -780,6 +789,15 @@ function resetCompanyLeaveYearRolloverDryRun(options) {
   updateCompanyRolloverExecuteButtonState();
 }
 
+function handleCompanyRolloverCompanyChange() {
+  const fiscalYearInput = document.getElementById("companyRolloverFiscalYear");
+  const companyCode = document.getElementById("companyRolloverCompanyCode").value;
+  if (fiscalYearInput) {
+    fiscalYearInput.value = getDefaultCompanyRolloverFiscalYear_(new Date(), companyCode);
+  }
+  resetCompanyLeaveYearRolloverDryRun();
+}
+
 function renderCompanyLeaveYearRolloverTarget() {
   const companyCode = document.getElementById("companyRolloverCompanyCode").value;
   const fiscalYear = Number(document.getElementById("companyRolloverFiscalYear").value || 0);
@@ -789,7 +807,7 @@ function renderCompanyLeaveYearRolloverTarget() {
 
   const isPartner = companyCode === "PARTNER";
   const companyName = isPartner ? "（有）友尚建設" : "正社員";
-  const startMonth = isPartner ? 6 : 4;
+  const startMonth = getCompanyRolloverFiscalStartMonth_(companyCode);
   const yearText = fiscalYear
     ? `${escapeHtml(fiscalYear - 1)}年度末 → ${escapeHtml(fiscalYear)}年度`
     : "年度を選択してください";
@@ -953,8 +971,22 @@ function getCompanyRolloverTargetConditionText_(companyCode) {
 function getCompanyRolloverConfirmText_(companyCode, fiscalYear) {
   const code = String(companyCode || "").trim().toUpperCase();
   const year = Number(fiscalYear || 0);
+  if (!year) return "年度を選択してください";
   const companyLabel = code === "PARTNER" ? "友尚建設" : "MAIN";
   return companyLabel + year + "年度切替";
+}
+
+function getCompanyRolloverFiscalStartMonth_(companyCode) {
+  const code = String(companyCode || "").trim().toUpperCase();
+  return code === "PARTNER" ? 6 : 4;
+}
+
+function getDefaultCompanyRolloverFiscalYear_(dateValue, companyCode) {
+  const date = dateValue instanceof Date ? dateValue : new Date();
+  const startMonth = getCompanyRolloverFiscalStartMonth_(companyCode);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  return month >= startMonth ? year : year - 1;
 }
 
 function executeCompanyLeaveYearRolloverFromAdmin() {
@@ -968,6 +1000,8 @@ function executeCompanyLeaveYearRolloverFromAdmin() {
   );
   const data = companyRolloverDryRunResult || {};
   const companyName = companyCode === "PARTNER" ? "（有）友尚建設" : "正社員";
+  const backupChecked = document.getElementById("companyRolloverBackupChecked");
+  const confirmText = document.getElementById("companyRolloverConfirmText");
 
   if (!canExecuteCompanyLeaveYearRolloverFromAdmin()) {
     alert("年度切替を確定する条件を満たしていません。事前確認、バックアップ、確認入力を見直してください。");
@@ -1028,7 +1062,10 @@ function executeCompanyLeaveYearRolloverFromAdmin() {
       }
       updateCompanyRolloverExecuteButtonState();
     })
-    .executeCompanyLeaveYearRollover(companyCode, fiscalYear);
+    .executeCompanyLeaveYearRollover(companyCode, fiscalYear, {
+      backup_confirmed: !!(backupChecked && backupChecked.checked),
+      confirm_text: String(confirmText && confirmText.value || "").trim()
+    });
 }
 
 function setCompanyRolloverExecutingState_(executing) {
@@ -1304,79 +1341,11 @@ function buildBulkYearEndFinalizeConfirmMessage(items) {
 }
 
 function finalizeYearEndCarryOverActionFromButton(button) {
-  const fiscalYear = document.getElementById("yearEndFiscalYear").value;
-  const item = getYearEndFinalizeItemFromElement(button);
-
-  if (!fiscalYear) {
-    alert("対象年度を入力してください");
-    return;
-  }
-
-  if (!item.employee_id) return;
-  if (!confirm(buildYearEndFinalizeConfirmMessage(item))) return;
-
-  const container = document.getElementById("yearEndCandidates");
-  if (container) {
-    container.innerHTML = `<div class="message">年跨ぎ・繰越を確定しています...</div>`;
-  }
-
-  google.script.run
-    .withSuccessHandler(res => {
-      alert(`${res.name || item.name} さんの年跨ぎ・繰越を確定しました`);
-      loadYearEndCarryOverCandidates(true);
-    })
-    .withFailureHandler(err => {
-      console.error("年跨ぎ・繰越確定エラー:", err);
-      const message = err && err.message
-        ? err.message
-        : "年跨ぎ・繰越の確定でエラーが発生しました。";
-      if (container) {
-        container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
-      }
-    })
-    .finalizeYearEndCarryOver(item.employee_id, Number(fiscalYear), currentAdminUser);
+  alert("この年度切替確定処理は廃止されました。会社別年度切替パネルを使用してください。");
 }
 
 function finalizeSelectedYearEndCarryOverAction() {
-  const fiscalYear = document.getElementById("yearEndFiscalYear").value;
-  const items = getSelectedYearEndFinalizeItems();
-
-  if (!fiscalYear) {
-    alert("対象年度を入力してください");
-    return;
-  }
-
-  if (items.length === 0) {
-    alert("確定する社員を選択してください");
-    return;
-  }
-
-  if (!confirm(buildBulkYearEndFinalizeConfirmMessage(items))) return;
-
-  const container = document.getElementById("yearEndCandidates");
-  if (container) {
-    container.innerHTML = `<div class="message">選択した社員の年跨ぎ・繰越を確定しています...</div>`;
-  }
-
-  google.script.run
-    .withSuccessHandler(res => {
-      alert(buildYearEndFinalizeBatchResultMessage(res));
-      loadYearEndCarryOverCandidates(true);
-    })
-    .withFailureHandler(err => {
-      console.error("年跨ぎ・繰越一括確定エラー:", err);
-      const message = err && err.message
-        ? err.message
-        : "年跨ぎ・繰越の一括確定でエラーが発生しました。";
-      if (container) {
-        container.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
-      }
-    })
-    .finalizeSelectedYearEndCarryOver(
-      items.map(item => item.employee_id),
-      Number(fiscalYear),
-      currentAdminUser
-    );
+  alert("この年度切替確定処理は廃止されました。会社別年度切替パネルを使用してください。");
 }
 
 function buildYearEndFinalizeBatchResultMessage(res) {
