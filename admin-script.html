@@ -134,38 +134,14 @@ function initAdminLogin() {
   loadAdminUsersForLogin();
 }
 
-function showLoginScreen() {
-  const loginScreen = document.getElementById("loginScreen");
-  const adminApp = document.getElementById("adminApp");
-
-  if (loginScreen) loginScreen.style.display = "flex";
-  if (adminApp) adminApp.classList.add("admin-app-hidden");
+function showAdminApp() {
+  showAuthenticatedShell();
 }
 
-function showAdminApp() {
-  const loginScreen = document.getElementById("loginScreen");
-  const adminApp = document.getElementById("adminApp");
-
-  if (loginScreen) loginScreen.style.display = "none";
-  if (adminApp) adminApp.classList.remove("admin-app-hidden");
-
-  renderLoginUserBar();
-
+function onAdminAuthenticated() {
   setDefaultReportValues();
   setDefaultSearchDates();
   loadRequests("pending");
-}
-
-function renderLoginUserBar() {
-  const bar = document.getElementById("loginUserBar");
-  if (!bar) return;
-
-  const name = currentAdminUser ? currentAdminUser.admin_name : "";
-
-  bar.innerHTML = `
-    <span>ログイン中：${escapeHtml(name)}</span>
-    <button class="logout-btn" type="button" onclick="logoutAdmin()">ログアウト</button>
-  `;
 }
 
 function loadAdminUsersForLogin() {
