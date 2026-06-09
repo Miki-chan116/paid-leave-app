@@ -1,5 +1,17 @@
 <script>
 let currentAdminUser = null;
+const adminAuthConfig = {
+  validateLoginInput: true,
+  clearMessageBeforeLoadUsers: false,
+  clearMessageBeforeLogin: false,
+  showEmptyAdminOption: false,
+  emptyAdminMessage: "有効な管理者がいません",
+  loginMissingInputMessage: "管理者とPINを入力してください。",
+  loginFailureMessage: "ログインに失敗しました。",
+  normalizeLoginUser: true,
+  clearPinOnLogout: false,
+  reloadUsersOnLogout: false
+};
 let fifoEmployeeCandidates = [];
 let selectedFifoEmployee = null;
 let companyRolloverDryRunResult = null;
@@ -45,66 +57,6 @@ function onAdminAuthenticated() {
   setDefaultCalendarAdminValues();
   bindCompanyCalendarAdminEvents();
   loadFifoEmployeeCandidates();
-}
-
-function loadAdminUsersForLogin() {
-  const select = document.getElementById("adminUserSelect");
-  const message = document.getElementById("loginMessage");
-
-  google.script.run
-    .withSuccessHandler(users => {
-      if (!select) return;
-
-      select.innerHTML = `<option value="">選択してください</option>`;
-
-      (users || []).forEach(user => {
-        const option = document.createElement("option");
-        option.value = user.admin_id;
-        option.textContent = `${user.admin_name}（${user.admin_id}）`;
-        select.appendChild(option);
-      });
-    })
-    .withFailureHandler(err => {
-      console.error("管理者一覧取得エラー:", err);
-      if (message) message.textContent = "管理者一覧の取得でエラーが発生しました。";
-    })
-    .getAdminUsersForLogin();
-}
-
-function loginAdmin() {
-  const adminId = document.getElementById("adminUserSelect").value;
-  const pin = document.getElementById("adminPinInput").value;
-  const message = document.getElementById("loginMessage");
-
-  if (!adminId || !pin) {
-    if (message) message.textContent = "管理者とPINを入力してください。";
-    return;
-  }
-
-  google.script.run
-    .withSuccessHandler(user => {
-      currentAdminUser = {
-        admin_id: user.admin_id,
-        admin_name: user.admin_name
-      };
-      localStorage.setItem(ADMIN_LOGIN_KEY, JSON.stringify(currentAdminUser));
-      showAdminApp();
-    })
-    .withFailureHandler(err => {
-      console.error("ログインエラー:", err);
-      if (message) {
-        message.textContent = err && err.message
-          ? err.message
-          : "ログインに失敗しました。";
-      }
-    })
-    .verifyAdminLogin(adminId, pin);
-}
-
-function logoutAdmin() {
-  localStorage.removeItem(ADMIN_LOGIN_KEY);
-  currentAdminUser = null;
-  showLoginScreen();
 }
 
 function setDefaultCalendarAdminValues() {
