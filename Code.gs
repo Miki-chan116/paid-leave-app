@@ -4574,6 +4574,200 @@ function getPaidLeaveDashboardData(filters) {
   };
 }
 
+
+function getPaidLeaveBalanceSnapshotForAttendance(employeeIds, asOfDate) {
+  const targetEmployeeIds = normalizeAttendanceSnapshotEmployeeIds_(employeeIds);
+  const targetDate = asOfDate ? parseLocalDate(asOfDate) : parseLocalDate(new Date());
+  const asOfDateKey = toDateKey(targetDate);
+
+  if (targetEmployeeIds.length === 0) {
+    return {
+      ok: true,
+      as_of_date: asOfDateKey,
+      calculation_mode: "fifo_with_opening_balance",
+      employees: []
+    };
+  }
+
+  let employeesForAdmin = [];
+  let context = null;
+  let setupError = "";
+
+  try {
+    employeesForAdmin = getEmployeesForAdmin();
+    context = createFifoBalanceComparisonContext_(targetDate);
+  } catch (error) {
+    setupError = error && error.message ? error.message : String(error || "");
+  }
+
+  const employeeMap = {};
+  employeesForAdmin.forEach(emp => {
+    const employeeId = String(emp.employee_id || "").trim();
+    if (employeeId) employeeMap[employeeId] = emp;
+  });
+
+  const fiscalYearGroups = {};
+  targetEmployeeIds.forEach(employeeId => {
+    const emp = employeeMap[employeeId] || {};
+    const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+    const fiscalYear = getFiscalYearFromDateWithStart(targetDate, fiscalStartMonth);
+
+    if (!fiscalYearGroups[fiscalYear]) fiscalYearGroups[fiscalYear] = [];
+    fiscalYearGroups[fiscalYear].push(employeeId);
+  });
+
+  const fiscalBalanceByEmployee = {};
+  Object.keys(fiscalYearGroups).forEach(fiscalYear => {
+    try {
+      const balanceMap = getEmployeeBalanceMapForEmployeeIdsForFiscalYear(
+        Number(fiscalYear),
+        fiscalYearGroups[fiscalYear]
+      );
+
+      fiscalYearGroups[fiscalYear].forEach(employeeId => {
+        fiscalBalanceByEmployee[employeeId] = balanceMap[employeeId] || {
+          employee_id: employeeId,
+          current_remaining_days: 0,
+          carry_over_days: 0,
+          grant_days: 0,
+          used_days: 0,
+          next_carry_over_days: 0,
+          expired_days: 0
+        };
+      });
+    } catch (error) {
+      fiscalYearGroups[fiscalYear].forEach(employeeId => {
+        fiscalBalanceByEmployee[employeeId] = {
+          employee_id: employeeId,
+          current_remaining_days: null,
+          carry_over_days: null,
+          grant_days: null,
+          used_days: null,
+          next_carry_over_days: null,
+          expired_days: null,
+          error: error && error.message ? error.message : String(error || "")
+        };
+      });
+    }
+  });
+
+  const rows = targetEmployeeIds.map(employeeId => {
+    const emp = employeeMap[employeeId] || {};
+    const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+    const fiscalYear = getFiscalYearFromDateWithStart(targetDate, fiscalStartMonth);
+    const fiscalBalance = fiscalBalanceByEmployee[employeeId] || {};
+
+    if (setupError || !context) {
+      return {
+        employee_id: employeeId,
+        employee_name: getDisplayName(emp) || employeeId,
+        fiscal_year: String(fiscalYear),
+        current_remaining_days: null,
+        carry_over_days: fiscalBalance.carry_over_days == null ? null : Number(fiscalBalance.carry_over_days || 0),
+        grant_days: fiscalBalance.grant_days == null ? null : Number(fiscalBalance.grant_days || 0),
+        used_days: fiscalBalance.used_days == null ? null : Number(fiscalBalance.used_days || 0),
+        expiring_soon_days: null,
+        expired_days: null,
+        expiry_lots: [],
+        error: setupError || "有給残数計算の初期化に失敗しました"
+      };
+    }
+
+    try {
+      const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(
+        employeeId,
+        targetDate,
+        context
+      );
+      const expiryLots = buildAttendancePaidLeaveExpiryLots_(fifoBalance, targetDate);
+      const expiringSoonDays = expiryLots
+        .filter(lot => lot.days_until_expiry >= 0 && lot.days_until_expiry <= 90)
+        .reduce((sum, lot) => sum + Number(lot.remaining_days || 0), 0);
+
+      return {
+        employee_id: employeeId,
+        employee_name: getDisplayName(emp) || employeeId,
+        fiscal_year: String(fiscalYear),
+        current_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+        carry_over_days: Number(fiscalBalance.carry_over_days || 0),
+        grant_days: Number(fiscalBalance.grant_days || 0),
+        used_days: Number(fiscalBalance.used_days || 0),
+        expiring_soon_days: expiringSoonDays,
+        expired_days: Number(fifoBalance.expired_days || 0),
+        expiry_lots: expiryLots.map(lot => ({
+          expire_date: lot.expire_date,
+          remaining_days: lot.remaining_days
+        }))
+      };
+    } catch (error) {
+      return {
+        employee_id: employeeId,
+        employee_name: getDisplayName(emp) || employeeId,
+        fiscal_year: String(fiscalYear),
+        current_remaining_days: null,
+        carry_over_days: fiscalBalance.carry_over_days == null ? null : Number(fiscalBalance.carry_over_days || 0),
+        grant_days: fiscalBalance.grant_days == null ? null : Number(fiscalBalance.grant_days || 0),
+        used_days: fiscalBalance.used_days == null ? null : Number(fiscalBalance.used_days || 0),
+        expiring_soon_days: null,
+        expired_days: null,
+        expiry_lots: [],
+        error: error && error.message ? error.message : String(error || "")
+      };
+    }
+  });
+
+  return {
+    ok: true,
+    as_of_date: asOfDateKey,
+    calculation_mode: "fifo_with_opening_balance",
+    employees: rows
+  };
+}
+
+function normalizeAttendanceSnapshotEmployeeIds_(employeeIds) {
+  const source = Array.isArray(employeeIds)
+    ? employeeIds
+    : String(employeeIds || "").split(",");
+  const seen = {};
+
+  return source
+    .map(id => String(id || "").trim())
+    .filter(id => {
+      if (!id || seen[id]) return false;
+      seen[id] = true;
+      return true;
+    });
+}
+
+function buildAttendancePaidLeaveExpiryLots_(fifoBalance, asOfDate) {
+  return (fifoBalance.grant_details || [])
+    .map(lot => {
+      const remainingDays = Number(lot.active_remaining_days || 0);
+      if (remainingDays <= 0) return null;
+
+      const validTo = parseLocalDate(lot.valid_to);
+      const daysUntilExpiry = Math.round(
+        (validTo.getTime() - asOfDate.getTime()) / (24 * 60 * 60 * 1000)
+      );
+
+      if (daysUntilExpiry < 0) return null;
+
+      return {
+        expire_date: toDateKey(validTo),
+        remaining_days: remainingDays,
+        days_until_expiry: daysUntilExpiry
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.days_until_expiry !== b.days_until_expiry) {
+        return a.days_until_expiry - b.days_until_expiry;
+      }
+      return String(a.expire_date).localeCompare(String(b.expire_date));
+    });
+}
+
+
 function getPaidLeaveDashboardEmployeeDetail(employeeId, filters) {
   const targetEmployeeId = String(employeeId || "").trim();
   if (!targetEmployeeId) throw new Error("社員IDがありません。");
