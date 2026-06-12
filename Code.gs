@@ -120,6 +120,167 @@ function doGet(e) {
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
 }
 
+function doPost(e) {
+  let payload = {};
+
+  try {
+    const body = e && e.postData && e.postData.contents
+      ? e.postData.contents
+      : "{}";
+    payload = JSON.parse(body || "{}");
+  } catch (error) {
+    return createApiErrorResponse_(
+      "invalid_json",
+      "リクエストJSONの形式が正しくありません",
+      ""
+    );
+  }
+
+  try {
+    return createJsonApiResponse_(handleAttendanceApiRequest_(payload));
+  } catch (error) {
+    return createApiErrorResponse_(
+      "internal_error",
+      error && error.message ? error.message : "API処理に失敗しました",
+      payload && payload.request_id
+    );
+  }
+}
+
+function handleAttendanceApiRequest_(payload) {
+  const request = normalizeAttendanceApiPayload_(payload);
+
+  if (!validateAttendanceApiToken_(request.token)) {
+    return {
+      ok: false,
+      api_version: request.api_version,
+      service: request.service,
+      action: request.action,
+      request_id: request.request_id,
+      generated_at: new Date().toISOString(),
+      error_code: "unauthorized",
+      message: "APIトークンが正しくありません"
+    };
+  }
+
+  if (request.api_version !== "v1") {
+    return {
+      ok: false,
+      api_version: request.api_version,
+      service: request.service,
+      action: request.action,
+      request_id: request.request_id,
+      generated_at: new Date().toISOString(),
+      error_code: "unsupported_api_version",
+      message: "api_version は v1 を指定してください"
+    };
+  }
+
+  if (request.service !== "paid_leave") {
+    return {
+      ok: false,
+      api_version: request.api_version,
+      service: request.service,
+      action: request.action,
+      request_id: request.request_id,
+      generated_at: new Date().toISOString(),
+      error_code: "invalid_service",
+      message: "service は paid_leave を指定してください"
+    };
+  }
+
+  if (request.action !== "get_balance_snapshot") {
+    return {
+      ok: false,
+      api_version: request.api_version,
+      service: request.service,
+      action: request.action,
+      request_id: request.request_id,
+      generated_at: new Date().toISOString(),
+      error_code: "invalid_action",
+      message: "action は get_balance_snapshot を指定してください"
+    };
+  }
+
+  if (request.employee_ids.length === 0) {
+    return {
+      ok: false,
+      api_version: request.api_version,
+      service: request.service,
+      action: request.action,
+      request_id: request.request_id,
+      generated_at: new Date().toISOString(),
+      error_code: "invalid_request",
+      message: "employee_ids を1件以上指定してください"
+    };
+  }
+
+  const snapshot = getPaidLeaveBalanceSnapshotForAttendance(
+    request.employee_ids,
+    request.as_of_date
+  );
+
+  return {
+    ok: true,
+    api_version: request.api_version,
+    service: request.service,
+    action: request.action,
+    request_id: request.request_id,
+    generated_at: new Date().toISOString(),
+    as_of_date: snapshot.as_of_date,
+    calculation_mode: snapshot.calculation_mode,
+    employees: snapshot.employees || []
+  };
+}
+
+function normalizeAttendanceApiPayload_(payload) {
+  const source = payload || {};
+  const employeeIds = Array.isArray(source.employee_ids)
+    ? source.employee_ids
+    : Array.isArray(source.employeeIds)
+      ? source.employeeIds
+      : String(source.employee_ids || source.employeeIds || "").split(",");
+
+  return {
+    api_version: String(source.api_version || "").trim(),
+    service: String(source.service || "").trim(),
+    action: String(source.action || "").trim(),
+    request_id: String(source.request_id || "").trim(),
+    employee_ids: normalizeAttendanceSnapshotEmployeeIds_(employeeIds),
+    as_of_date: String(source.as_of_date || source.asOfDate || "").trim(),
+    token: String(source.token || "").trim()
+  };
+}
+
+function validateAttendanceApiToken_(token) {
+  const expectedToken = PropertiesService
+    .getScriptProperties()
+    .getProperty("ATTENDANCE_API_TOKEN");
+
+  if (!expectedToken) return false;
+
+  return String(token || "") === String(expectedToken || "");
+}
+
+function createJsonApiResponse_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj || {}))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function createApiErrorResponse_(errorCode, message, requestId) {
+  return createJsonApiResponse_({
+    ok: false,
+    api_version: "v1",
+    service: "paid_leave",
+    action: "get_balance_snapshot",
+    request_id: String(requestId || ""),
+    generated_at: new Date().toISOString(),
+    error_code: errorCode || "internal_error",
+    message: message || "API処理に失敗しました"
+  });
+}
+
 /* =========================
    include
 ========================= */
