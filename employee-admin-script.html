@@ -181,6 +181,7 @@ function openEditEmployeeModal(emp) {
   setValue("editNameKana", emp.name_kana);
   setValue("editCompanyCode", emp.company_code || "MAIN");
   setValue("editCompanyName", emp.company_name);
+  ensureDepartmentOption("editDepartment", emp.department);
   setValue("editDepartment", emp.department);
   setValue("editEmploymentType", emp.employment_type);
   setValue("editEmploymentStatus", emp.employment_status || "active");
@@ -487,6 +488,28 @@ function getCompanyCodeLabel(companyCode) {
   if (code === "PARTNER") return "PARTNER";
   if (code === "MAIN") return "MAIN";
   return code || "MAIN";
+}
+
+function ensureDepartmentOption(selectId, department) {
+  const select = document.getElementById(selectId);
+  const value = String(department || "").trim();
+
+  if (!select) return;
+
+  Array.from(select.querySelectorAll("option[data-temporary='true']")).forEach(option => {
+    option.remove();
+  });
+
+  if (!value) return;
+
+  const exists = Array.from(select.options).some(option => option.value === value);
+  if (exists) return;
+
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = value;
+  option.dataset.temporary = "true";
+  select.appendChild(option);
 }
 
 function getCurrentSearchConditionText() {

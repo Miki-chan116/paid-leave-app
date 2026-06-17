@@ -46,7 +46,7 @@
     </div>
 
     <div id="currentRangeBox" class="current-range-box">
-      現在表示中：前月＋当月のデータ
+      現在表示中：承認待ち / 前月26日以降の未承認申請
     </div>
 
     <div class="admin-dashboard">
@@ -100,9 +100,9 @@
         <div class="search-card-header">
           <div>
             <div class="search-title">検索条件</div>
-            <p class="subtitle">何も入力しない場合は、前月＋当月の申請を表示します。</p>
+            <p class="subtitle">承認待ちは前月26日以降、承認済み・否認は前月＋当月の申請を表示します。</p>
           </div>
-          <div id="searchHint" class="search-hint">前月＋当月</div>
+          <div id="searchHint" class="search-hint">前月26日以降の未承認申請</div>
         </div>
 
         <div class="search-grid">
@@ -138,7 +138,7 @@
           </button>
 
           <button class="btn btn-reset" type="button" onclick="resetSearch()">
-            前月＋当月に戻す
+            既定期間に戻す
           </button>
         </div>
       </div>

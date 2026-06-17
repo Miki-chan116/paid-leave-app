@@ -416,10 +416,9 @@ function getAdminRecentRange() {
 
 function getAdminPendingFocusRange() {
   const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), 1);
-  const end = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+  const start = new Date(today.getFullYear(), today.getMonth() - 1, 26);
 
-  return { start, end };
+  return { start };
 }
 
 function isRequestInDateRange(rowObj, start, end) {
@@ -432,6 +431,15 @@ function isRequestInDateRange(rowObj, start, end) {
   const to = new Date(end.getFullYear(), end.getMonth(), end.getDate());
 
   return requestStart <= to && requestEnd >= from;
+}
+
+function isRequestOnOrAfterDate(rowObj, start) {
+  if (!rowObj.start_date || !rowObj.end_date) return false;
+
+  const requestEnd = parseLocalDate(rowObj.end_date);
+  const from = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+
+  return requestEnd >= from;
 }
 
 /* =========================
@@ -1964,8 +1972,7 @@ function getRequestsByStatus(status) {
 
     return searchRequests({
       status: status,
-      start_date: formatDateValue(pendingRange.start),
-      end_date: formatDateValue(pendingRange.end)
+      start_date: formatDateValue(pendingRange.start)
     });
   }
 
@@ -2100,7 +2107,7 @@ function getPendingRequestsForAdminLight() {
 
       if (rowStatus !== STATUS.PENDING) return null;
       if (!startDate || !endDate) return null;
-      if (!isRequestInDateRange({ start_date: startDate, end_date: endDate }, range.start, range.end)) return null;
+      if (!isRequestOnOrAfterDate({ start_date: startDate, end_date: endDate }, range.start)) return null;
 
       const employeeId = String(row[employeeIdIdx] || "").trim();
       const employee = employeeMap[employeeId] || {};
@@ -4451,7 +4458,7 @@ function getAdminDashboardSummary() {
     if (!rowObj.start_date || !rowObj.end_date) return;
 
     if (status === STATUS.PENDING) {
-      if (isRequestInDateRange(rowObj, pendingRange.start, pendingRange.end)) {
+      if (isRequestOnOrAfterDate(rowObj, pendingRange.start)) {
         result.pending++;
       } else {
         result.pending_out_of_range++;

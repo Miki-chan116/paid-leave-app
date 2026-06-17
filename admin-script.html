@@ -30,14 +30,12 @@ function setDefaultSearchDates(status) {
   const now = new Date();
   const isPending = String(status || "pending") === "pending";
   const start = isPending
-    ? new Date(now.getFullYear(), now.getMonth(), 1)
+    ? new Date(now.getFullYear(), now.getMonth() - 1, 26)
     : new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const end = isPending
-    ? new Date(now.getFullYear(), now.getMonth() + 2, 0)
-    : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   document.getElementById("searchStartDate").value = toInputDate(start);
-  document.getElementById("searchEndDate").value = toInputDate(end);
+  document.getElementById("searchEndDate").value = isPending ? "" : toInputDate(end);
 }
 
 function toInputDate(date) {
@@ -58,7 +56,7 @@ function updateSearchHint(text) {
 }
 
 function getDefaultRangeLabel(status) {
-  return String(status || "") === "pending" ? "当月＋翌月" : "前月＋当月";
+  return String(status || "") === "pending" ? "前月26日以降の未承認申請" : "前月＋当月";
 }
 
 function setActiveTab(tabName) {
@@ -176,7 +174,7 @@ function loadDashboardSummary() {
         const outOfRange = Number(summary.pending_out_of_range || 0);
         pendingSub.textContent = outOfRange > 0
           ? `期間外にも承認待ちがあります（${outOfRange}件）`
-          : "当月＋翌月の未対応";
+          : "前月26日以降の未対応";
       }
 
       if (approved) {
