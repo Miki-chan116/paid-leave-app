@@ -2964,7 +2964,8 @@ function getEmployeesForRequest() {
     "employment_type",
     "employment_status",
     "leave_management_target",
-    "fiscal_start_month"
+    "fiscal_start_month",
+    "display_order"
   ]);
 
   const data = sheet.getDataRange().getValues();
@@ -2996,7 +2997,8 @@ function getEmployeesForRequest() {
         leaveTargetRaw === "対象";
 
       return employeeId && name && isActive && isLeaveTarget;
-    });
+    })
+    .sort((a, b) => Number(a.display_order || 9999) - Number(b.display_order || 9999));
 
   const fiscalYearGroups = {};
 
@@ -3082,9 +3084,17 @@ function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
 
 /* =========================
    社員マスター整備
-   employee_id / display_employee_id / display_order 自動整備
+   互換用：表示順整理のみ実行
 ========================= */
 function maintainEmployeeMaster() {
+  return maintainEmployeeDisplayOrderOnly_();
+}
+
+/* =========================
+   社員表示順整理
+   ID系列の列は更新しない
+========================= */
+function maintainEmployeeDisplayOrderOnly_() {
   const sheet = getSheet("employees");
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
@@ -3097,102 +3107,57 @@ function maintainEmployeeMaster() {
   ]);
 
   const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return { ok: true, message: "社員データがありません" };
+  if (data.length <= 1) return { ok: true, message: "社員データがありません", count: 0 };
 
-  const headers = headerInfo.headers;
-  let rows = data.slice(1);
-
-  const employeeIdIndex = headerInfo.map.employee_id;
-  const displayIdIndex = headerInfo.map.display_employee_id;
   const companyCodeIndex = headerInfo.map.company_code;
   const kanaIndex = headerInfo.map.name_kana;
   const statusIndex = headerInfo.map.employment_status;
   const orderIndex = headerInfo.map.display_order;
 
-  const usedEmployeeIds = new Set();
-  const usedDisplayIds = {
-    W: new Set(),
-    P: new Set()
-  };
+  const rowItems = data.slice(1).map((row, index) => ({
+    row: row,
+    rowNumber: index + 2
+  }));
 
-  rows.forEach(row => {
-    const employeeId = String(row[employeeIdIndex] || "").trim();
-    const displayId = String(row[displayIdIndex] || "").trim();
-
-    if (employeeId) usedEmployeeIds.add(employeeId);
-
-    if (displayId.startsWith("W")) usedDisplayIds.W.add(displayId);
-    if (displayId.startsWith("P")) usedDisplayIds.P.add(displayId);
-  });
-
-  let nextEmployeeNumber = getNextIdNumber_(usedEmployeeIds, "EMP");
-  let nextWNumber = getNextIdNumber_(usedDisplayIds.W, "W");
-  let nextPNumber = getNextIdNumber_(usedDisplayIds.P, "P");
-
-  rows = rows.map(row => {
-    const newRow = row.slice();
-
-    if (!String(newRow[employeeIdIndex] || "").trim()) {
-      newRow[employeeIdIndex] = "EMP" + String(nextEmployeeNumber).padStart(4, "0");
-      nextEmployeeNumber++;
-    }
-
-    if (!String(newRow[displayIdIndex] || "").trim()) {
-      const companyCode = normalizeCompanyCode_(newRow[companyCodeIndex]);
-
-      if (companyCode === "PARTNER") {
-        newRow[displayIdIndex] = "P" + String(nextPNumber).padStart(4, "0");
-        nextPNumber++;
-      } else {
-        newRow[displayIdIndex] = "W" + String(nextWNumber).padStart(4, "0");
-        nextWNumber++;
-      }
-    }
-
-    return newRow;
-  });
-
-  rows.sort((a, b) => {
-    const statusA = getEmploymentStatusOrder_(a[statusIndex]);
-    const statusB = getEmploymentStatusOrder_(b[statusIndex]);
+  rowItems.sort((a, b) => {
+    const statusA = getEmploymentStatusOrder_(a.row[statusIndex]);
+    const statusB = getEmploymentStatusOrder_(b.row[statusIndex]);
 
     if (statusA !== statusB) return statusA - statusB;
 
-    const companyA = getCompanyOrder_(a[companyCodeIndex]);
-    const companyB = getCompanyOrder_(b[companyCodeIndex]);
+    const companyA = getCompanyOrder_(a.row[companyCodeIndex]);
+    const companyB = getCompanyOrder_(b.row[companyCodeIndex]);
 
     if (companyA !== companyB) return companyA - companyB;
 
-    const kanaA = String(a[kanaIndex] || "");
-    const kanaB = String(b[kanaIndex] || "");
+    const kanaA = String(a.row[kanaIndex] || "");
+    const kanaB = String(b.row[kanaIndex] || "");
 
     return kanaA.localeCompare(kanaB, "ja");
   });
 
-  rows.forEach((row, index) => {
-    row[orderIndex] = index + 1;
+  rowItems.forEach((item, index) => {
+    sheet.getRange(item.rowNumber, orderIndex + 1).setValue(index + 1);
   });
-
-  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
 
   clearAppCache();
 
   return {
     ok: true,
-    message: "社員マスターを整備しました",
-    count: rows.length
+    message: "社員の表示順を整理しました",
+    count: rowItems.length
   };
 }
 
 /* =========================
 
-   管理画面用：ID採番・並び順整理
+   管理画面用：表示順整理
 
 ========================= */
 
 function runMaintainEmployeeMasterFromAdmin() {
 
-  const result = maintainEmployeeMaster();
+  const result = maintainEmployeeDisplayOrderOnly_();
 
   appendEmployeeMasterLog(
 
@@ -3200,7 +3165,7 @@ function runMaintainEmployeeMasterFromAdmin() {
 
     "",
 
-    "ID採番・表示順整理を実行しました。対象件数: " + result.count
+    "表示順整理を実行しました。対象件数: " + result.count
 
   );
 
@@ -3219,7 +3184,7 @@ function getLogActionLabel(actionType) {
     employee_add: "社員追加",
     employee_update: "社員編集",
     employee_retire: "退職処理",
-    employee_maintain: "ID採番・並び順整理",
+    employee_maintain: "表示順整理",
 
     six_month_grant: "6か月有給付与",
     yearly_grant: "年次有給付与"
@@ -3265,6 +3230,36 @@ function getNextIdNumber_(usedIds, prefix) {
   });
 
   return max + 1;
+}
+
+function generateEmployeeIdsForNewEmployee_(sheet, headerInfo, companyCode) {
+  const data = sheet.getDataRange().getValues();
+  const employeeIdIndex = headerInfo.map.employee_id;
+  const displayIdIndex = headerInfo.map.display_employee_id;
+  const usedEmployeeIds = new Set();
+  const usedDisplayIds = {
+    W: new Set(),
+    P: new Set()
+  };
+
+  data.slice(1).forEach(row => {
+    const employeeId = String(row[employeeIdIndex] || "").trim();
+    const displayId = String(row[displayIdIndex] || "").trim();
+
+    if (employeeId) usedEmployeeIds.add(employeeId);
+    if (displayId.startsWith("W")) usedDisplayIds.W.add(displayId);
+    if (displayId.startsWith("P")) usedDisplayIds.P.add(displayId);
+  });
+
+  const normalizedCompanyCode = normalizeCompanyCode_(companyCode);
+  const displayPrefix = normalizedCompanyCode === "PARTNER" ? "P" : "W";
+
+  return {
+    employee_id: "EMP" + String(getNextIdNumber_(usedEmployeeIds, "EMP")).padStart(4, "0"),
+    display_employee_id:
+      displayPrefix +
+      String(getNextIdNumber_(usedDisplayIds[displayPrefix], displayPrefix)).padStart(4, "0")
+  };
 }
 
 /* =========================
@@ -3341,9 +3336,14 @@ function addEmployeeFromAdmin(data) {
 
   const now = new Date();
   const rowObj = createEmptyRowObject(headerInfo.headers);
+  const newIds = generateEmployeeIdsForNewEmployee_(
+    sheet,
+    headerInfo,
+    data.company_code
+  );
 
-  rowObj.employee_id = "";
-  rowObj.display_employee_id = "";
+  rowObj.employee_id = newIds.employee_id;
+  rowObj.display_employee_id = newIds.display_employee_id;
   rowObj.name = String(data.name || "").trim();
   rowObj.display_name = String(data.display_name || "").trim();
   rowObj.name_kana = String(data.name_kana || "").trim();
@@ -3367,7 +3367,7 @@ function addEmployeeFromAdmin(data) {
   objectToRow(rowObj, headerInfo.headers)
 );
 
-  maintainEmployeeMaster();
+  maintainEmployeeDisplayOrderOnly_();
 
   appendEmployeeMasterLog(
     "employee_add",
@@ -3566,7 +3566,7 @@ function updateEmployeeFromAdmin(data) {
   sheet.getRange(sheetRow, headerInfo.map.notes + 1).setValue(String(data.notes || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(new Date());
 
-  maintainEmployeeMaster();
+  maintainEmployeeDisplayOrderOnly_();
   clearAppCache();
 
   const diffComment = buildEmployeeUpdateDiffComment(beforeObj, data);
@@ -3623,7 +3623,7 @@ function retireEmployeeFromAdmin(employeeId, leaveDate) {
   sheet.getRange(sheetRow, headerInfo.map.leave_management_target + 1).setValue(false);
   sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(new Date());
 
-  maintainEmployeeMaster();
+  maintainEmployeeDisplayOrderOnly_();
   clearAppCache();
 
   appendEmployeeMasterLog(
