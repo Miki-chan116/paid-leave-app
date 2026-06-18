@@ -191,6 +191,7 @@ function openEditEmployeeModal(emp) {
   setValue("editFiscalStartMonth", emp.fiscal_start_month || "4");
   setValue("editLeaveManagementTarget", emp.leave_management_target === true ? "TRUE" : "FALSE");
   setValue("editNotes", emp.notes);
+  syncFiscalStartMonthWithCompanyCode("editCompanyCode", "editFiscalStartMonth");
 
   const subTitle = document.getElementById("editEmployeeSubTitle");
   if (subTitle) {
@@ -456,6 +457,24 @@ function handleCompanyCodeChange() {
 
   if (companyCode === "MAIN" && employmentType.value === "partner") {
     employmentType.value = "regular";
+  }
+
+  syncFiscalStartMonthWithCompanyCode("companyCode", "fiscalStartMonth");
+}
+
+function handleEditCompanyCodeChange() {
+  syncFiscalStartMonthWithCompanyCode("editCompanyCode", "editFiscalStartMonth");
+}
+
+function syncFiscalStartMonthWithCompanyCode(companySelectId, fiscalStartSelectId) {
+  const companyCode = getValue(companySelectId);
+  if (companyCode === "PARTNER") {
+    setValue(fiscalStartSelectId, "6");
+    return;
+  }
+
+  if (companyCode === "MAIN") {
+    setValue(fiscalStartSelectId, "4");
   }
 }
 

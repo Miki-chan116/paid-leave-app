@@ -834,13 +834,13 @@ function loadSixMonthGrantCandidates(keepPage) {
   const area = document.getElementById("sixMonthGrantArea");
   if (!area) return;
 
-  area.innerHTML = `<div class="message">6か月付与対象者を確認しています...</div>`;
+  area.innerHTML = `<div class="message">新規登録社員の初回付与対象者をプレビューしています...</div>`;
 
   google.script.run
     .withSuccessHandler(renderSixMonthGrantCandidates)
     .withFailureHandler(err => {
-      console.error("6か月付与候補取得エラー:", err);
-      area.innerHTML = `<div class="message error">6か月付与対象者の取得でエラーが発生しました。</div>`;
+      console.error("初回付与候補取得エラー:", err);
+      area.innerHTML = `<div class="message error">初回付与対象者のプレビューでエラーが発生しました。</div>`;
     })
     .getSixMonthGrantCandidates({
       offset: pageOffsets.sixMonth,
@@ -862,11 +862,12 @@ function renderSixMonthGrantCandidates(response) {
   }
 
   if (!Array.isArray(data) || data.length === 0) {
-    area.innerHTML = `<div class="message">現在、6か月到達による付与対象者はいません。</div>`;
+    area.innerHTML = `<div class="message">現在、新規登録社員の初回付与対象者はいません。</div>`;
     return;
   }
 
   area.innerHTML = `
+    <div class="message">プレビュー結果です。付与ボタンを押すまで有給レコードは追加されません。</div>
     ${renderGrantBulkActionBar("sixMonth", totalCount)}
     ${renderPager("sixMonth", response)}
     ${data.map(emp => `
@@ -948,6 +949,10 @@ function renderSixMonthGrantCandidates(response) {
             <div class="grant-detail-item">
               <span>年度開始</span>
               <strong>${escapeHtml(emp.fiscal_start_month || 4)}月</strong>
+            </div>
+            <div class="grant-detail-item">
+              <span>対象区分</span>
+              <strong>${emp.initial_grant_check_target === true ? "新規登録社員" : "対象外"}</strong>
             </div>
             <div class="grant-detail-item">
               <span>判定</span>
@@ -1087,7 +1092,7 @@ function renderGrantDaysInput(systemGrantDays) {
 }
 
 function renderGrantBulkActionBar(type, count) {
-  const label = type === "sixMonth" ? "6か月付与" : "年次付与";
+  const label = type === "sixMonth" ? "初回付与" : "年次付与";
   const selectedCountId = getGrantBulkSelectedCountId(type);
 
   return `

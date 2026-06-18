@@ -232,7 +232,7 @@
 
                   <select id="fiscalStartMonth">
                     <option value="4">4月開始</option>
-                    <option value="7">7月開始</option>
+                    <option value="6">6月開始</option>
                   </select>
                   <div class="field-help">残日数や年度集計の基準月です。</div>
                 </div>
@@ -360,7 +360,7 @@
             <div class="field">
               <label for="editCompanyCode">会社区分 *</label>
 
-              <select id="editCompanyCode">
+              <select id="editCompanyCode" onchange="handleEditCompanyCodeChange()">
                 <option value="MAIN">MAIN（正社員・自社）</option>
                 <option value="PARTNER">PARTNER（協力企業）</option>
               </select>
@@ -446,7 +446,7 @@
 
               <select id="editFiscalStartMonth">
                 <option value="4">4月開始</option>
-                <option value="7">7月開始</option>
+                <option value="6">6月開始</option>
               </select>
               <div class="field-help">残日数や年度集計の基準月です。</div>
             </div>

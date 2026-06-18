@@ -312,6 +312,18 @@ function requireHeaders(sheet, requiredHeaders) {
   return headerInfo;
 }
 
+function ensureSheetColumn_(sheet, headerName) {
+  const name = String(headerName || "").trim();
+  if (!name) throw new Error("追加するヘッダー名が空です");
+
+  let headerInfo = getHeaderMap(sheet);
+  if (name in headerInfo.map) return headerInfo;
+
+  const nextColumn = headerInfo.headers.length + 1;
+  sheet.getRange(1, nextColumn).setValue(name);
+  return getHeaderMap(sheet);
+}
+
 /* =========================
    行 → オブジェクト変換
 ========================= */
@@ -2881,7 +2893,7 @@ function exportYearlyPaidLeaveReport(fiscalYear, companyCode) {
   const fiscalStartMonth =
     employees.length > 0
       ? Number(employees[0].fiscal_start_month || 4)
-      : code === "PARTNER" ? 7 : 4;
+      : code === "PARTNER" ? 6 : 4;
 
   const yearRange = getFiscalYearRangeWithStart(Number(fiscalYear), fiscalStartMonth);
 
@@ -3315,6 +3327,7 @@ function addEmployeeFromAdmin(data) {
   }
 
   const sheet = getSheet("employees");
+  ensureEmployeeInitialGrantCheckTargetColumn_(sheet);
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
     "display_employee_id",
@@ -3331,6 +3344,7 @@ function addEmployeeFromAdmin(data) {
     "work_days_per_week",
     "fiscal_start_month",
     "leave_management_target",
+    "initial_grant_check_target",
     "display_order",
     "notes",
     "created_at",
@@ -3362,8 +3376,12 @@ function addEmployeeFromAdmin(data) {
   rowObj.hire_date = data.hire_date ? parseLocalDate(data.hire_date) : "";
   rowObj.leave_date = data.leave_date ? parseLocalDate(data.leave_date) : "";
   rowObj.work_days_per_week = data.work_days_per_week ? Number(data.work_days_per_week) : "";
-  rowObj.fiscal_start_month = data.fiscal_start_month ? Number(data.fiscal_start_month) : 4;
+  rowObj.fiscal_start_month = getFiscalStartMonthForCompanyCode_(
+    rowObj.company_code,
+    data.fiscal_start_month
+  );
   rowObj.leave_management_target = String(data.leave_management_target || "").toUpperCase() === "TRUE";
+  rowObj.initial_grant_check_target = true;
   rowObj.display_order = "";
   rowObj.notes = String(data.notes || "").trim();
   rowObj.created_at = now;
@@ -3386,6 +3404,19 @@ function addEmployeeFromAdmin(data) {
     ok: true,
     message: "社員を追加しました"
   };
+}
+
+function ensureEmployeeInitialGrantCheckTargetColumn_(sheet) {
+  return ensureSheetColumn_(sheet || getSheet("employees"), "initial_grant_check_target");
+}
+
+function getFiscalStartMonthForCompanyCode_(companyCode, fallbackMonth) {
+  const code = String(companyCode || "").trim().toUpperCase();
+  if (code === "PARTNER") return 6;
+  if (code === "MAIN") return 4;
+
+  const month = Number(fallbackMonth || 4);
+  return month >= 1 && month <= 12 ? month : 4;
 }
 
 /* =========================
@@ -3437,6 +3468,8 @@ function getEmployeesForAdmin() {
         fiscal_start_month: obj.fiscal_start_month || "",
         leave_management_target:
           String(obj.leave_management_target || "").toUpperCase() === "TRUE",
+        initial_grant_check_target:
+          String(obj.initial_grant_check_target || "").toUpperCase() === "TRUE",
         display_order: obj.display_order || "",
         notes: String(obj.notes || "")
       };
@@ -3565,7 +3598,7 @@ function updateEmployeeFromAdmin(data) {
     .setValue(data.work_days_per_week ? Number(data.work_days_per_week) : "");
 
   sheet.getRange(sheetRow, headerInfo.map.fiscal_start_month + 1)
-    .setValue(data.fiscal_start_month ? Number(data.fiscal_start_month) : 4);
+    .setValue(getFiscalStartMonthForCompanyCode_(data.company_code, data.fiscal_start_month));
 
   sheet.getRange(sheetRow, headerInfo.map.leave_management_target + 1)
     .setValue(String(data.leave_management_target || "").toUpperCase() === "TRUE");
@@ -3880,7 +3913,7 @@ function getYearlyPaidLeaveReportCsvData(fiscalYear, companyCode) {
   const fiscalStartMonth =
     employees.length > 0
       ? Number(employees[0].fiscal_start_month || 4)
-      : code === "PARTNER" ? 7 : 4;
+      : code === "PARTNER" ? 6 : 4;
 
   const yearRange = getFiscalYearRangeWithStart(Number(fiscalYear), fiscalStartMonth);
 
@@ -3947,7 +3980,7 @@ function getYearlyPaidLeaveReportPreview(filters) {
   const fiscalStartMonth =
     employees.length > 0
       ? Number(employees[0].fiscal_start_month || 4)
-      : companyCodeFilter === "PARTNER" ? 7 : 4;
+      : companyCodeFilter === "PARTNER" ? 6 : 4;
 
   const yearRange = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
 
@@ -4086,22 +4119,12 @@ function getSixMonthGrantCandidates(options) {
 
   const rows = employees
     .filter(emp => {
-      const status = String(emp.employment_status || "").trim().toLowerCase();
-      const isActive = status === "active" || status === "在職";
-      if (!isActive) return false;
-      if (emp.leave_management_target !== true) return false;
-      if (!emp.hire_date) return false;
-      if (grantedMap[emp.employee_id]) return false;
-
-      const oneYearDate = addYearsLocal_(parseLocalDate(emp.hire_date), 1);
-      if (today >= oneYearDate) return false;
-
-      const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
-      return grantInfo.grant_date <= today;
+      return isInitialPaidLeaveGrantCandidateEmployee_(emp, today, grantedMap);
     })
     .map(emp => {
       const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
       const grantDays = getSixMonthGrantDays_(emp.work_days_per_week);
+      const fiscalStartMonth = getInitialPaidLeaveFiscalStartMonth_(emp);
 
       return {
         employee_id: emp.employee_id,
@@ -4117,11 +4140,20 @@ function getSixMonthGrantCandidates(options) {
         company_code: emp.company_code || "",
         company_name: emp.company_name || "",
         department: emp.department || "",
-        fiscal_start_month: Number(emp.fiscal_start_month || 4)
+        fiscal_start_month: fiscalStartMonth,
+        initial_grant_check_target: emp.initial_grant_check_target === true,
+        preview_only: true
       };
     });
 
-  return opts ? buildPagedResponse_(rows, opts) : rows;
+  if (opts) {
+    const response = buildPagedResponse_(rows, opts);
+    response.dry_run = true;
+    response.data_changed = false;
+    return response;
+  }
+
+  return rows;
 }
 
 /* =========================
@@ -4133,13 +4165,7 @@ function grantSixMonthPaidLeave(employeeId, adminUser, options) {
   const employees = getEmployeesForAdmin();
   const emp = employees.find(e => String(e.employee_id) === String(employeeId));
 
-  if (!emp) throw new Error("対象社員が見つかりません");
-  if (!emp.hire_date) throw new Error("入社日がありません");
-
-  const grantedMap = getSixMonthGrantProcessedMap_();
-  if (grantedMap[employeeId]) {
-    throw new Error("この社員の6か月付与チェックはすでに処理済みです");
-  }
+  validateInitialPaidLeaveGrantExecutionTarget_(emp, employeeId);
 
   const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
   const grantDate = grantInfo.grant_date;
@@ -4173,7 +4199,10 @@ function grantSixMonthPaidLeave(employeeId, adminUser, options) {
   rowObj.valid_from = grantDate;
   rowObj.valid_to = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
   rowObj.grant_type = "six_month";
-  rowObj.year = getFiscalYearFromDateWithStart(grantDate, Number(emp.fiscal_start_month || 4));
+  rowObj.year = getFiscalYearFromDateWithStart(
+    grantDate,
+    getInitialPaidLeaveFiscalStartMonth_(emp)
+  );
   const baseNotes = grantInfo.grant_reason === "company_basis"
     ? "会社基準日による初回付与"
     : "入社6か月到達による初回付与";
@@ -4217,13 +4246,7 @@ function markSixMonthGrantCandidateProcessed(employeeId, reason, adminUser) {
   const employees = getEmployeesForAdmin();
   const emp = employees.find(e => String(e.employee_id) === String(employeeId));
 
-  if (!emp) throw new Error("対象社員が見つかりません");
-  if (!emp.hire_date) throw new Error("入社日がありません");
-
-  const grantedMap = getSixMonthGrantProcessedMap_();
-  if (grantedMap[employeeId]) {
-    throw new Error("この社員の6か月付与チェックはすでに処理済みです");
-  }
+  validateInitialPaidLeaveGrantExecutionTarget_(emp, employeeId);
 
   const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
   const grantDate = grantInfo.grant_date;
@@ -4257,7 +4280,10 @@ function markSixMonthGrantCandidateProcessed(employeeId, reason, adminUser) {
   rowObj.valid_from = "";
   rowObj.valid_to = "";
   rowObj.grant_type = "six_month_processed";
-  rowObj.year = getFiscalYearFromDateWithStart(grantDate, Number(emp.fiscal_start_month || 4));
+  rowObj.year = getFiscalYearFromDateWithStart(
+    grantDate,
+    getInitialPaidLeaveFiscalStartMonth_(emp)
+  );
   rowObj.notes = note;
   rowObj.created_at = now;
   rowObj.updated_at = now;
@@ -4305,7 +4331,7 @@ function grantSelectedSixMonthPaidLeave(employeeIds, adminUser) {
 ========================= */
 function getInitialPaidLeaveGrantInfo_(emp) {
   const hireDate = parseLocalDate(emp.hire_date);
-  const fiscalStartMonth = Number(emp.fiscal_start_month || 4);
+  const fiscalStartMonth = getInitialPaidLeaveFiscalStartMonth_(emp);
   const sixMonthDate = addMonthsLocal_(hireDate, 6);
   let companyBasisDate = new Date(
     hireDate.getFullYear(),
@@ -4336,6 +4362,55 @@ function getInitialPaidLeaveGrantInfo_(emp) {
     company_basis_date: companyBasisDate,
     grant_reason: "six_month"
   };
+}
+
+function getInitialPaidLeaveFiscalStartMonth_(emp) {
+  const companyCode = String(emp && emp.company_code || "").trim().toUpperCase();
+  if (companyCode === "PARTNER") return 6;
+  return 4;
+}
+
+function isInitialPaidLeaveGrantCandidateEmployee_(emp, today, grantedMap) {
+  if (!emp) return false;
+  if (emp.initial_grant_check_target !== true) return false;
+
+  const employeeId = String(emp.employee_id || "").trim();
+  if (!employeeId) return false;
+  if (grantedMap && grantedMap[employeeId]) return false;
+
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+  const isActive = status === "active" || status === "在職";
+  if (!isActive) return false;
+  if (emp.leave_management_target !== true) return false;
+  if (!emp.hire_date) return false;
+
+  const targetDate = today ? parseLocalDate(today) : parseLocalDate(new Date());
+  const oneYearDate = addYearsLocal_(parseLocalDate(emp.hire_date), 1);
+  if (targetDate >= oneYearDate) return false;
+
+  const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
+  return grantInfo.grant_date <= targetDate;
+}
+
+function validateInitialPaidLeaveGrantExecutionTarget_(emp, employeeId) {
+  if (!emp) throw new Error("対象社員が見つかりません");
+  if (String(emp.employee_id || "") !== String(employeeId || "")) {
+    throw new Error("対象社員IDが一致しません");
+  }
+
+  const grantedMap = getSixMonthGrantProcessedMap_();
+  if (grantedMap[employeeId]) {
+    throw new Error("この社員の6か月付与チェックはすでに処理済みです");
+  }
+
+  if (emp.initial_grant_check_target !== true) {
+    throw new Error("この社員は新規登録社員の初回付与チェック対象ではありません");
+  }
+
+  const today = parseLocalDate(new Date());
+  if (!isInitialPaidLeaveGrantCandidateEmployee_(emp, today, grantedMap)) {
+    throw new Error("この社員は初回付与の実行対象ではありません");
+  }
 }
 
 /* =========================
