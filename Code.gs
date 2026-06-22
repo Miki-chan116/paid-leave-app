@@ -3345,6 +3345,9 @@ function addEmployeeFromAdmin(data) {
     "fiscal_start_month",
     "leave_management_target",
     "initial_grant_check_target",
+    "is_driver",
+    "driver_type",
+    "default_vehicle_id",
     "display_order",
     "notes",
     "created_at",
@@ -3382,6 +3385,9 @@ function addEmployeeFromAdmin(data) {
   );
   rowObj.leave_management_target = String(data.leave_management_target || "").toUpperCase() === "TRUE";
   rowObj.initial_grant_check_target = true;
+  rowObj.is_driver = String(data.is_driver || "").toUpperCase() === "TRUE";
+  rowObj.driver_type = String(data.driver_type || "").trim();
+  rowObj.default_vehicle_id = String(data.default_vehicle_id || "").trim();
   rowObj.display_order = "";
   rowObj.notes = String(data.notes || "").trim();
   rowObj.created_at = now;
@@ -3440,6 +3446,9 @@ function getEmployeesForAdmin() {
     "work_days_per_week",
     "fiscal_start_month",
     "leave_management_target",
+    "is_driver",
+    "driver_type",
+    "default_vehicle_id",
     "display_order",
     "notes"
   ]);
@@ -3470,6 +3479,9 @@ function getEmployeesForAdmin() {
           String(obj.leave_management_target || "").toUpperCase() === "TRUE",
         initial_grant_check_target:
           String(obj.initial_grant_check_target || "").toUpperCase() === "TRUE",
+        is_driver: String(obj.is_driver || "").toUpperCase() === "TRUE",
+        driver_type: String(obj.driver_type || "").trim(),
+        default_vehicle_id: String(obj.default_vehicle_id || "").trim(),
         display_order: obj.display_order || "",
         notes: String(obj.notes || "")
       };
@@ -3493,6 +3505,9 @@ function buildEmployeeUpdateDiffComment(beforeObj, afterData) {
     { key: "work_days_per_week", label: "週所定労働日数" },
     { key: "fiscal_start_month", label: "有給年度開始月" },
     { key: "leave_management_target", label: "有給管理対象", type: "boolean" },
+    { key: "is_driver", label: "運転手区分", type: "driver_boolean" },
+    { key: "driver_type", label: "運転手種別" },
+    { key: "default_vehicle_id", label: "標準車両ID" },
     { key: "notes", label: "備考" }
   ];
 
@@ -3529,6 +3544,11 @@ function normalizeEmployeeLogValue(value, type) {
     return text === "TRUE" || value === true ? "対象" : "対象外";
   }
 
+  if (type === "driver_boolean") {
+    const text = String(value || "").trim().toUpperCase();
+    return text === "TRUE" || value === true ? "運転手" : "運転手ではない";
+  }
+
   return String(value == null ? "" : value).trim();
 }
 
@@ -3560,6 +3580,9 @@ function updateEmployeeFromAdmin(data) {
     "work_days_per_week",
     "fiscal_start_month",
     "leave_management_target",
+    "is_driver",
+    "driver_type",
+    "default_vehicle_id",
     "notes",
     "updated_at"
   ]);
@@ -3602,6 +3625,15 @@ function updateEmployeeFromAdmin(data) {
 
   sheet.getRange(sheetRow, headerInfo.map.leave_management_target + 1)
     .setValue(String(data.leave_management_target || "").toUpperCase() === "TRUE");
+
+  sheet.getRange(sheetRow, headerInfo.map.is_driver + 1)
+    .setValue(String(data.is_driver || "").toUpperCase() === "TRUE");
+
+  sheet.getRange(sheetRow, headerInfo.map.driver_type + 1)
+    .setValue(String(data.driver_type || "").trim());
+
+  sheet.getRange(sheetRow, headerInfo.map.default_vehicle_id + 1)
+    .setValue(String(data.default_vehicle_id || "").trim());
 
   sheet.getRange(sheetRow, headerInfo.map.notes + 1).setValue(String(data.notes || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(new Date());

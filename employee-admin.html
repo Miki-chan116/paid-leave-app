@@ -250,6 +250,34 @@
             </div>
 
             <div class="employee-form-section">
+              <div class="employee-form-section-title">運転手情報</div>
+              <div class="employee-form-grid">
+                <div class="field">
+                  <label for="isDriver">運転手区分</label>
+                  <select id="isDriver">
+                    <option value="FALSE">運転手ではない</option>
+                    <option value="TRUE">運転手</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="driverType">運転手種別</label>
+                  <select id="driverType">
+                    <option value="">選択してください</option>
+                    <option value="専任運転手">専任運転手</option>
+                    <option value="兼任運転手">兼任運転手</option>
+                  </select>
+                </div>
+
+                <div class="field full-width">
+                  <label for="defaultVehicleId">標準車両ID</label>
+                  <input type="text" id="defaultVehicleId" placeholder="必要な場合のみ入力">
+                  <div class="field-help">車両マスター連携は未設定のため、空欄のままで登録できます。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="employee-form-section">
               <div class="employee-form-section-title">備考</div>
               <div class="employee-form-grid">
                 <div class="field full-width">
@@ -459,6 +487,34 @@
                 <option value="FALSE">対象外</option>
               </select>
               <div class="field-help">対象外にすると申請画面や付与候補から外れます。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="employee-form-section">
+          <div class="employee-form-section-title">運転手情報</div>
+          <div class="employee-form-grid">
+            <div class="field">
+              <label for="editIsDriver">運転手区分</label>
+              <select id="editIsDriver">
+                <option value="FALSE">運転手ではない</option>
+                <option value="TRUE">運転手</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="editDriverType">運転手種別</label>
+              <select id="editDriverType">
+                <option value="">選択してください</option>
+                <option value="専任運転手">専任運転手</option>
+                <option value="兼任運転手">兼任運転手</option>
+              </select>
+            </div>
+
+            <div class="field full-width">
+              <label for="editDefaultVehicleId">標準車両ID</label>
+              <input type="text" id="editDefaultVehicleId">
+              <div class="field-help">車両マスター連携は未設定のため、空欄のまま保存できます。</div>
             </div>
           </div>
         </div>

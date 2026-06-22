@@ -190,6 +190,10 @@ function openEditEmployeeModal(emp) {
   setValue("editWorkDaysPerWeek", emp.work_days_per_week);
   setValue("editFiscalStartMonth", emp.fiscal_start_month || "4");
   setValue("editLeaveManagementTarget", emp.leave_management_target === true ? "TRUE" : "FALSE");
+  setValue("editIsDriver", emp.is_driver === true ? "TRUE" : "FALSE");
+  ensureTemporarySelectOption("editDriverType", emp.driver_type);
+  setValue("editDriverType", emp.driver_type || "");
+  setValue("editDefaultVehicleId", emp.default_vehicle_id || "");
   setValue("editNotes", emp.notes);
   syncFiscalStartMonthWithCompanyCode("editCompanyCode", "editFiscalStartMonth");
 
@@ -233,6 +237,9 @@ function submitEditEmployee() {
     work_days_per_week: getValue("editWorkDaysPerWeek"),
     fiscal_start_month: getValue("editFiscalStartMonth"),
     leave_management_target: getValue("editLeaveManagementTarget"),
+    is_driver: getValue("editIsDriver"),
+    driver_type: getValue("editDriverType"),
+    default_vehicle_id: getValue("editDefaultVehicleId"),
     notes: getValue("editNotes")
   };
 
@@ -382,6 +389,9 @@ function submitEmployee() {
     work_days_per_week: getValue("workDaysPerWeek"),
     fiscal_start_month: getValue("fiscalStartMonth"),
     leave_management_target: getValue("leaveManagementTarget"),
+    is_driver: getValue("isDriver"),
+    driver_type: getValue("driverType"),
+    default_vehicle_id: getValue("defaultVehicleId"),
     notes: getValue("notes")
   };
 
@@ -510,8 +520,12 @@ function getCompanyCodeLabel(companyCode) {
 }
 
 function ensureDepartmentOption(selectId, department) {
+  ensureTemporarySelectOption(selectId, department);
+}
+
+function ensureTemporarySelectOption(selectId, value) {
   const select = document.getElementById(selectId);
-  const value = String(department || "").trim();
+  const normalizedValue = String(value || "").trim();
 
   if (!select) return;
 
@@ -519,14 +533,14 @@ function ensureDepartmentOption(selectId, department) {
     option.remove();
   });
 
-  if (!value) return;
+  if (!normalizedValue) return;
 
-  const exists = Array.from(select.options).some(option => option.value === value);
+  const exists = Array.from(select.options).some(option => option.value === normalizedValue);
   if (exists) return;
 
   const option = document.createElement("option");
-  option.value = value;
-  option.textContent = value;
+  option.value = normalizedValue;
+  option.textContent = normalizedValue;
   option.dataset.temporary = "true";
   select.appendChild(option);
 }
@@ -619,6 +633,9 @@ function clearForm() {
   setValue("workDaysPerWeek", "");
   setValue("fiscalStartMonth", "4");
   setValue("leaveManagementTarget", "TRUE");
+  setValue("isDriver", "FALSE");
+  setValue("driverType", "");
+  setValue("defaultVehicleId", "");
   setValue("notes", "");
 }
 
