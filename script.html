@@ -715,6 +715,7 @@ function renderRequestCalendar() {
   const lastDate = new Date(year, month + 1, 0);
   const startDay = firstDate.getDay();
   const daysInMonth = lastDate.getDate();
+  const todayKey = toDateKeyLocal(new Date());
 
   for (let i = 0; i < startDay; i++) {
     const empty = document.createElement("div");
@@ -730,6 +731,10 @@ function renderRequestCalendar() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `calendar-day ${type}`;
+
+    if (dateKey === todayKey) {
+      btn.classList.add("is-today");
+    }
 
     if (dateKey === selectedStartDateKey) {
       btn.classList.add("selected", "range-start");
@@ -1159,6 +1164,13 @@ function startEditLeaveRequest(requestId) {
   }
 }
 
+function refreshSelectedEmployeeLeaveHistory() {
+  if (!selectedEmployee || !selectedEmployee.employee_id) return;
+
+  loadedHistoryEmployeeId = "";
+  loadEmployeeLeaveHistory(selectedEmployee.employee_id);
+}
+
 function cancelLeaveRequestFromHistory(requestId) {
   if (!selectedEmployee) {
     alert("社員を選択してください");
@@ -1184,8 +1196,7 @@ function cancelLeaveRequestFromHistory(requestId) {
         resetRequestFormForNewRequest();
       }
 
-      loadedHistoryEmployeeId = "";
-      loadEmployeeLeaveHistory(selectedEmployee.employee_id);
+      refreshSelectedEmployeeLeaveHistory();
 
       const statusBox = document.getElementById("calendarStatus");
       if (statusBox) {
@@ -1202,6 +1213,8 @@ function cancelLeaveRequestFromHistory(requestId) {
       } else if (typeof err === "string") {
         message = err;
       }
+
+      refreshSelectedEmployeeLeaveHistory();
 
       alert(message);
     })

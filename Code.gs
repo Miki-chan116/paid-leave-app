@@ -1923,6 +1923,14 @@ function cancelPendingLeaveRequestForEmployee(requestId, employeeId) {
     const status = norm(rowObj.status || STATUS.PENDING);
 
     if (status !== STATUS.PENDING) {
+      if (status === STATUS.APPROVED) {
+        throw new Error("この申請はすでに承認済みのため、本人画面からは取消できません。管理者へ連絡してください。");
+      }
+
+      if (status === STATUS.REJECTED || status === STATUS.CANCELED) {
+        throw new Error("すでに処理済みです。履歴を更新してください。");
+      }
+
       throw new Error("承認待ちの申請だけ取消できます");
     }
 
