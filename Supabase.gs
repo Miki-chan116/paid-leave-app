@@ -7,8 +7,9 @@
    - SERVICE_ROLE_KEY はGASクライアント検証では使用しません。
    - anon keyで読み取りを許可する場合は、Supabase側でRLS policyを
      読み取り専用かつ必要最小限に設計してください。
-   - このファイルの関数はGET専用です。既存のSpreadsheet処理、
-     申請登録、承認、取消処理からは呼び出していません。
+   - Supabase書き込みは USE_SUPABASE_WRITE=true の時だけ実行します。
+     Spreadsheet保存成功後のDual Write検証用で、失敗してもSpreadsheetは
+     ロールバックしません。
    - USE_SUPABASE_READS=true は読み取りSupabase / 書き込みSpreadsheet
      の混在検証用です。本番運用ONは、書き込み移行後に再判断してください。
    - admin_users はPINを含むため、Supabase anon keyでは読みません。
@@ -84,12 +85,72 @@ function supabaseGet_(tableName, params) {
   }
 }
 
+function shouldUseSupabaseWrites_() {
+  const value = PropertiesService
+    .getScriptProperties()
+    .getProperty("USE_SUPABASE_WRITE");
+
+  return String(value || "").trim().toLowerCase() === "true";
+}
+
+function supabaseInsert_(tableName, record) {
+  const config = getSupabaseConfig_();
+  const endpoint = config.url + "/rest/v1/" + encodeURIComponent(tableName);
+
+  const response = UrlFetchApp.fetch(endpoint, {
+    method: "post",
+    muteHttpExceptions: true,
+    contentType: "application/json",
+    payload: JSON.stringify(record || {}),
+    headers: {
+      apikey: config.anonKey,
+      Authorization: "Bearer " + config.anonKey,
+      Accept: "application/json",
+      Prefer: "return=representation"
+    }
+  });
+
+  const statusCode = response.getResponseCode();
+  const body = response.getContentText();
+
+  Logger.log("[SupabaseINSERT] table=" + tableName + " status=" + statusCode);
+
+  if (statusCode !== 201) {
+    Logger.log("[SupabaseINSERT] error_body=" + body);
+    throw new Error("Supabase INSERT failed: status=" + statusCode + " table=" + tableName);
+  }
+
+  return {
+    statusCode: statusCode,
+    data: body ? JSON.parse(body) : []
+  };
+}
+
 function shouldUseSupabaseReads_() {
   const value = PropertiesService
     .getScriptProperties()
     .getProperty("USE_SUPABASE_READS");
 
   return String(value || "").trim().toLowerCase() === "true";
+}
+
+function toSupabaseWriteDate_(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, getAppTimeZone(), "yyyy-MM-dd");
+  }
+  const date = toSupabaseReadDate_(value);
+  if (date instanceof Date) {
+    return Utilities.formatDate(date, getAppTimeZone(), "yyyy-MM-dd");
+  }
+  return String(value || "").trim() || null;
+}
+
+function toSupabaseWriteTimestamp_(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? String(value || "").trim() : date.toISOString();
 }
 
 function toSupabaseReadDate_(value) {
@@ -211,6 +272,55 @@ function getUsageLogsFromSupabase_() {
   });
 }
 
+function buildSupabaseLeaveRequestRecord_(rowObj) {
+  return {
+    request_id: String(rowObj.request_id || "").trim(),
+    employee_id: String(rowObj.employee_id || "").trim(),
+    request_date: toSupabaseWriteTimestamp_(rowObj.request_date),
+    start_date: toSupabaseWriteDate_(rowObj.start_date),
+    end_date: toSupabaseWriteDate_(rowObj.end_date),
+    days: Number(rowObj.days || 0),
+    type: String(rowObj.type || "paid_leave").trim() || "paid_leave",
+    half_day: rowObj.half_day ? String(rowObj.half_day).trim() : null,
+    reason: String(rowObj.reason || ""),
+    reason_detail: String(rowObj.reason_detail || ""),
+    status: String(rowObj.status || "pending").trim() || "pending",
+    approver_id: String(rowObj.approver_id || ""),
+    approver_name: String(rowObj.approver_name || ""),
+    approved_at: toSupabaseWriteTimestamp_(rowObj.approved_at),
+    rejected_reason: String(rowObj.rejected_reason || ""),
+    cancel_reason: String(rowObj.cancel_reason || ""),
+    year: rowObj.year === "" || rowObj.year == null ? null : Number(rowObj.year),
+    created_at: toSupabaseWriteTimestamp_(rowObj.created_at),
+    updated_at: toSupabaseWriteTimestamp_(rowObj.updated_at)
+  };
+}
+
+function tryInsertLeaveRequestToSupabase_(rowObj) {
+  if (!shouldUseSupabaseWrites_()) return { skipped: true, reason: "USE_SUPABASE_WRITE is not true" };
+
+  try {
+    const record = buildSupabaseLeaveRequestRecord_(rowObj);
+    const result = supabaseInsert_("leave_requests", record);
+    Logger.log("[SupabaseDualWrite] leave_requests inserted request_id=" + record.request_id);
+    return {
+      ok: true,
+      request_id: record.request_id,
+      statusCode: result.statusCode
+    };
+  } catch (err) {
+    Logger.log("[SupabaseDualWrite] leave_requests insert failed: " + err.message);
+    Logger.log("[SupabaseDualWrite] request=" + JSON.stringify({
+      request_id: rowObj && rowObj.request_id,
+      employee_id: rowObj && rowObj.employee_id
+    }));
+    return {
+      ok: false,
+      error: err.message
+    };
+  }
+}
+
 function testSupabaseConnection() {
   const result = supabaseGet_("employees", {
     select: "employee_id,name,company_code,employment_status",
@@ -277,4 +387,57 @@ function testSupabaseReadAllCoreTables() {
 
   Logger.log("[SupabaseReadTest] all_core_tables=" + JSON.stringify(result, null, 2));
   return result;
+}
+
+function testSupabaseInsertLeaveRequest() {
+  if (!shouldUseSupabaseWrites_()) {
+    throw new Error("USE_SUPABASE_WRITE=true の時だけ実行できます");
+  }
+
+  const employees = getEmployeesFromSupabase_();
+  const employee = employees.find(item => String(item.employee_id || "").trim());
+  if (!employee) {
+    throw new Error("Supabase employees にテスト用employee_idが見つかりません");
+  }
+
+  const now = new Date();
+  const requestId = "TEST-SUPABASE-INSERT-" + Utilities.formatDate(
+    now,
+    getAppTimeZone(),
+    "yyyyMMddHHmmss"
+  );
+  const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const rowObj = {
+    request_id: requestId,
+    employee_id: String(employee.employee_id || "").trim(),
+    request_date: now,
+    start_date: startDate,
+    end_date: startDate,
+    days: 1,
+    type: "paid_leave",
+    half_day: "",
+    reason: "supabase_dual_write_test",
+    reason_detail: "Supabase INSERT connectivity test",
+    status: "pending",
+    approver_id: "",
+    approver_name: "",
+    approved_at: "",
+    rejected_reason: "",
+    cancel_reason: "",
+    year: getFiscalYearFromDate(startDate),
+    created_at: now,
+    updated_at: now
+  };
+
+  const record = buildSupabaseLeaveRequestRecord_(rowObj);
+  const result = supabaseInsert_("leave_requests", record);
+  Logger.log("[SupabaseInsertTest] inserted request_id=" + requestId);
+
+  return {
+    ok: true,
+    request_id: requestId,
+    employee_id: rowObj.employee_id,
+    statusCode: result.statusCode
+  };
 }

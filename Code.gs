@@ -2033,6 +2033,8 @@ appendRowFast_(
     comment: "Leave request submitted"
   });
 
+  tryInsertLeaveRequestToSupabase_(rowObj);
+
   clearAppCache();
 
   return {
