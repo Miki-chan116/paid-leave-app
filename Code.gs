@@ -185,6 +185,8 @@ function clearAppCache() {
 
   cache.remove(CACHE_KEY.EMPLOYEE_MAP);
   cache.remove(CACHE_KEY.COMPANY_CALENDAR);
+  cache.remove(CACHE_KEY.EMPLOYEE_MAP + "_supabase");
+  cache.remove(CACHE_KEY.COMPANY_CALENDAR + "_supabase");
 
   [
     currentFiscalYear - 1,
@@ -460,9 +462,20 @@ function isRequestOnOrAfterDate(rowObj, start) {
 ========================= */
 function getCompanyCalendarMap() {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get(CACHE_KEY.COMPANY_CALENDAR);
+  const cacheKey = CACHE_KEY.COMPANY_CALENDAR + (shouldUseSupabaseReads_() ? "_supabase" : "");
+  const cached = cache.get(cacheKey);
   if (cached) {
     return JSON.parse(cached);
+  }
+
+  if (shouldUseSupabaseReads_()) {
+    const map = {};
+    getCompanyCalendarFromSupabase_().forEach(rowObj => {
+      if (!rowObj.date) return;
+      map[toDateKey(rowObj.date)] = norm(rowObj.type);
+    });
+    cache.put(cacheKey, JSON.stringify(map), 300);
+    return map;
   }
 
   const sheet = getSheet("company_calendar");
@@ -483,7 +496,7 @@ function getCompanyCalendarMap() {
     });
   }
 
-  cache.put(CACHE_KEY.COMPANY_CALENDAR, JSON.stringify(map), 300);
+  cache.put(cacheKey, JSON.stringify(map), 300);
   return map;
 }
 
@@ -601,6 +614,25 @@ function expandLeaveRequestToDailyRows(startDateValue, endDateValue, days, halfD
    社員一覧取得
 ========================= */
 function getEmployees() {
+  if (shouldUseSupabaseReads_()) {
+    return getEmployeesFromSupabase_()
+      .map(rowObj => ({
+       id: String(rowObj.employee_id || "").trim(),
+       name: String(rowObj.name || rowObj.employee_id || "").trim(),
+       display_name: String(rowObj.display_name || "").trim(),
+
+       company_code: String(rowObj.company_code || "").trim(),
+       company_name: String(rowObj.company_name || "").trim(),
+
+       fiscal_start_month: Number(rowObj.fiscal_start_month || 4),
+
+       leave_management_target: rowObj.leave_management_target === true,
+
+       employment_status: String(rowObj.employment_status || "").trim()
+       }))
+      .filter(emp => emp.id);
+  }
+
   const sheet = getSheet("employees");
   const headerInfo = requireHeaders(sheet, ["employee_id", "name"]);
   const data = sheet.getDataRange().getValues();
@@ -630,7 +662,8 @@ function getEmployees() {
 
 function getEmployeeMap() {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get(CACHE_KEY.EMPLOYEE_MAP);
+  const cacheKey = CACHE_KEY.EMPLOYEE_MAP + (shouldUseSupabaseReads_() ? "_supabase" : "");
+  const cached = cache.get(cacheKey);
   if (cached) {
     return JSON.parse(cached);
   }
@@ -642,7 +675,7 @@ function getEmployeeMap() {
     map[emp.id] = emp.name;
   });
 
-  cache.put(CACHE_KEY.EMPLOYEE_MAP, JSON.stringify(map), 300);
+  cache.put(cacheKey, JSON.stringify(map), 300);
   return map;
 }
 
@@ -654,6 +687,36 @@ function getCurrentFiscalYear() {
    付与情報
 ========================= */
 function getGrantMapByFiscalYear(fiscalYear) {
+  if (shouldUseSupabaseReads_()) {
+    const result = {};
+    const employeeDetailMap = getEmployeeDetailMap();
+
+    getPaidLeaveGrantsFromSupabase_().forEach(rowObj => {
+      const employeeId = String(rowObj.employee_id || "").trim();
+
+      if (!employeeId) return;
+      if (!rowObj.grant_date) return;
+
+      const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId, employeeDetailMap);
+      const rowYear = getFiscalYearFromDateWithStart(rowObj.grant_date, fiscalStartMonth);
+
+      if (rowYear !== Number(fiscalYear)) return;
+
+      if (!result[employeeId]) {
+        result[employeeId] = {
+          employee_id: employeeId,
+          grant_days: 0,
+          carry_over_days: 0
+        };
+      }
+
+      result[employeeId].grant_days += Number(rowObj.grant_days || 0);
+      result[employeeId].carry_over_days += Number(rowObj.carry_over_days || 0);
+    });
+
+    return result;
+  }
+
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
@@ -712,6 +775,45 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
   );
 
   if (targetIds.size === 0) return {};
+
+  if (shouldUseSupabaseReads_()) {
+    const result = {};
+    const calendarMap = getCompanyCalendarMap();
+    const employeeDetailMap = getEmployeeDetailMap();
+
+    getLeaveRequestsFromSupabase_().forEach(rowObj => {
+      const employeeId = String(rowObj.employee_id || "").trim();
+      const status = norm(rowObj.status);
+
+      if (!employeeId) return;
+      if (!targetIds.has(employeeId)) return;
+      if (status !== STATUS.APPROVED) return;
+      if (!rowObj.start_date || !rowObj.end_date) return;
+
+      const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId, employeeDetailMap);
+      const range = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
+
+      const dailyRows = expandLeaveRequestToDailyRows(
+        rowObj.start_date,
+        rowObj.end_date,
+        rowObj.days,
+        rowObj.half_day,
+        calendarMap
+      );
+
+      dailyRows.forEach(item => {
+        if (!isDateInRange(item.date, range.start, range.end)) return;
+
+        if (!result[employeeId]) {
+          result[employeeId] = 0;
+        }
+
+        result[employeeId] += Number(item.days || 0);
+      });
+    });
+
+    return result;
+  }
 
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
@@ -1207,6 +1309,22 @@ function getFifoOpeningBalanceDifferenceReason_(info) {
 }
 
 function getYearlyGrantFinalizedMap_(fiscalYear) {
+  if (shouldUseSupabaseReads_()) {
+    const result = {};
+
+    getPaidLeaveGrantsFromSupabase_().forEach(rowObj => {
+      const employeeId = String(rowObj.employee_id || "").trim();
+
+      if (!employeeId) return;
+      if (String(rowObj.grant_type || "").trim() !== "yearly") return;
+      if (Number(rowObj.year) !== Number(fiscalYear)) return;
+
+      result[employeeId] = true;
+    });
+
+    return result;
+  }
+
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
@@ -1272,6 +1390,44 @@ function createFifoBalanceComparisonContext_(asOfDate) {
 }
 
 function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
+  if (shouldUseSupabaseReads_()) {
+    const result = {};
+
+    getPaidLeaveGrantsFromSupabase_().forEach(rowObj => {
+      const employeeId = String(rowObj.employee_id || "").trim();
+      if (!employeeId || !rowObj.grant_date) return;
+
+      const grantDate = parseLocalDate(rowObj.grant_date);
+      const validFromDate = rowObj.valid_from ? parseLocalDate(rowObj.valid_from) : grantDate;
+      const validToDate = rowObj.valid_to
+        ? parseLocalDate(rowObj.valid_to)
+        : addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
+      const grantDays = Number(rowObj.grant_days || 0);
+      const carryOverDays = Number(rowObj.carry_over_days || 0);
+
+      if (!result[employeeId]) result[employeeId] = [];
+
+      result[employeeId].push({
+        grant_id: String(rowObj.grant_id || ""),
+        employee_id: employeeId,
+        grant_date: grantDate,
+        valid_from_date: validFromDate,
+        valid_to_date: validToDate,
+        grant_type: String(rowObj.grant_type || ""),
+        year: rowObj.year || "",
+        grant_days: grantDays,
+        carry_over_days: carryOverDays,
+        total_days: grantDays + carryOverDays,
+        notes: String(rowObj.notes || ""),
+        has_recorded_valid_from: !!rowObj.valid_from,
+        has_recorded_valid_to: !!rowObj.valid_to,
+        is_finalized: rowObj.is_finalized !== false
+      });
+    });
+
+    return result;
+  }
+
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "grant_id",
@@ -1330,6 +1486,20 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
 }
 
 function getLeaveRequestRowsByEmployeeForFifoCompare_() {
+  if (shouldUseSupabaseReads_()) {
+    const result = {};
+
+    getLeaveRequestsFromSupabase_().forEach(rowObj => {
+      const employeeId = String(rowObj.employee_id || "").trim();
+      if (!employeeId) return;
+
+      if (!result[employeeId]) result[employeeId] = [];
+      result[employeeId].push(rowObj);
+    });
+
+    return result;
+  }
+
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
@@ -1503,6 +1673,54 @@ function isFifoBalanceCompareTargetEmployee_(emp) {
 
 
 function getFifoPaidLeaveGrantRows_(employeeId, asOfDate) {
+  if (shouldUseSupabaseReads_()) {
+    return getPaidLeaveGrantsFromSupabase_()
+      .filter(rowObj => {
+        if (String(rowObj.employee_id || "").trim() !== String(employeeId)) return false;
+        if (!rowObj.grant_date) return false;
+
+        const validFromDate = rowObj.valid_from
+          ? parseLocalDate(rowObj.valid_from)
+          : parseLocalDate(rowObj.grant_date);
+        if (validFromDate > asOfDate) return false;
+
+        return rowObj.is_finalized !== false;
+      })
+      .map(rowObj => {
+        const grantDate = parseLocalDate(rowObj.grant_date);
+        const validFromDate = rowObj.valid_from ? parseLocalDate(rowObj.valid_from) : grantDate;
+        const validToDate = rowObj.valid_to
+          ? parseLocalDate(rowObj.valid_to)
+          : addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
+        const grantDays = Number(rowObj.grant_days || 0);
+        const carryOverDays = Number(rowObj.carry_over_days || 0);
+        const totalDays = grantDays + carryOverDays;
+
+        return {
+          grant_id: String(rowObj.grant_id || ""),
+          grant_date: grantDate,
+          valid_from_date: validFromDate,
+          valid_to_date: validToDate,
+          grant_type: String(rowObj.grant_type || ""),
+          year: rowObj.year || "",
+          grant_days: grantDays,
+          carry_over_days: carryOverDays,
+          total_days: totalDays,
+          used_days: 0,
+          remaining_days: totalDays,
+          active_remaining_days: 0,
+          expired_days: 0,
+          is_expired: false
+        };
+      })
+      .sort((a, b) => {
+        if (a.grant_date.getTime() !== b.grant_date.getTime()) {
+          return a.grant_date - b.grant_date;
+        }
+        return String(a.grant_id).localeCompare(String(b.grant_id));
+      });
+  }
+
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "grant_id",
@@ -1571,6 +1789,49 @@ function getFifoPaidLeaveGrantRows_(employeeId, asOfDate) {
 }
 
 function getFifoApprovedLeaveUseRows_(employeeId, asOfDate) {
+  if (shouldUseSupabaseReads_()) {
+    const calendarMap = getCompanyCalendarMap();
+    const result = [];
+
+    getLeaveRequestsFromSupabase_().forEach(rowObj => {
+      const targetEmployeeId = String(rowObj.employee_id || "").trim();
+      const status = norm(rowObj.status);
+      const requestType = String(rowObj.type || "paid_leave").trim();
+
+      if (targetEmployeeId !== String(employeeId)) return;
+      if (status !== STATUS.APPROVED) return;
+      if (requestType && requestType !== "paid_leave") return;
+      if (!rowObj.start_date || !rowObj.end_date) return;
+
+      const dailyRows = expandLeaveRequestToDailyRows(
+        rowObj.start_date,
+        rowObj.end_date,
+        rowObj.days,
+        rowObj.half_day,
+        calendarMap
+      );
+
+      dailyRows.forEach(item => {
+        const useDate = parseLocalDate(item.date);
+        if (useDate > asOfDate) return;
+
+        result.push({
+          request_id: String(rowObj.request_id || ""),
+          use_date: useDate,
+          days: Number(item.days || 0),
+          unallocated_days: 0
+        });
+      });
+    });
+
+    return result.sort((a, b) => {
+      if (a.use_date.getTime() !== b.use_date.getTime()) {
+        return a.use_date - b.use_date;
+      }
+      return String(a.request_id).localeCompare(String(b.request_id));
+    });
+  }
+
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
@@ -2011,6 +2272,70 @@ function getRequestsByStatus(status) {
 ========================= */
 function getPendingRequestsForAdminLight() {
   const range = getAdminPendingFocusRange();
+  if (shouldUseSupabaseReads_()) {
+    const employeeMap = {};
+
+    getEmployeesFromSupabase_().forEach(rowObj => {
+      const employeeId = String(rowObj.employee_id || "").trim();
+      if (!employeeId) return;
+
+      employeeMap[employeeId] = {
+        display_employee_id: String(rowObj.display_employee_id || "").trim(),
+        employee_name: String(rowObj.display_name || rowObj.name || employeeId).trim(),
+        company_name: String(rowObj.company_name || "").trim(),
+        department: String(rowObj.department || "").trim()
+      };
+    });
+
+    return getLeaveRequestsFromSupabase_()
+      .map(rowObj => {
+        const rowStatus = norm(rowObj.status || STATUS.PENDING);
+        const startDate = rowObj.start_date;
+        const endDate = rowObj.end_date;
+
+        if (rowStatus !== STATUS.PENDING) return null;
+        if (!startDate || !endDate) return null;
+        if (!isRequestOnOrAfterDate({ start_date: startDate, end_date: endDate }, range.start)) return null;
+
+        const employeeId = String(rowObj.employee_id || "").trim();
+        const employee = employeeMap[employeeId] || {};
+        const startText = formatDateValue(startDate);
+        const endText = formatDateValue(endDate);
+        const halfDay = String(rowObj.half_day || "");
+
+        return {
+          request_id: String(rowObj.request_id || ""),
+          employee_id: employeeId,
+          display_employee_id: employee.display_employee_id || "",
+          employee_name: employee.employee_name || employeeId || "Unknown",
+          start_date: startText,
+          end_date: endText,
+          days: rowObj.days || 0,
+          type: String(rowObj.type || "paid_leave"),
+          half_day: halfDay,
+          reason: String(rowObj.reason || ""),
+          reason_detail: String(rowObj.reason_detail || ""),
+          status: rowStatus,
+          request_date: formatDateValue(rowObj.request_date),
+          created_at: rowObj.created_at ? formatDateValue(rowObj.created_at) : "",
+          updated_at: rowObj.updated_at ? formatDateValue(rowObj.updated_at) : "",
+          year: rowObj.year || "",
+          date_label: startText !== endText ? startText + " 〜 " + endText : startText,
+          leave_type_label: getRequestHistoryLeaveTypeLabel_(halfDay, startDate, endDate),
+          status_label: getRequestHistoryStatusLabel_(rowStatus),
+          company_name: employee.company_name || "",
+          department: employee.department || "",
+          current_remaining_days: "",
+          used_days: ""
+        };
+      })
+      .filter(item => item)
+      .sort((a, b) => {
+        if (a.start_date !== b.start_date) return a.start_date < b.start_date ? 1 : -1;
+        return a.employee_id > b.employee_id ? 1 : -1;
+      });
+  }
+
   const requestSheet = getSheet("leave_requests");
   const requestHeaderInfo = requireHeaders(requestSheet, [
     "request_id",
@@ -2175,6 +2500,103 @@ function getPendingRequestsForAdminLight() {
 function searchRequests(filters) {
   filters = filters || {};
 
+  if (shouldUseSupabaseReads_()) {
+    const rows = getLeaveRequestsFromSupabase_();
+    if (rows.length === 0) return [];
+
+    const employeeMap = getEmployeeDetailMap();
+    const targetStatus = norm(filters.status || "");
+    const keyword = norm(filters.employeeKeyword || "");
+
+    const startFilter = filters.start_date ? parseLocalDate(filters.start_date) : null;
+    const endFilter = filters.end_date ? parseLocalDate(filters.end_date) : null;
+
+    const fiscalYears = [...new Set(
+      rows
+        .map(rowObj => {
+          if (!rowObj.start_date) return null;
+          return getFiscalYearFromDate(rowObj.start_date);
+        })
+        .filter(v => v != null)
+    )];
+
+    const balanceMapByYear = {};
+    fiscalYears.forEach(year => {
+      balanceMapByYear[year] = getEmployeeBalanceMapForFiscalYear(year);
+    });
+
+    return rows
+      .map(rowObj => {
+        const rowStatus = norm(rowObj.status);
+        const employeeId = String(rowObj.employee_id || "").trim();
+        const employee = employeeMap[employeeId];
+        const employeeName = getDisplayName(employee) || employeeId || "Unknown";
+
+        if (!rowObj.start_date || !rowObj.end_date) return null;
+
+        if (targetStatus && targetStatus !== "all" && rowStatus !== targetStatus) {
+          return null;
+        }
+
+        if (keyword) {
+          const targetText = norm(
+            employeeId +
+            employeeName +
+            String(employee && employee.name ? employee.name : "")
+          );
+          if (!targetText.includes(keyword)) return null;
+        }
+
+        if (startFilter && endFilter) {
+          if (!isRequestInDateRange(rowObj, startFilter, endFilter)) return null;
+        } else if (startFilter) {
+          const requestEnd = parseLocalDate(rowObj.end_date);
+          if (requestEnd < startFilter) return null;
+        } else if (endFilter) {
+          const requestStart = parseLocalDate(rowObj.start_date);
+          if (requestStart > endFilter) return null;
+        }
+
+        const fiscalYear = getFiscalYearFromDate(rowObj.start_date);
+        const balanceMap = balanceMapByYear[fiscalYear] || {};
+        const balance = balanceMap[employeeId] || {
+          current_remaining_days: 0,
+          grant_days: 0,
+          carry_over_days: 0,
+          used_days: 0
+        };
+
+        return {
+          request_id: String(rowObj.request_id || ""),
+          employee_id: employeeId,
+          employee_name: employeeName,
+          start_date: formatDateValue(rowObj.start_date),
+          end_date: formatDateValue(rowObj.end_date),
+          date_label:
+            formatDateValue(rowObj.start_date) +
+            (
+              formatDateValue(rowObj.start_date) !== formatDateValue(rowObj.end_date)
+                ? " 〜 " + formatDateValue(rowObj.end_date)
+                : ""
+            ),
+          days: rowObj.days || 0,
+          half_day: String(rowObj.half_day || ""),
+          reason: String(rowObj.reason || ""),
+          reason_detail: String(rowObj.reason_detail || ""),
+          status: rowStatus,
+          current_remaining_days: balance.current_remaining_days,
+          grant_days: balance.grant_days,
+          carry_over_days: balance.carry_over_days,
+          used_days: balance.used_days
+        };
+      })
+      .filter(item => item)
+      .sort((a, b) => {
+        if (a.start_date !== b.start_date) return a.start_date < b.start_date ? 1 : -1;
+        return a.employee_id > b.employee_id ? 1 : -1;
+      });
+  }
+
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
@@ -2295,6 +2717,53 @@ function getEmployeeLeaveHistoryForRequest(employeeId, limit) {
 
   if (!targetEmployeeId) {
     return [];
+  }
+
+  if (shouldUseSupabaseReads_()) {
+    return getLeaveRequestsFromSupabase_()
+      .filter(rowObj => {
+        return (
+          String(rowObj.employee_id || "").trim() === targetEmployeeId &&
+          rowObj.start_date &&
+          rowObj.end_date
+        );
+      })
+      .map(rowObj => ({
+        requestId: String(rowObj.request_id || ""),
+        startDate: parseLocalDate(rowObj.start_date),
+        endDate: parseLocalDate(rowObj.end_date),
+        createdAt: rowObj.created_at ? parseLocalDate(rowObj.created_at) : parseLocalDate(rowObj.start_date),
+        days: rowObj.days || 0,
+        halfDay: String(rowObj.half_day || ""),
+        reason: String(rowObj.reason || ""),
+        reasonDetail: String(rowObj.reason_detail || ""),
+        status: norm(rowObj.status || STATUS.PENDING)
+      }))
+      .sort((a, b) => {
+        const startDiff = b.startDate.getTime() - a.startDate.getTime();
+        if (startDiff !== 0) return startDiff;
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      })
+      .slice(0, maxRows)
+      .map(row => {
+        const startText = formatDateValue(row.startDate);
+        const endText = formatDateValue(row.endDate);
+
+        return {
+          request_id: row.requestId,
+          start_date: toDateKey(row.startDate),
+          end_date: toDateKey(row.endDate),
+          date_label: startText !== endText ? startText + " 〜 " + endText : startText,
+          leave_type_label: getRequestHistoryLeaveTypeLabel_(row.halfDay, row.startDate, row.endDate),
+          days: row.days,
+          half_day: row.halfDay,
+          reason: row.reason,
+          reason_detail: row.reasonDetail,
+          status: row.status,
+          status_label: getRequestHistoryStatusLabel_(row.status),
+          can_edit: row.status === STATUS.PENDING
+        };
+      });
   }
 
   const sheet = getSheet("leave_requests");
@@ -2718,6 +3187,82 @@ function getUsageLogs() {
 function searchUsageLogs(filters) {
   filters = filters || {};
 
+  if (shouldUseSupabaseReads_()) {
+    const rows = getUsageLogsFromSupabase_();
+    if (rows.length === 0) return [];
+
+    const keyword = norm(filters.keyword || "");
+    const actionType = norm(filters.action_type || "");
+
+    const startFilter = filters.start_date ? parseLocalDate(filters.start_date) : null;
+    const endFilter = filters.end_date ? parseLocalDate(filters.end_date) : null;
+
+    const employeeMap = getEmployeeDetailMap();
+    const requestEmployeeMap = {};
+
+    getLeaveRequestsFromSupabase_().forEach(request => {
+      const requestId = String(request.request_id || "").trim();
+      const employeeId = String(request.employee_id || "").trim();
+      if (requestId && employeeId) requestEmployeeMap[requestId] = employeeId;
+    });
+
+    return rows
+      .map(rowObj => {
+        const actionDate = rowObj.action_date ? parseLocalDate(rowObj.action_date) : null;
+
+        if (!actionDate) return null;
+
+        if (startFilter && actionDate < startFilter) return null;
+        if (endFilter && actionDate > endFilter) return null;
+
+        const rowActionType = String(rowObj.action_type || "");
+        if (actionType && norm(rowActionType) !== actionType) return null;
+
+        const requestId = String(rowObj.request_id || "");
+        const linkedRequestId = String(rowObj.leave_request_id || "").trim();
+        const resolvedEmployeeId = String(rowObj.employee_id || "").trim() ||
+          requestEmployeeMap[linkedRequestId] ||
+          requestEmployeeMap[requestId] ||
+          requestId;
+        const employee = employeeMap[resolvedEmployeeId];
+        const employeeName = getDisplayName(employee) || "";
+
+        if (keyword) {
+          const targetText = norm(
+            requestId +
+            employeeName +
+            String(employee && employee.name ? employee.name : "") +
+            String(rowObj.operator_id || "") +
+            String(rowObj.operator_name || "") +
+            String(rowObj.comment || "") +
+            rowActionType +
+            getLogActionLabel(rowActionType)
+          );
+
+          if (!targetText.includes(keyword)) return null;
+        }
+
+        return {
+          log_id: rowObj.log_id,
+          request_id: requestId,
+          employee_name: employeeName,
+          type: rowActionType,
+          type_label: getLogActionLabel(rowActionType),
+          type_class: getLogActionClass(rowActionType),
+          user_id: rowObj.operator_id,
+          user_name: rowObj.operator_name,
+          date: formatDateValue(rowObj.action_date),
+          comment: rowObj.comment
+        };
+      })
+      .filter(item => item)
+      .sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        return dateB - dateA;
+      });
+  }
+
   const sheet = getSheet("usage_log");
   const headerInfo = requireHeaders(sheet, [
     "log_id",
@@ -3066,6 +3611,85 @@ function exportYearlyPaidLeaveReport(fiscalYear, companyCode) {
    社員ごとの年度開始月対応版
 ========================= */
 function getEmployeesForRequest() {
+  if (shouldUseSupabaseReads_()) {
+    const employeeRows = getEmployeesFromSupabase_()
+      .filter(rowObj => {
+        const employeeId = String(rowObj.employee_id || "").trim();
+        const name = String(rowObj.name || "").trim();
+
+        const employmentStatus = String(rowObj.employment_status || "")
+          .trim()
+          .toLowerCase();
+
+        const isActive =
+          employmentStatus === "active" ||
+          employmentStatus === "在職";
+
+        return employeeId && name && isActive && rowObj.leave_management_target === true;
+      })
+      .sort((a, b) => Number(a.display_order || 9999) - Number(b.display_order || 9999));
+
+    const fiscalYearGroups = {};
+
+    employeeRows.forEach(rowObj => {
+      const employeeId = String(rowObj.employee_id || "").trim();
+      const fiscalStartMonth = Number(rowObj.fiscal_start_month || 4);
+      const fiscalYear = getFiscalYearFromDateWithStart(new Date(), fiscalStartMonth);
+
+      if (!fiscalYearGroups[fiscalYear]) {
+        fiscalYearGroups[fiscalYear] = [];
+      }
+
+      fiscalYearGroups[fiscalYear].push(employeeId);
+    });
+
+    const balanceMapByFiscalYear = {};
+
+    Object.keys(fiscalYearGroups).forEach(fiscalYear => {
+      balanceMapByFiscalYear[fiscalYear] =
+        getEmployeeBalanceMapForEmployeeIdsForFiscalYear(
+          Number(fiscalYear),
+          fiscalYearGroups[fiscalYear]
+        );
+    });
+
+    return employeeRows.map(rowObj => {
+      const employeeId = String(rowObj.employee_id || "").trim();
+      const fiscalStartMonth = Number(rowObj.fiscal_start_month || 4);
+      const fiscalYear = getFiscalYearFromDateWithStart(new Date(), fiscalStartMonth);
+
+      const balanceMap = balanceMapByFiscalYear[fiscalYear] || {};
+      const balance = balanceMap[employeeId] || {
+        current_remaining_days: 0,
+        carry_over_days: 0,
+        grant_days: 0,
+        used_days: 0
+      };
+
+      const usedDays = Number(balance.used_days || 0);
+      const fiveDayUsed = Math.min(usedDays, 5);
+      const fiveDayRemaining = Math.max(0, 5 - usedDays);
+
+      return {
+        employee_id: employeeId,
+        name: String(rowObj.name || "").trim(),
+        name_kana: String(rowObj.name_kana || "").trim(),
+        employment_type: String(rowObj.employment_type || "").trim(),
+
+        fiscal_year: fiscalYear,
+        fiscal_start_month: fiscalStartMonth,
+
+        current_remaining_days: Number(balance.current_remaining_days || 0),
+        carry_over_days: Number(balance.carry_over_days || 0),
+        grant_days: Number(balance.grant_days || 0),
+        used_days: usedDays,
+        five_day_used: fiveDayUsed,
+        five_day_remaining: fiveDayRemaining,
+        five_day_completed: fiveDayRemaining === 0
+      };
+    });
+  }
+
   const sheet = getSheet("employees");
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
@@ -3522,6 +4146,35 @@ function getFiscalStartMonthForCompanyCode_(companyCode, fallbackMonth) {
    社員一覧取得（管理画面用）
 ========================= */
 function getEmployeesForAdmin() {
+  if (shouldUseSupabaseReads_()) {
+    return getEmployeesFromSupabase_()
+      .map(obj => ({
+        employee_id: String(obj.employee_id || "").trim(),
+        display_employee_id: String(obj.display_employee_id || "").trim(),
+        name: String(obj.name || "").trim(),
+        display_name: String(obj.display_name || "").trim(),
+        name_kana: String(obj.name_kana || "").trim(),
+        company_code: String(obj.company_code || "").trim(),
+        company_name: String(obj.company_name || "").trim(),
+        department: String(obj.department || "").trim(),
+        employment_type: String(obj.employment_type || "").trim(),
+        employment_status: String(obj.employment_status || "").trim(),
+        hire_date: formatDateValue(obj.hire_date),
+        leave_date: formatDateValue(obj.leave_date),
+        work_days_per_week: obj.work_days_per_week || "",
+        fiscal_start_month: obj.fiscal_start_month || "",
+        leave_management_target: obj.leave_management_target === true,
+        initial_grant_check_target: obj.initial_grant_check_target === true,
+        is_driver: obj.is_driver === true,
+        driver_type: String(obj.driver_type || "").trim(),
+        default_vehicle_id: String(obj.default_vehicle_id || "").trim(),
+        display_order: obj.display_order || "",
+        notes: String(obj.notes || "")
+      }))
+      .filter(emp => emp.employee_id)
+      .sort((a, b) => Number(a.display_order || 9999) - Number(b.display_order || 9999));
+  }
+
   const sheet = getSheet("employees");
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
@@ -3873,6 +4526,43 @@ function getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth) {
 
 function getCompanyCalendarRowsForAdmin(fiscalYear, fiscalStartMonth) {
   const period = getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth);
+  if (shouldUseSupabaseReads_()) {
+    const rowMap = {};
+    getCompanyCalendarFromSupabase_().forEach(rowObj => {
+      if (!rowObj.date) return;
+      rowMap[toDateKey(rowObj.date)] = rowObj;
+    });
+
+    const rows = [];
+    let cursor = new Date(period.start);
+
+    while (cursor <= period.end) {
+      const dateKey = toDateKey(cursor);
+      const existing = rowMap[dateKey];
+      const type = cursor.getDay() === 0
+        ? CALENDAR_TYPE.HOLIDAY
+        : (existing ? norm(existing.type) : CALENDAR_TYPE.WORKDAY);
+
+      rows.push({
+        date: dateKey,
+        day_of_week: ["日", "月", "火", "水", "木", "金", "土"][cursor.getDay()],
+        type: type || CALENDAR_TYPE.WORKDAY,
+        notes: existing ? String(existing.notes || "") : "",
+        registered: !!existing
+      });
+
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return {
+      fiscal_year: period.fiscal_year,
+      fiscal_start_month: period.fiscal_start_month,
+      start_date: period.start_date,
+      end_date: period.end_date,
+      rows
+    };
+  }
+
   const sheet = ensureCompanyCalendarNotesColumn_();
   const headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
   const rowMap = getCompanyCalendarDateRowMap_(sheet, headerInfo);
