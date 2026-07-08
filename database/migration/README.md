@@ -75,6 +75,8 @@ node database/migration/convert_spreadsheet_csv_to_supabase.js \
 ## Conversion Rules
 
 - Source CSV files are read only.
+- Rows where all columns are blank are skipped and counted in `migration_report.json`.
+- For `company_calendar.csv`, trailing rows with blank `date`, blank notes, and default `type = workday` are also skipped.
 - Known test IDs such as `TEST-FIFO-001`, `TEST-001`, and IDs starting with `TEST-` are excluded.
 - Empty strings are emitted as empty CSV fields, to be imported as `NULL` where appropriate.
 - Dates are normalized to `YYYY-MM-DD`.

@@ -145,7 +145,8 @@ const report = {
   tables: {},
   excluded: [],
   warnings: [],
-  errors: []
+  errors: [],
+  skipped_blank_rows: {}
 };
 
 main();
@@ -240,17 +241,38 @@ function readInputCsv(table, filename) {
   if (records.length === 0) return { headers: [], rows: [] };
 
   const headers = records[0].map(normalizeHeader);
-  const rows = records.slice(1)
-    .filter(record => record.some(value => clean(value) !== ""))
-    .map((record, index) => {
-      const row = {};
-      headers.forEach((header, colIndex) => {
-        if (!header) return;
-        row[header] = record[colIndex] == null ? "" : record[colIndex];
-      });
-      row.__row_number = index + 2;
-      return row;
+  let skippedBlankRows = 0;
+  const rows = [];
+
+  records.slice(1).forEach((record, index) => {
+    if (isCsvRecordBlank(record)) {
+      skippedBlankRows++;
+      return;
+    }
+
+    const row = {};
+    headers.forEach((header, colIndex) => {
+      if (!header) return;
+      row[header] = record[colIndex] == null ? "" : record[colIndex];
     });
+    row.__row_number = index + 2;
+    row.__raw_record = record;
+    row.__headers = headers;
+
+    if (isSourceRowEmpty(row, headers)) {
+      skippedBlankRows++;
+      return;
+    }
+
+    if (table === "company_calendar" && isBlankCompanyCalendarDefaultRow(row)) {
+      skippedBlankRows++;
+      return;
+    }
+
+    rows.push(row);
+  });
+
+  report.skipped_blank_rows[table] = skippedBlankRows;
 
   return { headers, rows };
 }
@@ -267,8 +289,8 @@ function convertEmployees(rows) {
     }
 
     if (!employeeId) addError("employees", "missing_employee_id", "employee_id is required", row);
-    if (seen.has(employeeId)) addError("employees", "duplicate_employee_id", `Duplicate employee_id: ${employeeId}`, row);
-    seen.add(employeeId);
+    else if (seen.has(employeeId)) addError("employees", "duplicate_employee_id", `Duplicate employee_id: ${employeeId}`, row);
+    else seen.add(employeeId);
 
     const out = {
       employee_id: employeeId,
@@ -319,8 +341,8 @@ function convertLeaveRequests(rows, employeeIds) {
     }
 
     if (!requestId) addError("leave_requests", "missing_request_id", "request_id is required", row);
-    if (seen.has(requestId)) addError("leave_requests", "duplicate_request_id", `Duplicate request_id: ${requestId}`, row);
-    seen.add(requestId);
+    else if (seen.has(requestId)) addError("leave_requests", "duplicate_request_id", `Duplicate request_id: ${requestId}`, row);
+    else seen.add(requestId);
 
     if (!employeeId || !employeeIds.has(employeeId)) {
       addError("leave_requests", "missing_employee_fk", `employee_id not found in employees: ${employeeId}`, row);
@@ -380,8 +402,8 @@ function convertPaidLeaveGrants(rows, employeeIds) {
     }
 
     if (!grantId) addError("paid_leave_grants", "missing_grant_id", "grant_id is required", row);
-    if (seen.has(grantId)) addError("paid_leave_grants", "duplicate_grant_id", `Duplicate grant_id: ${grantId}`, row);
-    seen.add(grantId);
+    else if (seen.has(grantId)) addError("paid_leave_grants", "duplicate_grant_id", `Duplicate grant_id: ${grantId}`, row);
+    else seen.add(grantId);
 
     if (!employeeId || !employeeIds.has(employeeId)) {
       addError("paid_leave_grants", "missing_employee_fk", `employee_id not found in employees: ${employeeId}`, row);
@@ -423,9 +445,14 @@ function convertCompanyCalendar(rows) {
       result.excludedRows++;
       return;
     }
-    if (!date) addError("company_calendar", "missing_date", "date is required", row);
+    if (!date) {
+      addBlankDateDebugWarning("company_calendar", row);
+      addError("company_calendar", "missing_date", "date is required", row);
+      return;
+    }
+
     if (seen.has(date)) addError("company_calendar", "duplicate_date", `Duplicate date: ${date}`, row);
-    seen.add(date);
+    else seen.add(date);
 
     const type = lower(row.type || "workday");
     if (!ENUMS.calendarType.has(type)) {
@@ -457,8 +484,8 @@ function convertUsageLogs(rows, employeeIds, requestIds) {
     }
 
     if (!logId) addError("usage_logs", "missing_log_id", "log_id is required", row);
-    if (seen.has(logId)) addError("usage_logs", "duplicate_log_id", `Duplicate log_id: ${logId}`, row);
-    seen.add(logId);
+    else if (seen.has(logId)) addError("usage_logs", "duplicate_log_id", `Duplicate log_id: ${logId}`, row);
+    else seen.add(logId);
 
     let targetType = "legacy";
     let targetId = legacyRequestId;
@@ -510,8 +537,8 @@ function convertAdminUsers(rows) {
     }
 
     if (!adminId) addError("admin_users", "missing_admin_id", "admin_id is required", row);
-    if (seen.has(adminId)) addError("admin_users", "duplicate_admin_id", `Duplicate admin_id: ${adminId}`, row);
-    seen.add(adminId);
+    else if (seen.has(adminId)) addError("admin_users", "duplicate_admin_id", `Duplicate admin_id: ${adminId}`, row);
+    else seen.add(adminId);
 
     result.rows.push({
       admin_id: adminId,
@@ -567,7 +594,7 @@ function normalizeEmploymentStatus(value) {
 }
 
 function normalizeDate(value, table, column, row) {
-  const raw = text(value);
+  const raw = clean(value);
   if (!raw) return "";
 
   const date = parseDateLike(raw);
@@ -580,7 +607,7 @@ function normalizeDate(value, table, column, row) {
 }
 
 function normalizeTimestamp(value, table, column, row) {
-  const raw = text(value);
+  const raw = clean(value);
   if (!raw) return "";
 
   const date = parseDateLike(raw);
@@ -641,7 +668,7 @@ function formatDate(date) {
 }
 
 function normalizeBoolean(value, table, column, row, defaultValue) {
-  const raw = text(value);
+  const raw = clean(value);
   if (!raw) return defaultValue ? "true" : "false";
   const upper = raw.toUpperCase();
   if (upper === "TRUE" || upper === "1" || upper === "YES" || raw === "はい") return "true";
@@ -652,7 +679,7 @@ function normalizeBoolean(value, table, column, row, defaultValue) {
 }
 
 function normalizeNumber(value, table, column, row) {
-  const raw = text(value);
+  const raw = clean(value);
   if (!raw) return "";
   const normalized = raw.replace(/,/g, "");
   const num = Number(normalized);
@@ -667,7 +694,7 @@ function normalizeNumber(value, table, column, row) {
 }
 
 function normalizeInteger(value, table, column, row) {
-  const raw = text(value);
+  const raw = clean(value);
   if (!raw) return "";
   const num = Number(raw.replace(/,/g, ""));
   if (!Number.isInteger(num)) {
@@ -691,7 +718,67 @@ function firstText(...values) {
 }
 
 function clean(value) {
-  return text(value).replace(/\r/g, "");
+  return String(value == null ? "" : value)
+    .replace(/\r/g, "")
+    .replace(/^\uFEFF/, "")
+    .replace(/\uFEFF/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\u00A0\u1680\u180E\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g, " ")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .trim();
+}
+
+function isCsvRecordBlank(record) {
+  return (record || []).every(value => clean(value) === "");
+}
+
+function isSourceRowEmpty(row, headers) {
+  const headerCellsAreBlank = headers
+    .filter(Boolean)
+    .every(header => clean(row[header]) === "");
+  const rawCellsAreBlank = isCsvRecordBlank(row.__raw_record || []);
+  return headerCellsAreBlank && rawCellsAreBlank;
+}
+
+function isBlankCompanyCalendarDefaultRow(row) {
+  const date = clean(row.date);
+  if (date) return false;
+
+  const type = clean(row.type).toLowerCase();
+  const ignorableType = !type || type === "workday";
+  if (!ignorableType) return false;
+
+  return ["notes", "created_at", "updated_at"].every(column => clean(row[column]) === "");
+}
+
+function addBlankDateDebugWarning(table, row) {
+  if (table !== "company_calendar") return;
+
+  const existing = report.warnings.filter(item => {
+    return item.table === table && item.code === "blank_date_row_has_values";
+  }).length;
+  if (existing >= 20) return;
+
+  const values = getNonBlankRowValues(row);
+  addWarning(table, "blank_date_row_has_values", "date is blank but other cells are not blank after normalization", row);
+  report.warnings[report.warnings.length - 1].values = values;
+}
+
+function getNonBlankRowValues(row) {
+  const values = [];
+  const headers = row.__headers || [];
+  const rawRecord = row.__raw_record || [];
+
+  rawRecord.forEach((value, index) => {
+    const normalized = clean(value);
+    if (!normalized) return;
+    values.push({
+      column: headers[index] || `__extra_column_${index + 1}`,
+      raw_value: String(value == null ? "" : value),
+      normalized_value: normalized
+    });
+  });
+  return values;
 }
 
 function lower(value) {
