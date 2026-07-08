@@ -5492,3 +5492,533 @@ function hasYearlyGrantForFiscalYear_(
     );
   });
 }
+
+/* =========================
+   Supabase移行前DB監査（読み取り専用）
+========================= */
+function auditLeaveDbForSupabaseMigration() {
+  const sheetConfigs = [
+    {
+      name: "employees",
+      idColumn: "employee_id",
+      dateColumns: ["hire_date", "leave_date", "created_at", "updated_at"],
+      booleanColumns: ["leave_management_target", "initial_grant_check_target", "is_driver"],
+      enumColumns: {
+        employment_status: ["active", "leave", "retired", "在職", "休職", "退職"],
+        company_code: ["MAIN", "PARTNER"]
+      },
+      numberColumns: {
+        work_days_per_week: { max: 7 },
+        fiscal_start_month: { min: 1, max: 12 },
+        display_order: { min: 0, max: 100000 }
+      }
+    },
+    {
+      name: "leave_requests",
+      idColumn: "request_id",
+      dateColumns: ["request_date", "start_date", "end_date", "approved_at", "created_at", "updated_at"],
+      booleanColumns: [],
+      enumColumns: {
+        status: ["pending", "approved", "rejected", "canceled", "canceled_by_admin"],
+        type: ["paid_leave"],
+        half_day: ["", "am", "pm"]
+      },
+      numberColumns: {
+        days: { min: 0, max: 30 },
+        year: { min: 2000, max: 2100 }
+      }
+    },
+    {
+      name: "paid_leave_grants",
+      idColumn: "grant_id",
+      dateColumns: ["grant_date", "valid_from", "valid_to", "created_at", "updated_at", "finalized_at"],
+      booleanColumns: ["is_finalized"],
+      enumColumns: {
+        grant_type: ["six_month", "six_month_processed", "six_month_skipped", "yearly"]
+      },
+      numberColumns: {
+        grant_days: { min: 0, max: 40 },
+        carry_over_days: { min: 0, max: 80 },
+        year: { min: 2000, max: 2100 }
+      }
+    },
+    {
+      name: "company_calendar",
+      idColumn: "date",
+      dateColumns: ["date"],
+      booleanColumns: [],
+      enumColumns: {
+        type: ["workday", "holiday", "no_leave"]
+      },
+      numberColumns: {}
+    },
+    {
+      name: "usage_log",
+      idColumn: "log_id",
+      dateColumns: ["action_date"],
+      booleanColumns: [],
+      enumColumns: {},
+      numberColumns: {}
+    },
+    {
+      name: "admin_users",
+      idColumn: "admin_id",
+      dateColumns: [],
+      booleanColumns: ["is_active"],
+      enumColumns: {},
+      numberColumns: {}
+    }
+  ];
+  const expectedSheets = sheetConfigs.map(config => config.name);
+  const ss = getAppSpreadsheet();
+  const report = {
+    generated_at: new Date().toISOString(),
+    mode: "read_only",
+    summary: {
+      expected_sheets: expectedSheets,
+      sheets: {},
+      representative_counts: {},
+      status_distribution: {},
+      top_request_employees: [],
+      top_grant_employees: []
+    },
+    warnings: [],
+    errors: [],
+    details: {
+      headers: {},
+      duplicate_ids: {},
+      referential_integrity: {},
+      invalid_dates: {},
+      boolean_variants: {},
+      enum_variants: {},
+      number_issues: {}
+    }
+  };
+  const sheetData = {};
+  const maxSamples = 20;
+
+  function addWarning(code, message, context) {
+    report.warnings.push({
+      code: code,
+      message: message,
+      context: context || {}
+    });
+  }
+
+  function addError(code, message, context) {
+    report.errors.push({
+      code: code,
+      message: message,
+      context: context || {}
+    });
+  }
+
+  function isBlank(value) {
+    return value === "" || value == null;
+  }
+
+  function normalizeText(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
+  function isValidDateValue(value) {
+    if (isBlank(value)) return true;
+    if (Object.prototype.toString.call(value) === "[object Date]") {
+      return !isNaN(value.getTime());
+    }
+    const text = normalizeText(value);
+    if (!text) return true;
+
+    const ymd = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (ymd) {
+      const y = Number(ymd[1]);
+      const m = Number(ymd[2]);
+      const d = Number(ymd[3]);
+      const date = new Date(y, m - 1, d);
+      return (
+        date.getFullYear() === y &&
+        date.getMonth() === m - 1 &&
+        date.getDate() === d
+      );
+    }
+
+    const parsed = new Date(text);
+    return !isNaN(parsed.getTime());
+  }
+
+  function toAuditDateKey(value) {
+    if (isBlank(value)) return "";
+    if (!isValidDateValue(value)) return normalizeText(value);
+    if (Object.prototype.toString.call(value) === "[object Date]") {
+      return Utilities.formatDate(value, getAppTimeZone(), "yyyy-MM-dd");
+    }
+
+    const text = normalizeText(value);
+    const ymd = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (ymd) {
+      return [
+        ymd[1],
+        String(Number(ymd[2])).padStart(2, "0"),
+        String(Number(ymd[3])).padStart(2, "0")
+      ].join("-");
+    }
+
+    const parsed = new Date(text);
+    return Utilities.formatDate(parsed, getAppTimeZone(), "yyyy-MM-dd");
+  }
+
+  function addSample(target, item) {
+    if (target.length < maxSamples) target.push(item);
+  }
+
+  function getCell(rowObj, column) {
+    return column in rowObj ? rowObj[column] : "";
+  }
+
+  function countBy(rows, column) {
+    const result = {};
+    rows.forEach(item => {
+      const value = normalizeText(getCell(item.rowObj, column)) || "(blank)";
+      result[value] = (result[value] || 0) + 1;
+    });
+    return result;
+  }
+
+  function topByEmployee(rows, column) {
+    const counts = countBy(rows, column);
+    return Object.keys(counts)
+      .filter(key => key !== "(blank)")
+      .map(key => ({ employee_id: key, count: counts[key] }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }
+
+  function collectSheet(config) {
+    const sheet = ss.getSheetByName(config.name);
+    if (!sheet) {
+      addError("missing_sheet", config.name + " シートが見つかりません", { sheet: config.name });
+      report.summary.sheets[config.name] = {
+        exists: false,
+        row_count: 0,
+        header_count: 0
+      };
+      return;
+    }
+
+    const values = sheet.getDataRange().getValues();
+    const headers = values.length > 0
+      ? values[0].map(header => normalizeText(header))
+      : [];
+    const rows = values.slice(1).map((row, index) => ({
+      row_number: index + 2,
+      values: row,
+      rowObj: rowToObject(row, headers)
+    }));
+    const headerSet = new Set(headers.filter(Boolean));
+
+    report.summary.sheets[config.name] = {
+      exists: true,
+      row_count: rows.length,
+      header_count: headers.filter(Boolean).length
+    };
+    report.details.headers[config.name] = headers;
+    sheetData[config.name] = {
+      config: config,
+      headers: headers,
+      headerSet: headerSet,
+      rows: rows
+    };
+
+    if (config.idColumn && !headerSet.has(config.idColumn)) {
+      addError("missing_id_column", config.name + "." + config.idColumn + " がありません", {
+        sheet: config.name,
+        column: config.idColumn
+      });
+    }
+
+    config.dateColumns.forEach(column => {
+      if (!headerSet.has(column)) return;
+      const invalid = [];
+      rows.forEach(item => {
+        const value = getCell(item.rowObj, column);
+        if (!isBlank(value) && !isValidDateValue(value)) {
+          addSample(invalid, {
+            row: item.row_number,
+            value: normalizeText(value)
+          });
+        }
+      });
+      if (invalid.length > 0) {
+        report.details.invalid_dates[config.name + "." + column] = invalid;
+        addWarning("invalid_date", config.name + "." + column + " に日付として扱えない値があります", {
+          sheet: config.name,
+          column: column,
+          sample_count: invalid.length
+        });
+      }
+    });
+
+    config.booleanColumns.forEach(column => {
+      if (!headerSet.has(column)) return;
+      const distribution = {};
+      const unexpected = [];
+      rows.forEach(item => {
+        const value = getCell(item.rowObj, column);
+        const text = normalizeText(value);
+        const key = value === true ? "TRUE(boolean)" :
+          value === false ? "FALSE(boolean)" :
+          text || "(blank)";
+        distribution[key] = (distribution[key] || 0) + 1;
+
+        if (
+          !isBlank(value) &&
+          value !== true &&
+          value !== false &&
+          text.toUpperCase() !== "TRUE" &&
+          text.toUpperCase() !== "FALSE"
+        ) {
+          addSample(unexpected, {
+            row: item.row_number,
+            value: text
+          });
+        }
+      });
+      report.details.boolean_variants[config.name + "." + column] = {
+        distribution: distribution,
+        unexpected_samples: unexpected
+      };
+      if (unexpected.length > 0) {
+        addWarning("boolean_variant", config.name + "." + column + " にTRUE/FALSE以外の値があります", {
+          sheet: config.name,
+          column: column,
+          sample_count: unexpected.length
+        });
+      }
+    });
+
+    Object.keys(config.enumColumns).forEach(column => {
+      if (!headerSet.has(column)) return;
+      const allowed = config.enumColumns[column];
+      const allowedSet = new Set(allowed.map(value => String(value).toLowerCase()));
+      const distribution = countBy(rows, column);
+      const unexpected = [];
+      rows.forEach(item => {
+        const raw = normalizeText(getCell(item.rowObj, column));
+        const key = raw.toLowerCase();
+        if (raw && !allowedSet.has(key)) {
+          addSample(unexpected, {
+            row: item.row_number,
+            value: raw
+          });
+        }
+      });
+      report.details.enum_variants[config.name + "." + column] = {
+        allowed: allowed,
+        distribution: distribution,
+        unexpected_samples: unexpected
+      };
+      if (unexpected.length > 0) {
+        addWarning("enum_variant", config.name + "." + column + " に想定外の値があります", {
+          sheet: config.name,
+          column: column,
+          sample_count: unexpected.length
+        });
+      }
+    });
+
+    Object.keys(config.numberColumns).forEach(column => {
+      if (!headerSet.has(column)) return;
+      const rule = config.numberColumns[column] || {};
+      const issues = [];
+      rows.forEach(item => {
+        const value = getCell(item.rowObj, column);
+        if (isBlank(value)) return;
+        const num = Number(value);
+        let reason = "";
+        if (!isFinite(num)) reason = "not_numeric";
+        else if (rule.min != null && num < rule.min) reason = "less_than_min";
+        else if (rule.max != null && num > rule.max) reason = "greater_than_max";
+
+        if (reason) {
+          addSample(issues, {
+            row: item.row_number,
+            value: normalizeText(value),
+            reason: reason
+          });
+        }
+      });
+      if (issues.length > 0) {
+        report.details.number_issues[config.name + "." + column] = issues;
+        addWarning("number_issue", config.name + "." + column + " に数値化不可または範囲外の値があります", {
+          sheet: config.name,
+          column: column,
+          sample_count: issues.length
+        });
+      }
+    });
+  }
+
+  function checkDuplicates(config) {
+    const data = sheetData[config.name];
+    if (!data || !config.idColumn || !data.headerSet.has(config.idColumn)) return;
+
+    const seen = {};
+    const duplicates = [];
+    data.rows.forEach(item => {
+      const raw = getCell(item.rowObj, config.idColumn);
+      const id = config.name === "company_calendar"
+        ? toAuditDateKey(raw)
+        : normalizeText(raw);
+      if (!id) return;
+
+      if (seen[id]) {
+        addSample(duplicates, {
+          id: id,
+          first_row: seen[id],
+          duplicate_row: item.row_number
+        });
+      } else {
+        seen[id] = item.row_number;
+      }
+    });
+
+    report.details.duplicate_ids[config.name + "." + config.idColumn] = duplicates;
+    if (duplicates.length > 0) {
+      addError("duplicate_id", config.name + "." + config.idColumn + " に重複があります", {
+        sheet: config.name,
+        column: config.idColumn,
+        sample_count: duplicates.length
+      });
+    }
+  }
+
+  function buildIdSet(sheetName, columnName, normalizeFn) {
+    const data = sheetData[sheetName];
+    const result = new Set();
+    if (!data || !data.headerSet.has(columnName)) return result;
+
+    data.rows.forEach(item => {
+      const raw = getCell(item.rowObj, columnName);
+      const id = normalizeFn ? normalizeFn(raw) : normalizeText(raw);
+      if (id) result.add(id);
+    });
+    return result;
+  }
+
+  function checkEmployeeReferences(sheetName, columnName, employeeIds) {
+    const data = sheetData[sheetName];
+    if (!data || !data.headerSet.has(columnName)) return;
+
+    const missing = [];
+    data.rows.forEach(item => {
+      const employeeId = normalizeText(getCell(item.rowObj, columnName));
+      if (employeeId && !employeeIds.has(employeeId)) {
+        addSample(missing, {
+          row: item.row_number,
+          employee_id: employeeId
+        });
+      }
+    });
+    report.details.referential_integrity[sheetName + "." + columnName + "_missing_employees"] = missing;
+    if (missing.length > 0) {
+      addError("missing_employee_reference", sheetName + "." + columnName + " にemployees未存在の社員IDがあります", {
+        sheet: sheetName,
+        column: columnName,
+        sample_count: missing.length
+      });
+    }
+  }
+
+  function checkUsageLogRequestReferences(employeeIds, requestIds) {
+    const data = sheetData.usage_log;
+    if (!data || !data.headerSet.has("request_id")) return;
+
+    const missing = [];
+    const employeeIdLike = [];
+    data.rows.forEach(item => {
+      const requestId = normalizeText(getCell(item.rowObj, "request_id"));
+      if (!requestId) return;
+      if (requestIds.has(requestId)) return;
+
+      if (employeeIds.has(requestId)) {
+        addSample(employeeIdLike, {
+          row: item.row_number,
+          request_id: requestId,
+          classification: "employee_id_in_request_id_column"
+        });
+      } else {
+        addSample(missing, {
+          row: item.row_number,
+          request_id: requestId
+        });
+      }
+    });
+
+    report.details.referential_integrity.usage_log_request_id_employee_id_like = employeeIdLike;
+    report.details.referential_integrity.usage_log_request_id_missing = missing;
+
+    if (employeeIdLike.length > 0) {
+      addWarning("usage_log_request_id_employee_id", "usage_log.request_id に社員IDらしき値があります（既存仕様上、要確認）", {
+        sample_count: employeeIdLike.length
+      });
+    }
+    if (missing.length > 0) {
+      addWarning("usage_log_request_id_missing", "usage_log.request_id に申請ID/社員IDのどちらにも一致しない値があります", {
+        sample_count: missing.length
+      });
+    }
+  }
+
+  sheetConfigs.forEach(collectSheet);
+  sheetConfigs.forEach(checkDuplicates);
+
+  const employeeIds = buildIdSet("employees", "employee_id");
+  const requestIds = buildIdSet("leave_requests", "request_id");
+
+  checkEmployeeReferences("leave_requests", "employee_id", employeeIds);
+  checkEmployeeReferences("paid_leave_grants", "employee_id", employeeIds);
+  checkUsageLogRequestReferences(employeeIds, requestIds);
+
+  const employees = sheetData.employees ? sheetData.employees.rows : [];
+  const leaveRequests = sheetData.leave_requests ? sheetData.leave_requests.rows : [];
+  const paidLeaveGrants = sheetData.paid_leave_grants ? sheetData.paid_leave_grants.rows : [];
+
+  report.summary.representative_counts = {
+    employees: employees.length,
+    active_employees: employees.filter(item => {
+      const status = normalizeText(getCell(item.rowObj, "employment_status")).toLowerCase();
+      return status === "active" || status === "在職";
+    }).length,
+    leave_requests: leaveRequests.length,
+    approved_leave_requests: leaveRequests.filter(item => {
+      return normalizeText(getCell(item.rowObj, "status")) === "approved";
+    }).length,
+    canceled_by_admin_leave_requests: leaveRequests.filter(item => {
+      return normalizeText(getCell(item.rowObj, "status")) === "canceled_by_admin";
+    }).length,
+    paid_leave_grants: paidLeaveGrants.length
+  };
+
+  if (sheetData.leave_requests && sheetData.leave_requests.headerSet.has("status")) {
+    report.summary.status_distribution = countBy(leaveRequests, "status");
+  }
+
+  if (sheetData.leave_requests && sheetData.leave_requests.headerSet.has("employee_id")) {
+    report.summary.top_request_employees = topByEmployee(leaveRequests, "employee_id");
+  }
+
+  if (sheetData.paid_leave_grants && sheetData.paid_leave_grants.headerSet.has("employee_id")) {
+    report.summary.top_grant_employees = topByEmployee(paidLeaveGrants, "employee_id");
+  }
+
+  addWarning("migration_attention", "Supabase移行前に、件数照合・ID重複・参照整合・残日数/FIFO照合を別途実施してください", {
+    note: "この監査は読み取り専用の構造/品質チェックで、残日数の正解照合までは行いません。"
+  });
+
+  Logger.log("[SupabaseMigrationAudit] summary\n" + JSON.stringify(report.summary, null, 2));
+  Logger.log("[SupabaseMigrationAudit] warnings\n" + JSON.stringify(report.warnings, null, 2));
+  Logger.log("[SupabaseMigrationAudit] errors\n" + JSON.stringify(report.errors, null, 2));
+  Logger.log("[SupabaseMigrationAudit] details\n" + JSON.stringify(report.details, null, 2));
+
+  return report;
+}
