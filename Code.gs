@@ -8,7 +8,8 @@ const STATUS = {
   PENDING: "pending",
   APPROVED: "approved",
   REJECTED: "rejected",
-  CANCELED: "canceled"
+  CANCELED: "canceled",
+  CANCELED_BY_ADMIN: "canceled_by_admin"
 };
 
 /* =========================
@@ -2387,6 +2388,7 @@ function getRequestHistoryStatusLabel_(status) {
 
   if (value === STATUS.APPROVED) return "承認済み";
   if (value === STATUS.REJECTED) return "否認";
+  if (value === STATUS.CANCELED_BY_ADMIN) return "管理者取消済み";
   if (value === STATUS.CANCELED) return "取消済み";
 
   return "承認待ち";
@@ -2555,6 +2557,87 @@ function approveRequest(requestId, adminUser) {
   clearAppCache();
 
   return { ok: true };
+}
+
+/* =========================
+   管理画面用：承認後取消
+========================= */
+function cancelApprovedRequestByAdmin(requestId, reason, adminUser) {
+  const targetRequestId = String(requestId || "").trim();
+
+  if (!targetRequestId) {
+    throw new Error("requestId がありません");
+  }
+
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id",
+    "status",
+    "updated_at"
+  ]);
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  if (lastRow <= 1) {
+    throw new Error("申請データがありません");
+  }
+
+  const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  const rowIndex = data.findIndex((row, index) => {
+    if (index === 0) return false;
+    return String(row[headerInfo.map.request_id] || "").trim() === targetRequestId;
+  });
+
+  if (rowIndex === -1) {
+    throw new Error("対象の申請が見つかりません");
+  }
+
+  const rowValues = data[rowIndex].slice();
+  const currentStatus = norm(rowValues[headerInfo.map.status]);
+
+  if (currentStatus !== STATUS.APPROVED) {
+    throw new Error("承認済みの申請だけ管理者取消できます");
+  }
+
+  const now = new Date();
+  const operatorId = adminUser && adminUser.admin_id
+    ? String(adminUser.admin_id).trim()
+    : "admin";
+  const operatorName = adminUser && adminUser.admin_name
+    ? String(adminUser.admin_name).trim()
+    : "管理者";
+  const cancelReason = String(reason || "").trim();
+  const map = headerInfo.map;
+
+  rowValues[map.status] = STATUS.CANCELED_BY_ADMIN;
+  rowValues[map.updated_at] = now;
+
+  if ("updated_by" in map) rowValues[map.updated_by] = operatorName;
+  if ("cancel_reason" in map) rowValues[map.cancel_reason] = cancelReason;
+  if ("canceled_reason" in map) rowValues[map.canceled_reason] = cancelReason;
+  if ("cancelled_reason" in map) rowValues[map.cancelled_reason] = cancelReason;
+  if ("canceled_at" in map) rowValues[map.canceled_at] = now;
+  if ("cancelled_at" in map) rowValues[map.cancelled_at] = now;
+  if ("canceled_by" in map) rowValues[map.canceled_by] = operatorName;
+  if ("cancelled_by" in map) rowValues[map.cancelled_by] = operatorName;
+
+  updateSheetRowFast_(sheet, rowIndex + 1, rowValues);
+
+  appendUsageLog({
+    request_id: targetRequestId,
+    action_type: "admin_cancel_approved",
+    operator_id: operatorId,
+    operator_name: operatorName,
+    comment: cancelReason || "Approved leave request canceled by admin"
+  });
+
+  clearAppCache();
+
+  return {
+    ok: true,
+    request_id: targetRequestId
+  };
 }
 
 /* =========================
@@ -3207,6 +3290,7 @@ function getLogActionLabel(actionType) {
     submit: "申請",
     approve: "承認",
     reject: "否認",
+    admin_cancel_approved: "承認後取消",
 
     employee_add: "社員追加",
     employee_update: "社員編集",
@@ -3226,6 +3310,7 @@ function getLogActionClass(actionType) {
   if (type === "approve") return "log-approve";
   if (type === "reject") return "log-reject";
   if (type === "submit") return "log-submit";
+  if (type === "admin_cancel_approved") return "log-reject";
 
   if (type === "employee_add") return "log-employee-add";
   if (type === "employee_update") return "log-employee-update";

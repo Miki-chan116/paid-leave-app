@@ -79,6 +79,8 @@ function getStatusLabel(status) {
   if (status === "pending") return "承認待ち";
   if (status === "approved") return "承認済み";
   if (status === "rejected") return "否認";
+  if (status === "canceled_by_admin") return "管理者取消済み";
+  if (status === "canceled") return "取消済み";
   return status || "";
 }
 
@@ -358,6 +360,11 @@ function renderCards(data) {
         <button class="btn btn-approve btn-card-action" type="button" onclick="approveRequestAction('${escapeHtml(req.request_id)}')">承認</button>
         <button class="btn btn-reject btn-card-action" type="button" onclick="rejectRequestAction('${escapeHtml(req.request_id)}')">否認</button>
       `;
+    } else if (req.status === "approved") {
+      buttonsHtml = `
+        <button class="btn btn-reject btn-card-action" type="button" onclick="cancelApprovedRequestAction('${escapeHtml(req.request_id)}')">承認後取消</button>
+        <button class="btn btn-refresh btn-card-action" type="button" onclick="reloadCurrentView()">再読込</button>
+      `;
     }
 
     const reasonText = req.reason_detail
@@ -466,6 +473,30 @@ function rejectRequestAction(requestId) {
       showError("requestView", "否認処理でエラーが発生しました");
     })
     .rejectRequest(requestId, reason, currentAdminUser);
+}
+
+function cancelApprovedRequestAction(requestId) {
+  if (!requestId) return;
+
+  const reason = prompt("承認後取消の理由を入力してください（任意）", "");
+  if (reason === null) return;
+
+  const ok = confirm("この承認済み申請を管理者取消しますか？\n取消後は有給残日数の使用日数から除外されます。");
+  if (!ok) return;
+
+  showLoading("requestView", "承認後取消を実行中です...");
+
+  google.script.run
+    .withSuccessHandler(() => {
+      alert("管理者取消しました");
+      reloadCurrentView({ refreshSummary: true });
+    })
+    .withFailureHandler(err => {
+      console.error("承認後取消エラー:", err);
+      const message = err && err.message ? err.message : "承認後取消でエラーが発生しました";
+      showError("requestView", message);
+    })
+    .cancelApprovedRequestByAdmin(requestId, reason, currentAdminUser);
 }
 
 /* ログ */
