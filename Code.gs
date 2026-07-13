@@ -12,6 +12,16 @@ const STATUS = {
   CANCELED_BY_ADMIN: "canceled_by_admin"
 };
 
+// leave_requests.status で許可する正式な値。Spreadsheet の入力規則と
+// アプリケーションコードで同じ定義を使用する。
+const LEAVE_REQUEST_STATUS_VALUES = [
+  STATUS.PENDING,
+  STATUS.APPROVED,
+  STATUS.REJECTED,
+  STATUS.CANCELED,
+  STATUS.CANCELED_BY_ADMIN
+];
+
 /* =========================
    カレンダー種別
 ========================= */
@@ -325,6 +335,67 @@ function ensureSheetColumn_(sheet, headerName) {
   const nextColumn = headerInfo.headers.length + 1;
   sheet.getRange(1, nextColumn).setValue(name);
   return getHeaderMap(sheet);
+}
+
+/* =========================
+   leave_requests ステータス入力規則更新
+========================= */
+function updateLeaveRequestStatusValidation() {
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, ["status"]);
+  const statusColumn = headerInfo.map.status + 1;
+  const rowCount = sheet.getMaxRows() - 1;
+
+  if (rowCount <= 0) {
+    Logger.log("leave_requests.status の入力規則は更新対象行がありません");
+    return {
+      ok: true,
+      updated_rows: 0,
+      status_column: statusColumn,
+      allowed_values: LEAVE_REQUEST_STATUS_VALUES.slice()
+    };
+  }
+
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(LEAVE_REQUEST_STATUS_VALUES, true)
+    .setAllowInvalid(false)
+    .build();
+
+  // ヘッダー行を除外し、既存行と今後 append される行に同じ規則を設定する。
+  sheet.getRange(2, statusColumn, rowCount, 1).setDataValidation(rule);
+
+  Logger.log(
+    "leave_requests.status の入力規則を更新しました: column=" +
+      statusColumn +
+      ", rows=2-" +
+      sheet.getMaxRows() +
+      ", values=" +
+      LEAVE_REQUEST_STATUS_VALUES.join(", ")
+  );
+
+  return {
+    ok: true,
+    updated_rows: rowCount,
+    status_column: statusColumn,
+    allowed_values: LEAVE_REQUEST_STATUS_VALUES.slice()
+  };
+}
+
+/* =========================
+   leave_requests ヘッダー診断
+========================= */
+function debugLeaveRequestHeaders() {
+  const sheet = getSheet("leave_requests");
+  const headerInfo = getHeaderMap(sheet);
+
+  headerInfo.headers.forEach((header, index) => {
+    Logger.log((index + 1) + " " + String(header || "").trim());
+  });
+
+  return headerInfo.headers.map((header, index) => ({
+    column: index + 1,
+    header: String(header || "").trim()
+  }));
 }
 
 /* =========================
