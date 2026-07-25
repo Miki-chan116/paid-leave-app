@@ -763,3 +763,283 @@ function testPartnerOpeningBalanceFiscalStartRepairWrappers() {
   if (failed.length) throw new Error("PARTNER年度開始補正ラッパーテスト失敗: " + JSON.stringify(failed));
   return { ok: true, case_count: cases.length };
 }
+
+/* =========================
+   PARTNER P0004: 初期導入残高の読み取り専用診断テスト
+========================= */
+function testPartnerP0004FifoDiagnosis() {
+  const asOfDate = parseLocalDate("2026-07-25");
+  const employee = {
+    employee_id: "EMP0062", display_employee_id: "P0004", company_code: "PARTNER",
+    fiscal_start_month: 6, employment_status: "active", leave_management_target: true,
+    hire_date: "2020-01-01", work_days_per_week: 5
+  };
+  const context = {
+    as_of_date: asOfDate,
+    calendar_map: {},
+    requests_by_employee: {
+      EMP0062: [
+        { request_id: "R-MAY", start_date: "2026-05-02", end_date: "2026-05-02", days: 1, half_day: "", status: STATUS.APPROVED, type: "paid_leave" },
+        { request_id: "R-HALF", start_date: "2026-07-01", end_date: "2026-07-01", days: 1, half_day: "AM", status: STATUS.APPROVED, type: "paid_leave" },
+        { request_id: "R-THREE", start_date: "2026-07-02", end_date: "2026-07-04", days: 3, half_day: "", status: STATUS.APPROVED, type: "paid_leave" },
+        { request_id: "R-CANCEL", start_date: "2026-07-10", end_date: "2026-07-10", days: 1, half_day: "", status: "cancelled", type: "paid_leave" }
+      ]
+    },
+    grants_by_employee: {
+      EMP0062: [
+        {
+          grant_id: "G0058", employee_id: "EMP0062", grant_date: parseLocalDate("2025-06-01"),
+          valid_from_date: parseLocalDate("2025-06-01"), valid_to_date: parseLocalDate("2026-05-31"),
+          grant_type: "initial", year: 2025, grant_days: 3, carry_over_days: 0, total_days: 3,
+          notes: "初期導入残高 SECRET", has_recorded_valid_from: true, has_recorded_valid_to: true, is_finalized: true
+        },
+        {
+          grant_id: "G2026-62", employee_id: "EMP0062", grant_date: parseLocalDate("2026-06-01"),
+          valid_from_date: parseLocalDate("2026-06-01"), valid_to_date: parseLocalDate("2028-05-31"),
+          grant_type: "yearly", year: 2026, grant_days: 11, carry_over_days: 0, total_days: 11,
+          notes: "", has_recorded_valid_from: true, has_recorded_valid_to: true, is_finalized: true
+        }
+      ]
+    }
+  };
+  const original = JSON.stringify(context);
+  const result = buildPartnerP0004FifoDiagnosis_(employee, context, asOfDate);
+  const invalid = buildPartnerP0004FifoDiagnosis_(employee, Object.assign({}, context, {
+    grants_by_employee: { EMP0062: [context.grants_by_employee.EMP0062[1]] }
+  }), asOfDate);
+  const cases = [
+    ["P0004だけを対象", result.target.employee_id + "/" + result.target.grant_id, "EMP0062/G0058"],
+    ["G0058を取得", result.grants.some(row => row.grant_id === "G0058"), true],
+    ["P0002/P0003を含めない", result.grants.every(row => row.grant_id !== "G0056" && row.grant_id !== "G0057"), true],
+    ["期限切れ2日の内訳", result.expired_days_breakdown[0].expired_days, 2],
+    ["期限切れはG0058由来", result.expired_days_conclusion.is_g0058_derived, true],
+    ["有効残高7.5日の合計", result.active_balance_total, 7.5],
+    ["年度取得3.5日の合計", result.fiscal_usage.total_used_days, 3.5],
+    ["半日申請を0.5日扱い", result.fiscal_usage.included_requests.find(row => row.request_id === "R-HALF").fiscal_days, 0.5],
+    ["取消申請をFIFO対象外", result.requests.find(row => row.request_id === "R-CANCEL").fifo_included, false],
+    ["最短期限2028/05/31の元ロット", result.nearest_expiry_lot.grant_id, "G2026-62"],
+    ["案Aの試算", result.simulations.plan_a_current_is_correct.expired_days, 2],
+    ["案Bの試算", result.simulations.plan_b_fiscal_start_carry_over.expired_days, 0],
+    ["案Cの試算", result.simulations.plan_c_extend_initial_lot_expiry.expired_days, 0],
+    ["不正データは安全な警告", invalid.warnings.some(message => message.indexOf("G0058") !== -1), true],
+    ["notes本文を返さない", JSON.stringify(result).indexOf("SECRET") === -1, true],
+    ["元FIFOコンテキストを変更しない", JSON.stringify(context), original],
+    ["診断関数に書込み関数がない", debugPartnerCarryOverSimulationP0004.toString().indexOf("setValue") === -1, true]
+  ];
+  const failed = cases.filter(item => JSON.stringify(item[1]) !== JSON.stringify(item[2]));
+  if (failed.length) throw new Error("PARTNER P0004 FIFO診断テスト失敗: " + JSON.stringify(failed));
+  return { ok: true, case_count: cases.length };
+}
+
+/* =========================
+   PARTNER P0004: G0061繰越構造の統一試算テスト
+========================= */
+function testPartnerP0004CarryOverStructureSimulation() {
+  const asOfDate = parseLocalDate("2026-07-25");
+  const employee = { employee_id: "EMP0062", display_employee_id: "P0004", company_code: "PARTNER", fiscal_start_month: 6 };
+  const context = {
+    as_of_date: asOfDate,
+    calendar_map: {},
+    requests_by_employee: { EMP0062: [
+      { request_id: "R-MAY", start_date: "2026-05-02", end_date: "2026-05-02", days: 1, half_day: "", status: STATUS.APPROVED, type: "paid_leave" },
+      { request_id: "R-JUN2", start_date: "2026-06-02", end_date: "2026-06-02", days: 1, half_day: "", status: STATUS.APPROVED, type: "paid_leave" },
+      { request_id: "R-HALF", start_date: "2026-06-24", end_date: "2026-06-24", days: 1, half_day: "AM", status: STATUS.APPROVED, type: "paid_leave" },
+      { request_id: "R-JUN26", start_date: "2026-06-26", end_date: "2026-06-26", days: 1, half_day: "", status: STATUS.APPROVED, type: "paid_leave" },
+      { request_id: "R-JUL18", start_date: "2026-07-18", end_date: "2026-07-18", days: 1, half_day: "", status: STATUS.APPROVED, type: "paid_leave" }
+    ] },
+    grants_by_employee: { EMP0062: [
+      { grant_id: "G0058", employee_id: "EMP0062", grant_date: parseLocalDate("2025-06-01"), valid_from_date: parseLocalDate("2025-06-01"), valid_to_date: parseLocalDate("2026-05-31"), grant_type: "initial", year: 2025, grant_days: 3, carry_over_days: 0, total_days: 3, notes: "初期導入残高", has_recorded_valid_from: true, has_recorded_valid_to: true, is_finalized: true },
+      { grant_id: "G0061", employee_id: "EMP0062", grant_date: parseLocalDate("2026-06-01"), valid_from_date: parseLocalDate("2026-06-01"), valid_to_date: parseLocalDate("2028-05-31"), grant_type: "yearly", year: 2026, grant_days: 11, carry_over_days: 2, total_days: 13, notes: "", has_recorded_valid_from: true, has_recorded_valid_to: true, is_finalized: true }
+    ] }
+  };
+  const original = JSON.stringify(context);
+  const result = buildPartnerP0004CarryOverStructureSimulation_(employee, context, asOfDate);
+  const conversion = buildPartnerP0004FiscalStartCarryOverConversion_(employee, context, asOfDate);
+  const bAllocations = result.plan_b.fiscal_usage_allocations;
+  const cases = [
+    ["対象はP0004のみ", result.employee.employee_id, "EMP0062"],
+    ["現状FIFOは7.5日", result.current.current_remaining_days, 7.5],
+    ["現状FIFOはG0058由来2日失効", result.current.expired_days, 2],
+    ["現状は年度残高と2日差", result.current.difference_from_yearly_balance, -2],
+    ["案Aは9.5日", result.plan_a.current_remaining_days, 9.5],
+    ["案Aは期限切れ0日", result.plan_a.expired_days, 0],
+    ["案Bは9.5日", result.plan_b.current_remaining_days, 9.5],
+    ["案BはG0058履歴の2日失効を保持", result.plan_b.expired_days, 2],
+    ["案Bは年度残高と一致", result.plan_b.difference_from_yearly_balance, 0],
+    ["案Bは繰越2日を先に割当", bAllocations[0].grant_id, "G0061#carry_over_simulation#opening_balance"],
+    ["案Bの繰越ロットは2日消化", bAllocations.filter(row => row.grant_id === "G0061#carry_over_simulation#opening_balance").reduce((sum, row) => sum + row.consumed_days, 0), 2],
+    ["案Bの次消化ロットは11日付与", result.plan_b.next_consumption_lot.grant_id, "G0061"],
+    ["同一行では優先順を保証できない警告を返す", result.design_comparison.fifo_order_constraint.indexOf("同一G0061行") !== -1, true],
+    ["案DはG0058のみを試算対象", conversion.target.grant_id, "G0058"],
+    ["案Dのgrant_daysは0", conversion.plan_d_changes.grant_days, 0],
+    ["案Dのcarry_over_daysは2", conversion.plan_d_changes.carry_over_days, 2],
+    ["案Dの有効開始日は2026/06/01", conversion.plan_d_changes.valid_from, "2026-06-01"],
+    ["案Dの有効期限は2027/05/31", conversion.plan_d_changes.valid_to, "2027-05-31"],
+    ["案Dは5/2取得を新繰越へ割り当てない", conversion.plan_d_allocations.allocations_on_2026_05_02.length, 0],
+    ["案Dは繰越2日を先に使い切る", conversion.plan_d_allocations.g0058_carry_over_consumed_days, 2],
+    ["案Dは残高9.5日", conversion.plan_d.current_remaining_days, 9.5],
+    ["案Dは期限切れ0日", conversion.plan_d.expired_days, 0],
+    ["案Dは年度残高差0日", conversion.plan_d.difference_from_yearly_balance, 0],
+    ["案DのFIFO合計は13日", conversion.plan_d.fifo_lots.reduce((sum, lot) => sum + lot.total_days, 0), 13],
+    ["案DではG0061繰越を二重計上しない", conversion.checks.g0061_carry_over_not_double_counted, true],
+    ["案Dでは残高のある最短期限は2028/05/31", conversion.plan_d.nearest_active_expiry_lot.valid_to, "2028-05-31"],
+    ["案Dではロット全体の最短期限は2027/05/31", conversion.plan_d.earliest_lot_expiry.valid_to, "2027-05-31"],
+    ["試算は元コンテキストを変更しない", JSON.stringify(context), original],
+    ["診断関数に書込み関数がない", debugPartnerCarryOverStructureSimulationP0004.toString().indexOf("setValue") === -1, true]
+  ];
+  const failed = cases.filter(item => JSON.stringify(item[1]) !== JSON.stringify(item[2]));
+  if (failed.length) throw new Error("PARTNER P0004繰越構造試算テスト失敗: " + JSON.stringify(failed));
+  return { ok: true, case_count: cases.length };
+}
+
+/* =========================
+   PARTNER P0004一回限り補正の固定データ安全性テスト
+========================= */
+function testPartnerOpeningBalanceP0004RepairSafety() {
+  const throws = fn => { try { fn(); return false; } catch (error) { return true; } };
+  const source = repairPartnerOpeningBalanceFiscalStartP0004.toString();
+  const cases = [
+    ["対象grant_idはG0058", PARTNER_OPENING_BALANCE_P0004_REPAIR_TARGET_.grant_id, "G0058"],
+    ["対象employee_idはEMP0062", PARTNER_OPENING_BALANCE_P0004_REPAIR_TARGET_.employee_id, "EMP0062"],
+    ["dry-runが既定", source.indexOf("opts.dry_run !== false") !== -1, true],
+    ["本実行を必ず拒否", throws(() => repairPartnerOpeningBalanceFiscalStartP0004({ dry_run: false })), true],
+    ["確認文字列があっても拒否", throws(() => repairPartnerOpeningBalanceFiscalStartP0004({ dry_run: false, confirmation_text: "ANY" })), true],
+    ["完了済みエラーを返す", (() => { try { repairPartnerOpeningBalanceFiscalStartP0004({ dry_run: false }); } catch (error) { return String(error.message).indexOf("P0004(G0058)") !== -1; } return false; })(), true],
+    ["LockServiceを削除", source.indexOf("LockService") === -1, true],
+    ["シート更新を削除", source.indexOf("setValue") === -1 && source.indexOf("setValues") === -1, true],
+    ["usage_log書込みを削除", source.indexOf("appendUsageLog") === -1, true],
+    ["ロールバックを削除", source.indexOf("restorePartner") === -1, true],
+    ["診断関数を維持", typeof debugPartnerCarryOverSimulationP0004, "function"],
+    ["構造試算を維持", typeof debugPartnerCarryOverStructureSimulationP0004, "function"],
+    ["変換試算を維持", typeof debugPartnerFiscalStartCarryOverConversionP0004, "function"],
+    ["事前条件診断を維持", typeof debugPartnerOpeningBalanceFiscalStartRepairPreconditionsP0004, "function"]
+  ];
+  const failed = cases.filter(item => JSON.stringify(item[1]) !== JSON.stringify(item[2]));
+  if (failed.length) throw new Error("PARTNER P0004補正安全性テスト失敗: " + JSON.stringify(failed));
+  return { ok: true, case_count: cases.length };
+}
+
+/* =========================
+   P0004補正ラッパーのログ整形テスト
+========================= */
+function testPartnerOpeningBalanceP0004RepairWrappers() {
+  const result = {
+    as_of_date: "2026-07-25",
+    target: {
+      grant_id: "G0058", employee_id: "EMP0062", display_employee_id: "P0004",
+      before: { grant_days: 3, carry_over_days: 0, valid_from: "2025-06-01", valid_to: "2026-05-31" },
+      after: { grant_days: 0, carry_over_days: 2, valid_from: "2026-06-01", valid_to: "2027-05-31" }
+    },
+    fifo_before: { current_active_remaining_days: 7.5, expired_days: 2 },
+    fifo_after: { current_active_remaining_days: 9.5, expired_days: 0 },
+    difference_from_yearly_balance: 0,
+    warnings: []
+  };
+  const original = JSON.stringify(result);
+  logPartnerOpeningBalanceP0004RepairDryRun_(result);
+  const throws = fn => { try { fn(); return false; } catch (error) { return true; } };
+  const executeSource = executeRepairPartnerOpeningBalanceFiscalStartP0004.toString();
+  const cases = [
+    ["dry-runラッパーを追加", typeof debugRepairPartnerOpeningBalanceFiscalStartP0004, "function"],
+    ["dry-runラッパーはtrueを渡す", debugRepairPartnerOpeningBalanceFiscalStartP0004.toString().indexOf("dry_run: true") !== -1, true],
+    ["dry-runラッパーは結果をreturn", debugRepairPartnerOpeningBalanceFiscalStartP0004.toString().indexOf("return result") !== -1, true],
+    ["executeラッパーを追加", typeof executeRepairPartnerOpeningBalanceFiscalStartP0004, "function"],
+    ["executeラッパーは必ず拒否", throws(() => executeRepairPartnerOpeningBalanceFiscalStartP0004()), true],
+    ["executeラッパーに確認文字列がない", executeSource.indexOf("confirmation_text") === -1, true],
+    ["executeラッパーに本実行Loggerがない", executeSource.indexOf("Logger") === -1, true],
+    ["dry-runログ整形は戻り値を変更しない", JSON.stringify(result), original],
+    ["詳細JSONにBASIC区分がある", logPartnerOpeningBalanceP0004RepairDryRun_.toString().indexOf("[P0004_REPAIR][BASIC]") !== -1, true],
+    ["詳細JSONにWARNINGS区分がある", logPartnerOpeningBalanceP0004RepairDryRun_.toString().indexOf("[P0004_REPAIR][WARNINGS]") !== -1, true]
+  ];
+  const failed = cases.filter(item => JSON.stringify(item[1]) !== JSON.stringify(item[2]));
+  if (failed.length) throw new Error("P0004補正ラッパーテスト失敗: " + JSON.stringify(failed));
+  return { ok: true, case_count: cases.length };
+}
+
+/* =========================
+   P0004補正事前条件診断の正規化テスト
+========================= */
+function testPartnerOpeningBalanceP0004RepairPreconditions() {
+  const target = Object.assign(
+    {},
+    PARTNER_OPENING_BALANCE_P0004_REPAIR_TARGET_,
+    PARTNER_OPENING_BALANCE_P0004_REPAIR_AFTER_
+  );
+  const row = {
+    grant_id: " G0058 ", employee_id: " emp0062 ", grant_days: "0", carry_over_days: "2",
+    valid_from: parseLocalDate("2026-06-01"), valid_to: "2027/05/31",
+    grant_type: "initial", year: "2025", notes: "初期導入残高\n" + PARTNER_OPENING_BALANCE_P0004_REPAIR_MARKER_
+  };
+  const employee = { company_code: " partner ", display_employee_id: "P0004" };
+  const matched = buildPartnerOpeningBalanceFiscalStartPreconditionDiagnostic_(row, employee, target, 1);
+  const mismatched = buildPartnerOpeningBalanceFiscalStartPreconditionDiagnostic_(
+    Object.assign({}, row, { carry_over_days: "1", valid_from: parseLocalDate("2026-06-02") }), employee, target, 1
+  );
+  const errorMessage = (() => {
+    try {
+      validatePartnerOpeningBalanceP0004RepairState_({
+        target_row: Object.assign({}, row, { grant_id: "G0058", employee_id: "EMP0062", carry_over_days: 1 }),
+        g0061_row: { grant_id: "G0061", employee_id: "EMP0062" },
+        employee_map: { EMP0062: { company_code: "PARTNER", display_employee_id: "P0004" } }
+      }, "after");
+      return "";
+    } catch (error) { return String(error.message || error); }
+  })();
+  const cases = [
+    ["一致ケース", matched.all_conditions_match, true],
+    ["日付型を表示", matched.checks.valid_from.actual_type, "Date"],
+    ["数値文字列を正規化", matched.checks.grant_days.actual_normalized, 0],
+    ["display_employee_idを確認", matched.checks.display_employee_id.matched, true],
+    ["grant_typeを情報として返す", matched.checks.grant_type.actual, "initial"],
+    ["yearを情報として返す", matched.checks.year.actual, "2025"],
+    ["notes本文を返さない", Object.prototype.hasOwnProperty.call(matched.checks.notes_marker, "actual"), false],
+    ["不一致carry_overを検出", mismatched.mismatch_fields.indexOf("carry_over_days") !== -1, true],
+    ["不一致valid_fromを検出", mismatched.mismatch_fields.indexOf("valid_from") !== -1, true],
+    ["エラーに見出しを含む", errorMessage.indexOf("不一致項目") !== -1, true],
+    ["エラーに項目名を含む", errorMessage.indexOf("carry_over_days") !== -1, true],
+    ["診断関数を追加", typeof debugPartnerOpeningBalanceFiscalStartRepairPreconditionsP0004, "function"]
+  ];
+  const failed = cases.filter(item => JSON.stringify(item[1]) !== JSON.stringify(item[2]));
+  if (failed.length) throw new Error("P0004補正事前条件診断テスト失敗: " + JSON.stringify(failed));
+  return { ok: true, case_count: cases.length };
+}
+
+/* =========================
+   P0004補正後: 付与予定APIの固定データ診断テスト
+   シート・CacheService・書込みを使用しない。
+========================= */
+function testPaidLeaveGrantScheduleAfterP0004Repair() {
+  const fifoBalance = {
+    current_remaining_days: 9.5,
+    expired_days: 0,
+    grant_details: [
+      { grant_id: "G0058#opening_balance", valid_to: "2027/05/31", active_remaining_days: 0 },
+      { grant_id: "G0061", valid_to: "2028/05/31", active_remaining_days: 9.5 }
+    ]
+  };
+  const schedule = {
+    eligibility_status: "PROCESSED",
+    warning_codes: []
+  };
+  const diagnostic = buildPaidLeaveGrantScheduleApiAfterP0004RepairDiagnostic_(
+    { success: true, rows: [{ employee_id: "EMP0062" }] },
+    schedule,
+    fifoBalance
+  );
+  const source = debugPaidLeaveGrantScheduleApiAfterP0004Repair.toString();
+  const cases = [
+    ["補正後FIFOを処理", diagnostic.p0004.current_remaining_days, 9.5],
+    ["grant_days=0/carry_over_days=2相当の期限切れなし", diagnostic.p0004.expired_days, 0],
+    ["最短期限を有効ロットから取得", diagnostic.p0004.nearest_expiry_date, "2028/05/31"],
+    ["APIレスポンス成功を返す", diagnostic.ok, true],
+    ["残高の期待値比較を返す", diagnostic.expected_values_check.current_remaining_days_9_5, true],
+    ["期限の期待値比較を返す", diagnostic.expected_values_check.nearest_expiry_date_2028_05_31, true],
+    ["診断は読み取り専用", diagnostic.read_only, true],
+    ["API診断関数を追加", typeof debugPaidLeaveGrantScheduleApiAfterP0004Repair, "function"],
+    ["API診断はFIFO計算を行う", source.indexOf("calculateFifoBalanceWithOpeningBalanceFromContext_") !== -1, true],
+    ["API診断は書込みを行わない", source.indexOf("setValue") === -1 && source.indexOf("appendRow") === -1, true]
+  ];
+  const failed = cases.filter(item => JSON.stringify(item[1]) !== JSON.stringify(item[2]));
+  if (failed.length) throw new Error("P0004補正後の付与予定APIテスト失敗: " + JSON.stringify(failed));
+  return { ok: true, case_count: cases.length };
+}
