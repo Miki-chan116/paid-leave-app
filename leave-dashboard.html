@@ -194,6 +194,65 @@
       </div>
     </section>
 
+    <section class="admin-section grant-schedule-section">
+      <div class="section-heading-row">
+        <div>
+          <div class="section-kicker">読み取り専用</div>
+          <h2 class="section-heading">有給付与の予定・要確認</h2>
+          <p class="section-description">付与予定日と日数をシステムが計算しています。出勤率や短時間勤務者の付与日数は、付与前に事務担当者が確認してください。</p>
+        </div>
+      </div>
+
+      <div class="paid-leave-dashboard-card grant-schedule-card">
+        <div class="paid-leave-summary-grid">
+          <div class="paid-leave-summary-card"><span>期限超過・未処理</span><strong id="pgsOverdueCount">-</strong></div>
+          <div class="paid-leave-summary-card"><span>本日が付与予定日</span><strong id="pgsDueTodayCount">-</strong></div>
+          <div class="paid-leave-summary-card"><span>30日以内の付与予定</span><strong id="pgsUpcomingCount">-</strong></div>
+          <div class="paid-leave-summary-card warning"><span>出勤率・日数確認</span><strong id="pgsAttendanceConfirmationCount">-</strong></div>
+          <div class="paid-leave-summary-card expired"><span>データ異常</span><strong id="pgsDataIssueCount">-</strong></div>
+          <div class="paid-leave-summary-card"><span>最近の処理済み</span><strong id="pgsProcessedCount">-</strong></div>
+        </div>
+
+        <div class="paid-leave-dashboard-filters">
+          <div class="field">
+            <label for="pgsCompany">会社</label>
+            <select id="pgsCompany">
+              <option value="ALL">全社</option>
+              <option value="MAIN">MAIN</option>
+              <option value="PARTNER">PARTNER</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="pgsFilter">表示</label>
+            <select id="pgsFilter">
+              <option value="all">すべて</option>
+              <option value="overdue">期限超過</option>
+              <option value="due_today">本日</option>
+              <option value="upcoming">30日以内</option>
+              <option value="needs_review">要確認</option>
+              <option value="processed">処理済み</option>
+            </select>
+          </div>
+          <button id="paidLeaveGrantScheduleLoadButton" class="btn btn-search" type="button" onclick="loadPaidLeaveGrantSchedule()">付与予定を表示する</button>
+          <button id="paidLeaveGrantScheduleRefreshButton" class="btn btn-reset" type="button" onclick="loadPaidLeaveGrantSchedule(true)" disabled>最新情報に更新</button>
+          <button class="btn btn-reset" type="button" onclick="openGrantCandidateGuidance()">付与候補画面で確認</button>
+        </div>
+
+        <div id="paidLeaveGrantScheduleMessage" class="message-area">有給付与予定を確認するには「表示する」を押してください。</div>
+        <div id="paidLeaveGrantScheduleCaption" class="paid-leave-dashboard-caption"></div>
+        <div class="paid-leave-dashboard-table-wrap">
+          <table class="paid-leave-dashboard-table grant-schedule-table">
+            <thead>
+              <tr>
+                <th>社員</th><th>付与予定</th><th>予定日数</th><th>出勤率</th><th>FIFO残高</th><th>最古ロット期限</th><th>警告</th><th>内訳</th>
+              </tr>
+            </thead>
+            <tbody id="paidLeaveGrantScheduleTable"><tr><td colspan="8">読み込み中...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <div id="paidLeaveEmployeeDetailModal"
          class="paid-leave-detail-modal"
          aria-hidden="true"

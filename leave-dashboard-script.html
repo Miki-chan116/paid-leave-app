@@ -3,6 +3,8 @@ let currentAdminUser = null;
 let currentPaidLeaveDashboardData = null;
 let currentPaidLeaveDashboardQuickFilter = "all";
 let currentPaidLeaveDashboardDetailEmployeeId = "";
+let currentPaidLeaveGrantScheduleData = null;
+let isPaidLeaveGrantScheduleLoading = false;
 const adminAuthConfig = {
   validateLoginInput: false,
   clearMessageBeforeLoadUsers: true,
@@ -84,6 +86,135 @@ function showAdminApp() {
 function onAdminAuthenticated() {
   setDefaultDashboardValues();
   loadPaidLeaveDashboard();
+}
+
+/* =========================
+   有給付与の予定・要確認（読み取り専用）
+========================= */
+function getPaidLeaveGrantScheduleFilters() {
+  const company = document.getElementById("pgsCompany");
+  return {
+    as_of_date: toInputDate(new Date()),
+    days_ahead: 30,
+    include_processed_days: 31,
+    company_code: company ? company.value || "ALL" : "ALL"
+  };
+}
+
+function loadPaidLeaveGrantSchedule(forceRefresh) {
+  const table = document.getElementById("paidLeaveGrantScheduleTable");
+  const message = document.getElementById("paidLeaveGrantScheduleMessage");
+  const loadButton = document.getElementById("paidLeaveGrantScheduleLoadButton");
+  const refreshButton = document.getElementById("paidLeaveGrantScheduleRefreshButton");
+  if (!table || isPaidLeaveGrantScheduleLoading) return;
+  if (currentPaidLeaveGrantScheduleData && !forceRefresh) {
+    renderPaidLeaveGrantSchedule(currentPaidLeaveGrantScheduleData);
+    return;
+  }
+
+  isPaidLeaveGrantScheduleLoading = true;
+  if (loadButton) { loadButton.disabled = true; loadButton.textContent = "取得中…"; }
+  if (refreshButton) refreshButton.disabled = true;
+
+  table.innerHTML = `<tr><td colspan="8">有給付与予定を確認しています…</td></tr>`;
+  if (message) message.innerHTML = "";
+
+  google.script.run
+    .withSuccessHandler(data => {
+      currentPaidLeaveGrantScheduleData = data || {};
+      renderPaidLeaveGrantSchedule(currentPaidLeaveGrantScheduleData);
+      isPaidLeaveGrantScheduleLoading = false;
+      if (loadButton) { loadButton.disabled = false; loadButton.textContent = "表示条件を適用"; }
+      if (refreshButton) refreshButton.disabled = false;
+    })
+    .withFailureHandler(err => {
+      console.error("有給付与予定取得エラー:", err);
+      table.innerHTML = `<tr><td colspan="8">付与予定を取得できませんでした。時間をおいて再度お試しください。</td></tr>`;
+      if (message) {
+        message.innerHTML = `<div class="message error">付与予定を取得できませんでした。時間をおいて再度お試しください。</div>`;
+      }
+      isPaidLeaveGrantScheduleLoading = false;
+      if (loadButton) { loadButton.disabled = false; loadButton.textContent = "付与予定を表示する"; }
+      if (refreshButton) refreshButton.disabled = !currentPaidLeaveGrantScheduleData;
+    })
+    .getPaidLeaveGrantScheduleForAdmin(getPaidLeaveGrantScheduleFilters());
+}
+
+function renderPaidLeaveGrantSchedule(data) {
+  const result = data || {};
+  const counts = result.counts || {};
+  const filter = document.getElementById("pgsFilter");
+  const selectedFilter = filter ? filter.value || "all" : "all";
+  const rows = filterPaidLeaveGrantScheduleRows_(result.rows || [], selectedFilter);
+  const table = document.getElementById("paidLeaveGrantScheduleTable");
+  const caption = document.getElementById("paidLeaveGrantScheduleCaption");
+
+  setTextContent("pgsOverdueCount", counts.overdue || 0);
+  setTextContent("pgsDueTodayCount", counts.due_today || 0);
+  setTextContent("pgsUpcomingCount", counts.upcoming || 0);
+  setTextContent("pgsNeedsReviewCount", counts.needs_review || 0);
+  setTextContent("pgsAttendanceConfirmationCount", counts.attendance_confirmation || 0);
+  setTextContent("pgsDataIssueCount", counts.data_issue || 0);
+  setTextContent("pgsProcessedCount", counts.processed || 0);
+  if (caption) caption.textContent = `基準日 ${formatDisplayDate(result.as_of_date)} / ${rows.length}件表示`;
+  if (!table) return;
+
+  if (rows.length === 0) {
+    table.innerHTML = `<tr><td colspan="8">現在、確認が必要な付与予定はありません</td></tr>`;
+    return;
+  }
+
+  table.innerHTML = rows.map(row => {
+    const fifo = row.fifo_balance || {};
+    const lots = Array.isArray(fifo.lots) ? fifo.lots : [];
+    const oldestLot = lots.find(lot => lot.consumption_priority === 1);
+    const warnings = Array.isArray(row.warning_codes) ? row.warning_codes : [];
+    const grantDays = row.expected_grant_days === "" || row.expected_grant_days == null
+      ? `要確認${row.reference_grant_days != null ? `<br><small>参考：通常勤務なら${escapeHtml(formatDays(row.reference_grant_days))}</small>` : ""}`
+      : formatDays(row.expected_grant_days);
+    return `
+      <tr class="grant-schedule-row status-${escapeHtml(String(row.eligibility_status || "").toLowerCase())}">
+        <td><div class="pld-employee-name">${escapeHtml(row.employee_name || row.employee_id)}</div><div class="pld-employee-id">${escapeHtml(row.display_employee_id || row.employee_id || "")}</div><div class="pld-employee-id">${escapeHtml(getPaidLeaveDashboardCompanyLabel(row))}</div></td>
+        <td><strong>${escapeHtml(formatDisplayDate(row.next_grant_date))}</strong><br><small>${escapeHtml(formatGrantScheduleStage_(row))} / ${escapeHtml(formatGrantScheduleStatus_(row.eligibility_status))}</small></td>
+        <td>${grantDays}</td>
+        <td>${row.eligibility_status === "PROCESSED" ? "処理済み" : "未確認<br><small>付与前に8割出勤を確認</small>"}</td>
+        <td>${escapeHtml(formatDays(fifo.total_remaining_days))}</td>
+        <td>${oldestLot ? escapeHtml(formatDisplayDate(oldestLot.valid_to)) : "-"}</td>
+        <td>${warnings.length ? `<span class="pld-expiry-badge within_30">要確認 ${warnings.length}件</span>` : "-"}</td>
+        <td>${renderPaidLeaveGrantScheduleLots_(lots)}</td>
+      </tr>`;
+  }).join("");
+}
+
+function filterPaidLeaveGrantScheduleRows_(rows, filter) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (filter === "needs_review") return list.filter(row => row.attendance_confirmation_required || row.data_issue);
+  if (filter === "upcoming") return list.filter(row => row.eligibility_status === "UPCOMING");
+  if (filter === "overdue") return list.filter(row => row.eligibility_status === "OVERDUE");
+  if (filter === "due_today") return list.filter(row => row.eligibility_status === "DUE_TODAY");
+  if (filter === "processed") return list.filter(row => row.eligibility_status === "PROCESSED");
+  return list;
+}
+
+function renderPaidLeaveGrantScheduleLots_(lots) {
+  const rows = Array.isArray(lots) ? lots : [];
+  if (rows.length === 0) return "-";
+  return `<details><summary>残高内訳</summary><div class="grant-schedule-lots">${rows.map(lot =>
+    `<div>${lot.consumption_priority ? `優先${escapeHtml(lot.consumption_priority)} ` : ""}${escapeHtml(formatDisplayDate(lot.grant_date))}付与 / 残り${escapeHtml(formatDays(lot.remaining_days))} / ${escapeHtml(formatDisplayDate(lot.valid_to))} / ${escapeHtml(lot.status || "")}</div>`
+  ).join("")}</div></details>`;
+}
+
+function formatGrantScheduleStage_(row) {
+  return row && row.grant_stage === "INITIAL" ? "初回付与" : "年次付与";
+}
+
+function formatGrantScheduleStatus_(status) {
+  const labels = { OVERDUE: "期限超過", DUE_TODAY: "本日", UPCOMING: "予定", PROCESSED: "処理済み", UNJUDGEABLE: "判定不能", NOT_ELIGIBLE: "対象外" };
+  return labels[status] || "要確認";
+}
+
+function openGrantCandidateGuidance() {
+  alert("この一覧から付与は行いません。管理者画面の「有給を付与する対象者の確認」で、初回付与または年次付与の候補を確認してください。");
 }
 
 /* =========================

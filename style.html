@@ -339,6 +339,7 @@ body {
   font-weight: bold;
   color: var(--primary-dark);
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .selected-fiscal-year {
@@ -982,6 +983,156 @@ body.personal-page-mode #requestScreen {
 
   .multi-day-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* =========================
+   横向きタブレット（縦方向が限られる場合）
+========================= */
+@media (orientation: landscape) and (min-width: 1001px) and (max-width: 1400px) and (max-height: 900px) {
+
+  #requestScreen .screen-card {
+    padding: 12px;
+  }
+
+  #requestScreen .request-topbar {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  #requestScreen .selected-employee-top-cards {
+    gap: 10px;
+  }
+
+  #requestScreen .selected-employee-name-card,
+  #requestScreen .selected-employee-balance-card {
+    padding: 10px;
+  }
+
+  #requestScreen .selected-employee-balance-card {
+    gap: 5px;
+  }
+
+  #requestScreen .back-btn {
+    min-height: 52px;
+  }
+
+  #requestScreen .tablet-request-layout {
+    gap: 12px;
+  }
+
+  #requestScreen .request-section {
+    margin-top: 12px;
+    padding: 12px;
+  }
+
+  #requestScreen .request-section-title {
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+
+  #requestScreen .tablet-type-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  #requestScreen .type-btn {
+    min-height: 54px;
+    border-radius: 14px;
+    font-size: 20px;
+  }
+
+  #requestScreen .field {
+    gap: 6px;
+  }
+
+  #requestScreen .field label {
+    font-size: 16px;
+  }
+
+  #requestScreen .field input,
+  #requestScreen .field select,
+  #requestScreen .field textarea {
+    padding: 10px 12px;
+  }
+
+  #requestScreen .multi-day-grid {
+    gap: 10px;
+  }
+
+  #requestScreen .calendar-ui-card {
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  #requestScreen .calendar-ui-header {
+    margin-bottom: 8px;
+  }
+
+  #requestScreen .calendar-nav-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  #requestScreen .calendar-month-label {
+    font-size: 24px;
+  }
+
+  #requestScreen .calendar-help-text {
+    margin-top: 2px;
+  }
+
+  #requestScreen .calendar-week-row,
+  #requestScreen .request-calendar-grid {
+    gap: 6px;
+  }
+
+  #requestScreen .calendar-week-row {
+    margin-bottom: 6px;
+  }
+
+  #requestScreen .calendar-day {
+    min-height: 58px;
+    border-radius: 12px;
+    gap: 2px;
+  }
+
+  #requestScreen .calendar-day.is-today {
+    box-shadow:
+      0 0 0 3px #ffffff,
+      0 0 0 5px #f2c94c;
+  }
+
+  #requestScreen .calendar-day-number {
+    font-size: 22px;
+  }
+
+  #requestScreen .calendar-selected-status {
+    margin-top: 8px;
+    padding: 9px 12px;
+  }
+
+  #requestScreen .submit-area {
+    margin-top: 16px;
+  }
+
+  #requestScreen .submit-btn {
+    min-height: 64px;
+    font-size: 26px;
+  }
+
+  #requestScreen .history-toggle-area {
+    margin-top: 8px;
+  }
+
+  #requestScreen .history-toggle-btn {
+    min-height: 48px;
+    padding: 10px 24px;
+  }
+
+  #requestScreen .editing-request-banner {
+    margin-bottom: 8px;
+    padding: 10px 12px;
   }
 }
 

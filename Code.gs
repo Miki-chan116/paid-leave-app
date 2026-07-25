@@ -571,6 +571,30 @@ function getCompanyCalendarMap() {
   return map;
 }
 
+// 管理者向け予定API専用。キャッシュを一切変更しない読み取り経路。
+function getCompanyCalendarMapReadOnly_() {
+  if (shouldUseSupabaseReads_()) {
+    return buildCompanyCalendarMapFromRows_(getCompanyCalendarFromSupabase_());
+  }
+
+  const sheet = getSheet("company_calendar");
+  const headerInfo = requireHeaders(sheet, ["date", "type"]);
+  const data = sheet.getDataRange().getValues();
+  return buildCompanyCalendarMapFromRows_(
+    data.slice(1).map(row => rowToObject(row, headerInfo.headers))
+  );
+}
+
+// 入力配列だけからカレンダーMapを作る純粋関数。テストでも利用する。
+function buildCompanyCalendarMapFromRows_(rows) {
+  const map = {};
+  (Array.isArray(rows) ? rows : []).forEach(rowObj => {
+    if (!rowObj || !rowObj.date) return;
+    map[toDateKey(rowObj.date)] = norm(rowObj.type);
+  });
+  return map;
+}
+
 function getCalendarTypeForDate(dateValue, calendarMap) {
   const date = parseLocalDate(dateValue);
 
@@ -1451,10 +1475,13 @@ function buildPagedResponse_(rows, options) {
   };
 }
 
-function createFifoBalanceComparisonContext_(asOfDate) {
+function createFifoBalanceComparisonContext_(asOfDate, options) {
+  const opts = options || {};
   return {
     as_of_date: asOfDate,
-    calendar_map: getCompanyCalendarMap(),
+    calendar_map: opts.read_only === true
+      ? getCompanyCalendarMapReadOnly_()
+      : getCompanyCalendarMap(),
     grants_by_employee: getPaidLeaveGrantRowsByEmployeeForFifoCompare_(),
     requests_by_employee: getLeaveRequestRowsByEmployeeForFifoCompare_()
   };
@@ -5002,16 +5029,27 @@ function verifyAdminLogin(adminId, pin) {
 function getSixMonthGrantCandidates(options) {
   const today = parseLocalDate(new Date());
   const employees = getEmployeesForAdmin();
-  const grantedMap = getSixMonthGrantProcessedMap_();
+  const grantRows = getInitialPaidLeaveGrantHistoryRows_();
   const opts = options || null;
 
   const rows = employees
-    .filter(emp => {
-      return isInitialPaidLeaveGrantCandidateEmployee_(emp, today, grantedMap);
-    })
     .map(emp => {
-      const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
-      const grantDays = getSixMonthGrantDays_(emp.work_days_per_week);
+      const eligibility = calculateInitialPaidLeaveGrantEligibility_(
+        emp,
+        grantRows,
+        today
+      );
+      return { emp: emp, eligibility: eligibility };
+    })
+    .filter(item => {
+      return isInitialPaidLeaveGrantExecutionCandidate_(
+        item.emp,
+        item.eligibility
+      );
+    })
+    .map(item => {
+      const emp = item.emp;
+      const eligibility = item.eligibility;
       const fiscalStartMonth = getInitialPaidLeaveFiscalStartMonth_(emp);
 
       return {
@@ -5019,11 +5057,14 @@ function getSixMonthGrantCandidates(options) {
         display_employee_id: emp.display_employee_id,
         name: getDisplayName(emp) || emp.name,
         hire_date: emp.hire_date,
-        six_month_date: formatDateValue(grantInfo.six_month_date),
-        company_basis_date: formatDateValue(grantInfo.company_basis_date),
-        grant_date: formatDateValue(grantInfo.grant_date),
-        grant_reason: grantInfo.grant_reason,
-        grant_days: grantDays,
+        six_month_date: eligibility.six_month_date || "",
+        company_basis_date: eligibility.company_basis_date || "",
+        grant_date: eligibility.next_grant_date,
+        grant_reason: eligibility.grant_reason,
+        grant_days: eligibility.expected_grant_days,
+        eligibility_status: eligibility.status,
+        is_provisional: eligibility.is_provisional,
+        warning_codes: eligibility.warning_codes,
         work_days_per_week: emp.work_days_per_week || "",
         company_code: emp.company_code || "",
         company_name: emp.company_name || "",
@@ -5050,79 +5091,63 @@ function getSixMonthGrantCandidates(options) {
 function grantSixMonthPaidLeave(employeeId, adminUser, options) {
   if (!employeeId) throw new Error("employeeId がありません");
 
-  const employees = getEmployeesForAdmin();
-  const emp = employees.find(e => String(e.employee_id) === String(employeeId));
+  return runInitialPaidLeaveGrantWithLock_(function() {
+    const employees = getEmployeesForAdmin();
+    const emp = employees.find(e => String(e.employee_id) === String(employeeId));
+    validateInitialPaidLeaveGrantEmployee_(emp, employeeId);
 
-  validateInitialPaidLeaveGrantExecutionTarget_(emp, employeeId);
+    const eligibility = calculateInitialPaidLeaveGrantEligibility_(
+      emp,
+      getInitialPaidLeaveGrantHistoryRows_(),
+      parseLocalDate(new Date())
+    );
+    assertInitialPaidLeaveGrantCanExecute_(eligibility);
 
-  const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
-  const grantDate = grantInfo.grant_date;
-  const systemGrantDays = getSixMonthGrantDays_(emp.work_days_per_week);
-  const grantDays = resolveGrantDaysOverride_(options, systemGrantDays);
-  const now = new Date();
+    const grantDate = parseLocalDate(eligibility.next_grant_date);
+    const grantDays = Number(eligibility.expected_grant_days);
+    const now = new Date();
+    const sheet = getSheet("paid_leave_grants");
+    const headerInfo = requireHeaders(sheet, INITIAL_PAID_LEAVE_GRANT_HEADERS_);
+    const rowObj = createEmptyRowObject(headerInfo.headers);
 
-  const sheet = getSheet("paid_leave_grants");
-  const headerInfo = requireHeaders(sheet, [
-    "grant_id",
-    "employee_id",
-    "grant_date",
-    "grant_days",
-    "carry_over_days",
-    "valid_from",
-    "valid_to",
-    "grant_type",
-    "year",
-    "notes",
-    "created_at",
-    "updated_at"
-  ]);
+    rowObj.grant_id = getNextGrantId_();
+    rowObj.employee_id = employeeId;
+    rowObj.grant_date = grantDate;
+    rowObj.grant_days = grantDays;
+    rowObj.carry_over_days = 0;
+    rowObj.valid_from = grantDate;
+    rowObj.valid_to = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
+    rowObj.grant_type = "six_month";
+    rowObj.year = getFiscalYearFromDateWithStart(
+      grantDate,
+      getInitialPaidLeaveFiscalStartMonth_(emp)
+    );
+    rowObj.notes = buildInitialPaidLeaveGrantNotes_(eligibility);
+    rowObj.created_at = now;
+    rowObj.updated_at = now;
 
-  const rowObj = createEmptyRowObject(headerInfo.headers);
+    appendRowFast_(sheet, objectToRow(rowObj, headerInfo.headers));
 
-  rowObj.grant_id = getNextGrantId_();
-  rowObj.employee_id = employeeId;
-  rowObj.grant_date = grantDate;
-  rowObj.grant_days = grantDays;
-  rowObj.carry_over_days = 0;
-  rowObj.valid_from = grantDate;
-  rowObj.valid_to = addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
-  rowObj.grant_type = "six_month";
-  rowObj.year = getFiscalYearFromDateWithStart(
-    grantDate,
-    getInitialPaidLeaveFiscalStartMonth_(emp)
-  );
-  const baseNotes = grantInfo.grant_reason === "company_basis"
-    ? "会社基準日による初回付与"
-    : "入社6か月到達による初回付与";
-  rowObj.notes = buildGrantDaysAdjustmentNotes_(baseNotes, systemGrantDays, grantDays);
-  rowObj.created_at = now;
-  rowObj.updated_at = now;
+    const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
+    const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
+    appendUsageLog({
+      request_id: employeeId,
+      action_type: "six_month_grant",
+      operator_id: operatorId,
+      operator_name: operatorName,
+      comment: emp.name + " さんへ " + grantDays + "日を初回有給付与しました（" + eligibility.grant_reason + "）"
+    });
 
-  appendRowFast_(
-  sheet,
-  objectToRow(rowObj, headerInfo.headers)
-);
-
-  const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
-  const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
-
-  appendUsageLog({
-    request_id: employeeId,
-    action_type: "six_month_grant",
-    operator_id: operatorId,
-    operator_name: operatorName,
-    comment: emp.name + " さんへ " + grantDays + "日を6か月到達付与しました"
+    clearAppCache();
+    return {
+      ok: true,
+      employee_id: employeeId,
+      name: emp.name,
+      grant_date: eligibility.next_grant_date,
+      grant_days: grantDays,
+      grant_reason: eligibility.grant_reason
+    };
   });
-
-  clearAppCache();
-
-  return {
-    ok: true,
-    employee_id: employeeId,
-    name: emp.name,
-    grant_date: formatDateValue(grantDate),
-    grant_days: grantDays
-  };
 }
 
 /* =========================
@@ -5131,76 +5156,62 @@ function grantSixMonthPaidLeave(employeeId, adminUser, options) {
 function markSixMonthGrantCandidateProcessed(employeeId, reason, adminUser) {
   if (!employeeId) throw new Error("employeeId がありません");
 
-  const employees = getEmployeesForAdmin();
-  const emp = employees.find(e => String(e.employee_id) === String(employeeId));
+  return runInitialPaidLeaveGrantWithLock_(function() {
+    const employees = getEmployeesForAdmin();
+    const emp = employees.find(e => String(e.employee_id) === String(employeeId));
+    validateInitialPaidLeaveGrantEmployee_(emp, employeeId);
 
-  validateInitialPaidLeaveGrantExecutionTarget_(emp, employeeId);
+    const eligibility = calculateInitialPaidLeaveGrantEligibility_(
+      emp,
+      getInitialPaidLeaveGrantHistoryRows_(),
+      parseLocalDate(new Date())
+    );
+    assertInitialPaidLeaveGrantCanExecute_(eligibility);
 
-  const grantInfo = getInitialPaidLeaveGrantInfo_(emp);
-  const grantDate = grantInfo.grant_date;
-  const now = new Date();
-  const note = String(reason || "").trim() ||
-    "手動入力済みのため6か月付与チェックを処理済みにした";
+    const grantDate = parseLocalDate(eligibility.next_grant_date);
+    const now = new Date();
+    const note = String(reason || "").trim() ||
+      "手動入力済みのため6か月付与チェックを処理済みにした";
+    const sheet = getSheet("paid_leave_grants");
+    const headerInfo = requireHeaders(sheet, INITIAL_PAID_LEAVE_GRANT_HEADERS_);
+    const rowObj = createEmptyRowObject(headerInfo.headers);
 
-  const sheet = getSheet("paid_leave_grants");
-  const headerInfo = requireHeaders(sheet, [
-    "grant_id",
-    "employee_id",
-    "grant_date",
-    "grant_days",
-    "carry_over_days",
-    "valid_from",
-    "valid_to",
-    "grant_type",
-    "year",
-    "notes",
-    "created_at",
-    "updated_at"
-  ]);
+    rowObj.grant_id = getNextGrantId_();
+    rowObj.employee_id = employeeId;
+    rowObj.grant_date = grantDate;
+    rowObj.grant_days = 0;
+    rowObj.carry_over_days = 0;
+    rowObj.valid_from = "";
+    rowObj.valid_to = "";
+    rowObj.grant_type = "six_month_processed";
+    rowObj.year = getFiscalYearFromDateWithStart(
+      grantDate,
+      getInitialPaidLeaveFiscalStartMonth_(emp)
+    );
+    rowObj.notes = note;
+    rowObj.created_at = now;
+    rowObj.updated_at = now;
+    appendRowFast_(sheet, objectToRow(rowObj, headerInfo.headers));
 
-  const rowObj = createEmptyRowObject(headerInfo.headers);
+    const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
+    const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
+    appendUsageLog({
+      request_id: employeeId,
+      action_type: "six_month_processed",
+      operator_id: operatorId,
+      operator_name: operatorName,
+      comment: emp.name + " さんの6か月付与チェックを処理済みにしました: " + note
+    });
 
-  rowObj.grant_id = getNextGrantId_();
-  rowObj.employee_id = employeeId;
-  rowObj.grant_date = grantDate;
-  rowObj.grant_days = 0;
-  rowObj.carry_over_days = 0;
-  rowObj.valid_from = "";
-  rowObj.valid_to = "";
-  rowObj.grant_type = "six_month_processed";
-  rowObj.year = getFiscalYearFromDateWithStart(
-    grantDate,
-    getInitialPaidLeaveFiscalStartMonth_(emp)
-  );
-  rowObj.notes = note;
-  rowObj.created_at = now;
-  rowObj.updated_at = now;
-
-  appendRowFast_(
-    sheet,
-    objectToRow(rowObj, headerInfo.headers)
-  );
-
-  const operatorId = adminUser && adminUser.admin_id ? adminUser.admin_id : "admin";
-  const operatorName = adminUser && adminUser.admin_name ? adminUser.admin_name : "管理者";
-
-  appendUsageLog({
-    request_id: employeeId,
-    action_type: "six_month_processed",
-    operator_id: operatorId,
-    operator_name: operatorName,
-    comment: emp.name + " さんの6か月付与チェックを処理済みにしました: " + note
+    clearAppCache();
+    return {
+      ok: true,
+      employee_id: employeeId,
+      name: emp.name,
+      grant_date: eligibility.next_grant_date,
+      grant_type: "six_month_processed"
+    };
   });
-
-  clearAppCache();
-
-  return {
-    ok: true,
-    employee_id: employeeId,
-    name: emp.name,
-    grant_date: formatDateValue(grantDate),
-    grant_type: "six_month_processed"
-  };
 }
 
 /* =========================
@@ -5250,6 +5261,618 @@ function getInitialPaidLeaveGrantInfo_(emp) {
     company_basis_date: companyBasisDate,
     grant_reason: "six_month"
   };
+}
+
+/* =========================
+   初回有給付与の正式規則（読み取り専用の純粋計算）
+   実付与処理はこの段階では変更しない。
+========================= */
+function calculateInitialPaidLeaveGrantEligibility_(emp, grantRows, asOfDateValue) {
+  const employee = emp || {};
+  const employeeId = String(employee.employee_id || "").trim();
+  const companyCode = String(employee.company_code || "").trim().toUpperCase();
+  const warningCodes = [];
+  const asOfDate = asOfDateValue
+    ? parseLocalDate(asOfDateValue)
+    : parseLocalDate(new Date());
+
+  if (!employeeId) {
+    return buildUnjudgeableInitialGrantEligibility_(
+      asOfDate,
+      ["EMPLOYEE_ID_MISSING"]
+    );
+  }
+
+  if (companyCode !== "MAIN" && companyCode !== "PARTNER") {
+    return buildUnjudgeableInitialGrantEligibility_(
+      asOfDate,
+      ["COMPANY_CODE_UNSUPPORTED"]
+    );
+  }
+
+  let hireDate;
+  try {
+    hireDate = parseLocalDate(employee.hire_date);
+  } catch (e) {
+    return buildUnjudgeableInitialGrantEligibility_(
+      asOfDate,
+      ["HIRE_DATE_INVALID"]
+    );
+  }
+
+  const processedGrant = findInitialGrantProcessedRecord_(employeeId, grantRows, asOfDate);
+  const initialGrant = calculateInitialPaidLeaveGrantPlan_(employee, hireDate, companyCode);
+
+  if (processedGrant) {
+    if (processedGrant.is_future) {
+      return buildUnjudgeableInitialGrantEligibility_(
+        asOfDate,
+        ["FUTURE_INITIAL_GRANT_HISTORY"]
+      );
+    }
+    if (!processedGrant.grant_date) {
+      warningCodes.push(
+        processedGrant.history_date_invalid
+          ? "INITIAL_GRANT_HISTORY_DATE_INVALID"
+          : "INITIAL_GRANT_HISTORY_DATE_MISSING"
+      );
+    }
+
+    return {
+      grant_stage: "INITIAL",
+      status: "PROCESSED",
+      as_of_date: formatInitialGrantDateKey_(asOfDate),
+      next_grant_date: initialGrant.next_grant_date,
+      expected_grant_days: initialGrant.expected_grant_days,
+      grant_reason: initialGrant.grant_reason,
+      is_provisional: initialGrant.is_provisional,
+      existing_grant_found: true,
+      processed_grant_type: processedGrant.grant_type,
+      processed_grant_date: processedGrant.grant_date,
+      processed_grant_days: processedGrant.grant_days,
+      processed_grant_notes: processedGrant.notes,
+      warning_codes: initialGrant.warning_codes.concat(warningCodes)
+    };
+  }
+
+  if (initialGrant.expected_grant_days === null) {
+    return Object.assign({}, initialGrant, {
+      status: "UNJUDGEABLE",
+      as_of_date: formatInitialGrantDateKey_(asOfDate),
+      existing_grant_found: false,
+      processed_grant_type: "",
+      processed_grant_date: "",
+      processed_grant_days: "",
+      processed_grant_notes: ""
+    });
+  }
+
+  const grantDate = parseLocalDate(initialGrant.next_grant_date);
+  let status = "UPCOMING";
+  if (grantDate.getTime() === asOfDate.getTime()) {
+    status = "DUE_TODAY";
+  } else if (grantDate < asOfDate) {
+    status = "OVERDUE";
+  }
+
+  return Object.assign({}, initialGrant, {
+    status: status,
+    as_of_date: formatInitialGrantDateKey_(asOfDate),
+    existing_grant_found: false,
+    processed_grant_type: "",
+    processed_grant_date: "",
+    processed_grant_days: "",
+    processed_grant_notes: ""
+  });
+}
+
+function calculateInitialPaidLeaveGrantPlan_(employee, hireDate, companyCode) {
+  const fiscalStartMonth = companyCode === "PARTNER" ? 6 : 4;
+  const sixMonthDate = addMonthsClampedLocal_(hireDate, 6);
+  let companyBasisDate = new Date(
+    hireDate.getFullYear(),
+    fiscalStartMonth - 1,
+    1
+  );
+
+  if (companyBasisDate < hireDate) {
+    companyBasisDate = new Date(
+      hireDate.getFullYear() + 1,
+      fiscalStartMonth - 1,
+      1
+    );
+  }
+
+  const isCompanyBasisAdvance = companyBasisDate < sixMonthDate;
+  const isHireDateCompanyBasisDate =
+    companyBasisDate.getTime() === hireDate.getTime();
+  const warningCodes = isHireDateCompanyBasisDate
+    ? ["HIRE_DATE_EQUALS_COMPANY_BASIS_DATE"]
+    : [];
+
+  const workDays = normalizeWorkDaysPerWeek_(employee.work_days_per_week);
+  const workDaysWarning = !isCompanyBasisAdvance && !workDays.is_valid
+    ? [workDays.warning_code]
+    : [];
+  return {
+    grant_stage: "INITIAL",
+    six_month_date: formatInitialGrantDateKey_(sixMonthDate),
+    company_basis_date: formatInitialGrantDateKey_(companyBasisDate),
+    next_grant_date: formatInitialGrantDateKey_(
+      isCompanyBasisAdvance ? companyBasisDate : sixMonthDate
+    ),
+    expected_grant_days: isCompanyBasisAdvance ? 10 :
+      (workDays.is_valid ? getSixMonthGrantDays_(workDays.value) : null),
+    grant_reason: isCompanyBasisAdvance
+      ? "INITIAL_COMPANY_BASIS"
+      : "INITIAL_SIX_MONTHS",
+    is_provisional: isHireDateCompanyBasisDate || workDaysWarning.length > 0,
+    warning_codes: warningCodes.concat(workDaysWarning)
+  };
+}
+
+const INITIAL_PAID_LEAVE_GRANT_HEADERS_ = [
+  "grant_id",
+  "employee_id",
+  "grant_date",
+  "grant_days",
+  "carry_over_days",
+  "valid_from",
+  "valid_to",
+  "grant_type",
+  "year",
+  "notes",
+  "created_at",
+  "updated_at"
+];
+
+function getInitialPaidLeaveGrantHistoryRows_() {
+  const sheet = getSheet("paid_leave_grants");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id",
+    "grant_type",
+    "grant_date",
+    "grant_days",
+    "notes"
+  ]);
+  const data = sheet.getDataRange().getValues();
+
+  if (data.length <= 1) return [];
+  return data.slice(1).map(row => rowToObject(row, headerInfo.headers));
+}
+
+function isInitialPaidLeaveGrantExecutionCandidate_(emp, eligibility) {
+  if (!isInitialPaidLeaveGrantEmployeeEligible_(emp)) return false;
+  return getInitialPaidLeaveGrantExecutionDecision_(eligibility).can_execute;
+}
+
+function isInitialPaidLeaveGrantEmployeeEligible_(emp) {
+  if (!emp || emp.initial_grant_check_target !== true) return false;
+
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+  const isActive = status === "active" || status === "在職";
+  return isActive && emp.leave_management_target === true;
+}
+
+function validateInitialPaidLeaveGrantEmployee_(emp, employeeId) {
+  if (!emp) throw new Error("対象社員が見つかりません");
+  if (String(emp.employee_id || "") !== String(employeeId || "")) {
+    throw new Error("対象社員IDが一致しません");
+  }
+  if (emp.initial_grant_check_target !== true) {
+    throw new Error("この社員は新規登録社員の初回付与チェック対象ではありません");
+  }
+
+  const status = String(emp.employment_status || "").trim().toLowerCase();
+  if (status !== "active" && status !== "在職") {
+    throw new Error("この社員は在職中ではないため初回付与を実行できません");
+  }
+  if (emp.leave_management_target !== true) {
+    throw new Error("この社員は有給管理の対象ではありません");
+  }
+}
+
+function getInitialPaidLeaveGrantExecutionDecision_(eligibility) {
+  const status = String(eligibility && eligibility.status || "");
+  if (status === "DUE_TODAY" || status === "OVERDUE") {
+    return { can_execute: true, error_message: "" };
+  }
+  if (status === "UPCOMING") {
+    return { can_execute: false, error_message: "この社員はまだ付与日を迎えていません。" };
+  }
+  if (status === "PROCESSED") {
+    return { can_execute: false, error_message: "この社員の初回付与はすでに処理されています。" };
+  }
+  if (status === "UNJUDGEABLE") {
+    return { can_execute: false, error_message: "会社情報または入社日の不整合により付与判定ができません。" };
+  }
+  return { can_execute: false, error_message: "この社員は初回付与の実行対象ではありません。" };
+}
+
+function assertInitialPaidLeaveGrantCanExecute_(eligibility) {
+  const decision = getInitialPaidLeaveGrantExecutionDecision_(eligibility);
+  if (!decision.can_execute) throw new Error(decision.error_message);
+}
+
+function buildInitialPaidLeaveGrantNotes_(eligibility) {
+  const isCompanyBasis = eligibility.grant_reason === "INITIAL_COMPANY_BASIS";
+  const baseNotes = isCompanyBasis
+    ? "初回付与（INITIAL_COMPANY_BASIS）: 会社基準日による初回付与"
+    : "初回付与（INITIAL_SIX_MONTHS）: 入社6か月到達による初回付与";
+  return eligibility.is_provisional
+    ? baseNotes + " / 要確認: 入社日と会社基準日が同日"
+    : baseNotes;
+}
+
+function runInitialPaidLeaveGrantWithLock_(callback) {
+  const lock = LockService.getScriptLock();
+  let locked = false;
+  try {
+    locked = lock.tryLock(30000);
+    if (!locked) {
+      throw new Error("初回付与処理が混み合っています。しばらくしてから再操作してください。");
+    }
+    return callback();
+  } finally {
+    if (locked) lock.releaseLock();
+  }
+}
+
+/* =========================
+   年次有給付与予定（読み取り専用の純粋計算）
+========================= */
+function calculateYearlyPaidLeaveGrantEligibility_(emp, grantRows, asOfDateValue) {
+  const employee = emp || {};
+  const employeeId = String(employee.employee_id || "").trim();
+  const asOfDate = parseLocalDate(asOfDateValue);
+  const warningCodes = [];
+
+  if (!employeeId) return buildUnjudgeableYearlyGrantEligibility_(asOfDate, ["EMPLOYEE_ID_MISSING"]);
+  const employmentStatus = String(employee.employment_status || "").trim().toLowerCase();
+  if (employmentStatus !== "active" && employmentStatus !== "在職") {
+    return buildNotEligibleYearlyGrantEligibility_(asOfDate, ["EMPLOYMENT_STATUS_NOT_ACTIVE"]);
+  }
+  if (employee.leave_management_target !== true) {
+    return buildNotEligibleYearlyGrantEligibility_(asOfDate, ["LEAVE_MANAGEMENT_TARGET_DISABLED"]);
+  }
+  const companyCode = String(employee.company_code || "").trim().toUpperCase();
+  if (companyCode !== "MAIN" && companyCode !== "PARTNER") {
+    return buildUnjudgeableYearlyGrantEligibility_(asOfDate, ["COMPANY_CODE_UNSUPPORTED"]);
+  }
+
+  let hireDate;
+  try {
+    hireDate = parseLocalDate(employee.hire_date);
+  } catch (e) {
+    return buildUnjudgeableYearlyGrantEligibility_(asOfDate, ["HIRE_DATE_INVALID"]);
+  }
+  if (hireDate > asOfDate) {
+    return buildNotEligibleYearlyGrantEligibility_(asOfDate, ["HIRE_DATE_IN_FUTURE"]);
+  }
+
+  const initialHistory = findInitialGrantProcessedRecord_(employeeId, grantRows, asOfDate);
+  if (initialHistory && initialHistory.is_future) {
+    return buildUnjudgeableYearlyGrantEligibility_(asOfDate, ["FUTURE_INITIAL_GRANT_HISTORY"]);
+  }
+  if (!initialHistory) {
+    return buildNotEligibleYearlyGrantEligibility_(asOfDate, ["INITIAL_GRANT_NOT_PROCESSED"]);
+  }
+
+  const expectedFiscalStartMonth = companyCode === "PARTNER" ? 6 : 4;
+  const configuredFiscalStartMonth = Number(employee.fiscal_start_month || expectedFiscalStartMonth);
+  if (configuredFiscalStartMonth !== expectedFiscalStartMonth) {
+    warningCodes.push("COMPANY_AND_FISCAL_MONTH_MISMATCH");
+  }
+
+  const yearlyPlan = calculateYearlyPaidLeaveGrantPlan_(
+    hireDate,
+    expectedFiscalStartMonth,
+    asOfDate
+  );
+  if (!yearlyPlan) {
+    return buildNotEligibleYearlyGrantEligibility_(asOfDate, warningCodes.concat(["YEARLY_GRANT_NOT_YET_APPLICABLE"]));
+  }
+
+  const yearlyHistory = findYearlyGrantHistoryForFiscalYear_(
+    employeeId,
+    grantRows,
+    yearlyPlan.fiscal_year,
+    expectedFiscalStartMonth,
+    asOfDate
+  );
+  warningCodes.push.apply(warningCodes, yearlyHistory.warning_codes);
+  const workDays = normalizeWorkDaysPerWeek_(employee.work_days_per_week);
+  const isShortTime = workDays.is_valid && workDays.value < 5;
+  if (isShortTime) warningCodes.push("YEARLY_PROPORTIONAL_GRANT_RULE_NOT_IMPLEMENTED");
+  if (!workDays.is_valid) warningCodes.push(workDays.warning_code);
+
+  const base = {
+    grant_stage: "YEARLY",
+    yearly_grant_stage: yearlyPlan.grant_stage,
+    as_of_date: formatInitialGrantDateKey_(asOfDate),
+    next_grant_date: yearlyPlan.next_grant_date,
+    fiscal_year: yearlyPlan.fiscal_year,
+    months_worked: yearlyPlan.months_worked,
+    grant_reason: "YEARLY_COMPANY_BASIS",
+    expected_grant_days: workDays.is_valid && !isShortTime ? yearlyPlan.normal_grant_days : null,
+    reference_grant_days: isShortTime ? yearlyPlan.normal_grant_days : null,
+    is_provisional: isShortTime || !workDays.is_valid || warningCodes.indexOf("COMPANY_AND_FISCAL_MONTH_MISMATCH") !== -1,
+    attendance_status: "ATTENDANCE_UNCONFIRMED",
+    requires_manual_confirmation: true,
+    existing_grant_found: yearlyHistory.rows.length > 0,
+    warning_codes: warningCodes
+  };
+
+  if (yearlyHistory.has_data_issue) {
+    return Object.assign(base, {
+      status: "UNJUDGEABLE",
+      processed_grant_type: "",
+      processed_grant_date: "",
+      processed_grant_days: "",
+      processed_grant_notes: ""
+    });
+  }
+  if (yearlyHistory.rows.length > 0) {
+    return Object.assign(base, {
+      status: "PROCESSED",
+      processed_grant_type: "yearly",
+      processed_grant_date: yearlyHistory.rows[0].grant_date || "",
+      processed_grant_days: yearlyHistory.rows[0].grant_days,
+      processed_grant_notes: yearlyHistory.rows[0].notes || ""
+    });
+  }
+
+  const nextGrantDate = parseLocalDate(yearlyPlan.next_grant_date);
+  return Object.assign(base, {
+    status: nextGrantDate > asOfDate ? "UPCOMING" :
+      (nextGrantDate.getTime() === asOfDate.getTime() ? "DUE_TODAY" : "OVERDUE"),
+    processed_grant_type: "",
+    processed_grant_date: "",
+    processed_grant_days: "",
+    processed_grant_notes: ""
+  });
+}
+
+function calculateYearlyPaidLeaveGrantPlan_(hireDate, fiscalStartMonth, asOfDate) {
+  let fiscalYear = getFiscalYearFromDateWithStart(asOfDate, fiscalStartMonth);
+  let basisDate = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth).start;
+  let monthsWorked = getMonthsWorked_(hireDate, basisDate);
+
+  if (monthsWorked < 18) {
+    fiscalYear++;
+    basisDate = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth).start;
+    monthsWorked = getMonthsWorked_(hireDate, basisDate);
+  }
+  if (monthsWorked < 18) return null;
+
+  return {
+    fiscal_year: fiscalYear,
+    next_grant_date: formatInitialGrantDateKey_(basisDate),
+    months_worked: monthsWorked,
+    normal_grant_days: getYearlyGrantDays_(monthsWorked),
+    grant_stage: getYearlyGrantStage_(monthsWorked)
+  };
+}
+
+function getYearlyGrantStage_(monthsWorked) {
+  if (monthsWorked >= 78) return "YEARLY_6_5_PLUS_YEARS";
+  if (monthsWorked >= 66) return "YEARLY_5_5_YEARS";
+  if (monthsWorked >= 54) return "YEARLY_4_5_YEARS";
+  if (monthsWorked >= 42) return "YEARLY_3_5_YEARS";
+  if (monthsWorked >= 30) return "YEARLY_2_5_YEARS";
+  return "YEARLY_1_5_YEARS";
+}
+
+function findYearlyGrantHistoryForFiscalYear_(employeeId, grantRows, fiscalYear, fiscalStartMonth, asOfDateValue) {
+  const rows = [];
+  const warningCodes = [];
+  let hasDataIssue = false;
+  const asOfDate = parseLocalDate(asOfDateValue);
+  const knownGrantTypes = {
+    six_month: true,
+    six_month_processed: true,
+    six_month_skipped: true,
+    initial: true,
+    yearly: true,
+    opening_balance_virtual_lot: true
+  };
+
+  (Array.isArray(grantRows) ? grantRows : []).forEach(row => {
+    if (String(row && row.employee_id || "").trim() !== String(employeeId)) return;
+    const grantType = String(row && row.grant_type || "").trim().toLowerCase();
+    if (!knownGrantTypes[grantType]) warningCodes.push("UNKNOWN_GRANT_TYPE");
+    if (grantType !== "yearly") return;
+
+    const rowYear = Number(row.year);
+    let dateFiscalYear = null;
+    let grantDateKey = "";
+    try {
+      if (row && row.grant_date) {
+        const parsedGrantDate = parseLocalDate(row.grant_date);
+        dateFiscalYear = getFiscalYearFromDateWithStart(parsedGrantDate, fiscalStartMonth);
+        grantDateKey = formatInitialGrantDateKey_(parsedGrantDate);
+      }
+    } catch (e) {
+      warningCodes.push("YEAR_AND_GRANT_DATE_MISMATCH");
+      hasDataIssue = true;
+    }
+    const isRelevant = rowYear === Number(fiscalYear) || dateFiscalYear === Number(fiscalYear);
+    if (!isRelevant) return;
+    if (!rowYear) {
+      warningCodes.push("YEARLY_GRANT_YEAR_MISSING");
+      hasDataIssue = true;
+      return;
+    }
+    if (dateFiscalYear === null || dateFiscalYear !== rowYear) {
+      warningCodes.push("YEAR_AND_GRANT_DATE_MISMATCH");
+      hasDataIssue = true;
+      return;
+    }
+    const grantDays = Number(row.grant_days || 0);
+    if (grantDays <= 0) {
+      warningCodes.push("ZERO_DAY_YEARLY_GRANT_HISTORY");
+      hasDataIssue = true;
+      return;
+    }
+    if (parseLocalDate(grantDateKey) > asOfDate) {
+      warningCodes.push("FUTURE_YEARLY_GRANT_HISTORY");
+      hasDataIssue = true;
+      return;
+    }
+    rows.push({ grant_date: grantDateKey, grant_days: grantDays, notes: String(row.notes || "") });
+  });
+  if (rows.length > 1) warningCodes.push("DUPLICATE_YEARLY_GRANT_HISTORY");
+  return { rows: rows, has_data_issue: hasDataIssue, warning_codes: uniqueWarningCodes_(warningCodes) };
+}
+
+function buildUnjudgeableYearlyGrantEligibility_(asOfDate, warningCodes) {
+  return {
+    grant_stage: "YEARLY", status: "UNJUDGEABLE",
+    as_of_date: formatInitialGrantDateKey_(asOfDate), next_grant_date: "",
+    expected_grant_days: "", reference_grant_days: null, grant_reason: "",
+    attendance_status: "ATTENDANCE_UNCONFIRMED", requires_manual_confirmation: true,
+    existing_grant_found: false, is_provisional: true,
+    warning_codes: uniqueWarningCodes_(warningCodes || [])
+  };
+}
+
+function buildNotEligibleYearlyGrantEligibility_(asOfDate, warningCodes) {
+  return Object.assign(buildUnjudgeableYearlyGrantEligibility_(asOfDate, warningCodes), {
+    status: "NOT_ELIGIBLE",
+    is_provisional: false
+  });
+}
+
+function calculateNextPaidLeaveGrantSchedule_(emp, grantRows, asOfDateValue) {
+  const employee = emp || {};
+  const asOfDate = parseLocalDate(asOfDateValue);
+  try {
+    if (employee.hire_date && parseLocalDate(employee.hire_date) > asOfDate) {
+      return buildUnjudgeableInitialGrantEligibility_(asOfDate, ["HIRE_DATE_IN_FUTURE"]);
+    }
+  } catch (e) {
+    return buildUnjudgeableInitialGrantEligibility_(asOfDate, ["HIRE_DATE_INVALID"]);
+  }
+  const employmentStatus = String(employee.employment_status || "").trim().toLowerCase();
+  if (employmentStatus !== "active" && employmentStatus !== "在職") {
+    return buildNotEligiblePaidLeaveGrantSchedule_(asOfDate, "INITIAL", ["EMPLOYMENT_STATUS_NOT_ACTIVE"]);
+  }
+  if (employee.leave_management_target !== true) {
+    return buildNotEligiblePaidLeaveGrantSchedule_(asOfDate, "INITIAL", ["LEAVE_MANAGEMENT_TARGET_DISABLED"]);
+  }
+  const initial = calculateInitialPaidLeaveGrantEligibility_(emp, grantRows, asOfDateValue);
+  if (initial.status !== "PROCESSED") return initial;
+  return calculateYearlyPaidLeaveGrantEligibility_(emp, grantRows, asOfDateValue);
+}
+
+function buildNotEligiblePaidLeaveGrantSchedule_(asOfDate, grantStage, warningCodes) {
+  return {
+    grant_stage: grantStage,
+    status: "NOT_ELIGIBLE",
+    as_of_date: formatInitialGrantDateKey_(asOfDate),
+    next_grant_date: "",
+    expected_grant_days: "",
+    reference_grant_days: null,
+    grant_reason: "",
+    attendance_status: "ATTENDANCE_UNCONFIRMED",
+    requires_manual_confirmation: false,
+    existing_grant_found: false,
+    is_provisional: false,
+    warning_codes: uniqueWarningCodes_(warningCodes || [])
+  };
+}
+
+function uniqueWarningCodes_(codes) {
+  return (codes || []).filter((code, index, all) => code && all.indexOf(code) === index);
+}
+
+function findInitialGrantProcessedRecord_(employeeId, grantRows, asOfDateValue) {
+  const processedTypes = {
+    six_month: true,
+    six_month_processed: true,
+    six_month_skipped: true,
+    initial: true
+  };
+
+  return (Array.isArray(grantRows) ? grantRows : [])
+    .filter(row => String(row && row.employee_id || "").trim() === String(employeeId))
+    .map(row => {
+      let grantDate = "";
+      let historyDateInvalid = false;
+
+      if (row && row.grant_date) {
+        try {
+          grantDate = formatInitialGrantDateKey_(parseLocalDate(row.grant_date));
+        } catch (e) {
+          historyDateInvalid = true;
+        }
+      }
+
+      const isFuture = grantDate && asOfDateValue && parseLocalDate(grantDate) > parseLocalDate(asOfDateValue);
+      return {
+        grant_type: String(row && row.grant_type || "").trim(),
+        grant_date: grantDate,
+        grant_days: row && row.grant_days != null ? Number(row.grant_days) : "",
+        notes: String(row && row.notes || ""),
+        history_date_invalid: historyDateInvalid,
+        is_future: isFuture
+      };
+    })
+    .find(row => processedTypes[row.grant_type]) || null;
+}
+
+function buildUnjudgeableInitialGrantEligibility_(asOfDate, warningCodes) {
+  return {
+    grant_stage: "INITIAL",
+    status: "UNJUDGEABLE",
+    as_of_date: formatInitialGrantDateKey_(asOfDate),
+    next_grant_date: "",
+    expected_grant_days: "",
+    grant_reason: "",
+    is_provisional: false,
+    existing_grant_found: false,
+    processed_grant_type: "",
+    processed_grant_date: "",
+    processed_grant_days: "",
+    processed_grant_notes: "",
+    warning_codes: warningCodes.slice()
+  };
+}
+
+function formatInitialGrantDateKey_(dateValue) {
+  const date = dateValue instanceof Date
+    ? dateValue
+    : parseLocalDate(dateValue);
+  return [
+    String(date.getFullYear()).padStart(4, "0"),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function addMonthsClampedLocal_(dateValue, months) {
+  const date = dateValue instanceof Date
+    ? dateValue
+    : parseLocalDate(dateValue);
+  const targetMonthStart = new Date(date.getFullYear(), date.getMonth() + Number(months || 0), 1);
+  const lastDay = new Date(targetMonthStart.getFullYear(), targetMonthStart.getMonth() + 1, 0).getDate();
+  return new Date(targetMonthStart.getFullYear(), targetMonthStart.getMonth(), Math.min(date.getDate(), lastDay));
+}
+
+function addMonthsForInitialGrant_(dateValue, months) {
+  return addMonthsClampedLocal_(dateValue, months);
+}
+
+function normalizeWorkDaysPerWeek_(value) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return { is_valid: false, value: null, warning_code: "WORK_DAYS_PER_WEEK_MISSING" };
+  }
+  const normalized = typeof value === "number" ? value :
+    (/^[1-5]$/.test(String(value).trim()) ? Number(String(value).trim()) : NaN);
+  if (!Number.isInteger(normalized) || normalized < 1 || normalized > 5) {
+    return { is_valid: false, value: null, warning_code: "INVALID_WORK_DAYS_PER_WEEK" };
+  }
+  return { is_valid: true, value: normalized, warning_code: null };
 }
 
 function getInitialPaidLeaveFiscalStartMonth_(emp) {
@@ -5542,6 +6165,187 @@ function getPaidLeaveDashboardData(filters) {
     row_count: rows.length,
     rows: rows
   };
+}
+
+/* =========================
+   管理者向け付与予定・要確認（完全読み取り専用）
+========================= */
+function getPaidLeaveGrantScheduleForAdmin(params) {
+  const opts = params || {};
+  const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate(new Date());
+  const daysAhead = Math.max(0, Math.min(Number(opts.days_ahead || 30), 366));
+  const includeProcessedDays = Math.max(0, Math.min(Number(opts.include_processed_days || 31), 366));
+  const companyCodeFilter = String(opts.company_code || "ALL").trim().toUpperCase();
+  const employees = getEmployeesForAdmin();
+  const grantRows = getInitialPaidLeaveGrantHistoryRows_();
+  const fifoContext = createFifoBalanceComparisonContext_(asOfDate, { read_only: true });
+  const horizon = addDaysLocal_(asOfDate, daysAhead);
+  const processedSince = addDaysLocal_(asOfDate, -includeProcessedDays);
+
+  const rows = employees
+    .filter(emp => isPaidLeaveGrantScheduleCompanyMatch_(emp, companyCodeFilter))
+    .map(emp => buildPaidLeaveGrantScheduleAdminRow_(emp, grantRows, asOfDate, fifoContext))
+    .filter(row => shouldIncludePaidLeaveGrantScheduleRow_(row, horizon, processedSince))
+    .sort(comparePaidLeaveGrantScheduleRows_);
+
+  const counts = {
+    upcoming: 0, due_today: 0, overdue: 0, needs_review: 0,
+    attendance_confirmation: 0, data_issue: 0, processed: 0, unjudgeable: 0
+  };
+  rows.forEach(row => {
+    const status = String(row.eligibility_status || "").toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(counts, status)) counts[status]++;
+    const dataIssue = row.data_issue === true;
+    const attendanceConfirmation = row.attendance_confirmation_required === true;
+    if (attendanceConfirmation) counts.attendance_confirmation++;
+    if (dataIssue) counts.data_issue++;
+    if (attendanceConfirmation || dataIssue) counts.needs_review++;
+  });
+
+  return {
+    success: true,
+    generated_at: new Date().toISOString(),
+    as_of_date: formatInitialGrantDateKey_(asOfDate),
+    days_ahead: daysAhead,
+    company_code: companyCodeFilter,
+    counts: counts,
+    rows: rows
+  };
+}
+
+function isPaidLeaveGrantScheduleCompanyMatch_(emp, companyCodeFilter) {
+  const filter = String(companyCodeFilter || "ALL").trim().toUpperCase();
+  return filter === "ALL" || String(emp && emp.company_code || "").trim().toUpperCase() === filter;
+}
+
+function buildPaidLeaveGrantScheduleAdminRow_(emp, grantRows, asOfDate, fifoContext) {
+  const employeeId = String(emp.employee_id || "").trim();
+  const schedule = calculateNextPaidLeaveGrantSchedule_(emp, grantRows, asOfDate);
+  const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(
+    employeeId,
+    asOfDate,
+    fifoContext
+  );
+  const fifo = buildPaidLeaveGrantScheduleFifoView_(fifoBalance, asOfDate);
+  const warningCodes = uniqueWarningCodes_(
+    (schedule.warning_codes || []).concat(fifo.warning_codes || [])
+  );
+  const dataIssue = hasPaidLeaveGrantScheduleDataIssue_(warningCodes);
+  const attendanceConfirmation = schedule.status !== "PROCESSED" &&
+    schedule.grant_stage === "YEARLY" &&
+    schedule.attendance_status === "ATTENDANCE_UNCONFIRMED";
+  const requiresManualConfirmation = attendanceConfirmation || dataIssue;
+
+  return {
+    employee_id: employeeId,
+    display_employee_id: String(emp.display_employee_id || ""),
+    employee_name: getDisplayName(emp) || emp.name || employeeId,
+    company_code: String(emp.company_code || ""),
+    company_name: String(emp.company_name || ""),
+    hire_date: emp.hire_date || "",
+    grant_stage: schedule.grant_stage || "",
+    yearly_grant_stage: schedule.yearly_grant_stage || "",
+    next_grant_date: schedule.next_grant_date || "",
+    expected_grant_days: schedule.expected_grant_days,
+    reference_grant_days: schedule.reference_grant_days,
+    grant_reason: schedule.grant_reason || "",
+    eligibility_status: schedule.status || "UNJUDGEABLE",
+    attendance_status: schedule.attendance_status || "ATTENDANCE_UNCONFIRMED",
+    attendance_confirmation_required: attendanceConfirmation,
+    data_issue: dataIssue,
+    requires_manual_confirmation: requiresManualConfirmation,
+    existing_grant_found: schedule.existing_grant_found === true,
+    is_provisional: schedule.is_provisional === true,
+    exclusion_reasons: schedule.status === "NOT_ELIGIBLE" ? warningCodes : [],
+    warning_codes: warningCodes,
+    fifo_balance: fifo
+  };
+}
+
+function buildPaidLeaveGrantScheduleFifoView_(fifoBalance, asOfDate) {
+  const targetDate = parseLocalDate(asOfDate);
+  const warningCodes = [];
+  const details = (fifoBalance.grant_details || []).map((lot, index) => {
+    const remainingDays = Number(lot.active_remaining_days != null
+      ? lot.active_remaining_days
+      : lot.remaining_days || 0);
+    const validTo = lot.valid_to || "";
+    let status = "ACTIVE";
+    let daysUntilExpiry = null;
+    if (validTo) {
+      const validToDate = parseLocalDate(validTo);
+      daysUntilExpiry = Math.floor((validToDate - targetDate) / 86400000);
+      if (validToDate < targetDate || lot.is_expired) status = "EXPIRED";
+      else if (parseLocalDate(lot.valid_from) > targetDate) status = "FUTURE";
+      else if (remainingDays <= 0) status = "FULLY_USED";
+      else if (daysUntilExpiry <= 30) status = "EXPIRING_SOON";
+    } else {
+      warningCodes.push("GRANT_VALIDITY_MISSING");
+    }
+    if (status === "EXPIRING_SOON") warningCodes.push("FIFO_LOT_EXPIRING_WITHIN_30_DAYS");
+    if (remainingDays < 0) warningCodes.push("NEGATIVE_FIFO_REMAINING");
+    if (status === "FUTURE") warningCodes.push("FUTURE_GRANT_INCLUDED");
+    if (lot.validity_needs_review) warningCodes.push("GRANT_VALIDITY_MISSING");
+    return {
+      grant_id: lot.grant_id,
+      grant_type: lot.grant_type,
+      grant_date: lot.grant_date,
+      valid_from: lot.valid_from,
+      valid_to: validTo,
+      original_days: Number(lot.total_days || 0),
+      used_days: Number(lot.used_days || 0),
+      remaining_days: remainingDays,
+      consumption_priority: status === "ACTIVE" || status === "EXPIRING_SOON" ? index + 1 : null,
+      status: status
+    };
+  });
+  const activeLots = details.filter(lot => lot.status === "ACTIVE" || lot.status === "EXPIRING_SOON");
+  activeLots.forEach((lot, index) => { lot.consumption_priority = index + 1; });
+  const duplicateIds = details.map(lot => lot.grant_id).filter((id, index, all) => id && all.indexOf(id) !== index);
+  if (duplicateIds.length > 0) warningCodes.push("DUPLICATE_GRANT_LOT");
+  const lotTotal = activeLots.reduce((sum, lot) => sum + Number(lot.remaining_days || 0), 0);
+  if (Math.abs(lotTotal - Number(fifoBalance.current_remaining_days || 0)) > 0.000001) {
+    warningCodes.push("FIFO_TOTAL_MISMATCH");
+  }
+  return {
+    total_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+    lots: details,
+    warning_codes: uniqueWarningCodes_(warningCodes)
+  };
+}
+
+function shouldIncludePaidLeaveGrantScheduleRow_(row, horizon, processedSince) {
+  const status = String(row.eligibility_status || "");
+  if (status === "NOT_ELIGIBLE") return false;
+  if (status === "OVERDUE" || status === "DUE_TODAY" || status === "UNJUDGEABLE") return true;
+  if (row.requires_manual_confirmation || (row.warning_codes || []).length > 0) return true;
+  if (status === "PROCESSED") {
+    if (!row.next_grant_date) return true;
+    return parseLocalDate(row.next_grant_date) >= processedSince;
+  }
+  if (status !== "UPCOMING" || !row.next_grant_date) return false;
+  return parseLocalDate(row.next_grant_date) <= horizon;
+}
+
+function hasPaidLeaveGrantScheduleDataIssue_(warningCodes) {
+  const attendanceOnly = {
+    YEARLY_PROPORTIONAL_GRANT_RULE_NOT_IMPLEMENTED: true
+  };
+  return (warningCodes || []).some(code => !attendanceOnly[code]);
+}
+
+function comparePaidLeaveGrantScheduleRows_(a, b) {
+  const priority = { OVERDUE: 1, DUE_TODAY: 2, UNJUDGEABLE: 3, NOT_ELIGIBLE: 4, UPCOMING: 5, PROCESSED: 6 };
+  const aPriority = priority[a.eligibility_status] || 99;
+  const bPriority = priority[b.eligibility_status] || 99;
+  if (aPriority !== bPriority) return aPriority - bPriority;
+  const aWarning = a.requires_manual_confirmation || (a.warning_codes || []).length > 0;
+  const bWarning = b.requires_manual_confirmation || (b.warning_codes || []).length > 0;
+  if (aWarning !== bWarning) return aWarning ? -1 : 1;
+  const aDate = a.next_grant_date || "9999-12-31";
+  const bDate = b.next_grant_date || "9999-12-31";
+  if (aDate !== bDate) return aDate < bDate ? -1 : 1;
+  return String(a.employee_id || "").localeCompare(String(b.employee_id || ""));
 }
 
 

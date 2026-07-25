@@ -1095,7 +1095,9 @@ function markSixMonthGrantProcessedAction(employeeId, name) {
 }
 
 function getInitialGrantReasonLabel(reason) {
-  if (reason === "company_basis") return "会社基準日を優先";
+  if (reason === "company_basis" || reason === "INITIAL_COMPANY_BASIS") {
+    return "会社基準日を優先";
+  }
   return "入社6か月到達";
 }
 
