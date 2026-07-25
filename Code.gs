@@ -6213,6 +6213,97 @@ function getPaidLeaveGrantScheduleForAdmin(params) {
   };
 }
 
+/*
+ * P0004補正後の付与予定APIを、シート等へ書き込まずに確認するための診断。
+ * 氏名・notes本文はログおよび戻り値に含めない。
+ */
+function debugPaidLeaveGrantScheduleApiAfterP0004Repair() {
+  const asOfDate = parseLocalDate("2026-07-25");
+  const options = {
+    as_of_date: formatInitialGrantDateKey_(asOfDate),
+    company_code: "PARTNER"
+  };
+  Logger.log("[PAID_LEAVE_GRANT_SCHEDULE_API] API実行開始");
+
+  try {
+    const employees = getEmployeesForAdmin();
+    const grantRows = getInitialPaidLeaveGrantHistoryRows_();
+    const p0004Employee = employees.find(emp =>
+      String(emp.employee_id || "").trim() === "EMP0062" &&
+      String(emp.display_employee_id || "").trim() === "P0004"
+    );
+    const p0004GrantRows = grantRows.filter(row =>
+      String(row.employee_id || "").trim() === "EMP0062" &&
+      (String(row.grant_id || "").trim() === "G0058" || String(row.grant_id || "").trim() === "G0061")
+    );
+    Logger.log("[PAID_LEAVE_GRANT_SCHEDULE_API] 社員件数: %s", employees.length);
+    Logger.log("[PAID_LEAVE_GRANT_SCHEDULE_API] 対象行件数: %s", p0004GrantRows.length);
+    if (!p0004Employee) throw new Error("P0004 / EMP0062 が社員マスターに見つかりません。");
+
+    Logger.log("[PAID_LEAVE_GRANT_SCHEDULE_API] P0004の計算開始");
+    const response = getPaidLeaveGrantScheduleForAdmin(options);
+    const fifoContext = createFifoBalanceComparisonContext_(asOfDate, { read_only: true });
+    const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(
+      "EMP0062",
+      asOfDate,
+      fifoContext
+    );
+    const p0004Schedule = buildPaidLeaveGrantScheduleAdminRow_(
+      p0004Employee,
+      grantRows,
+      asOfDate,
+      fifoContext
+    );
+    const diagnostic = buildPaidLeaveGrantScheduleApiAfterP0004RepairDiagnostic_(
+      response,
+      p0004Schedule,
+      fifoBalance
+    );
+    Logger.log("[PAID_LEAVE_GRANT_SCHEDULE_API] P0004の計算完了: %s", JSON.stringify(diagnostic.p0004));
+    Logger.log("[PAID_LEAVE_GRANT_SCHEDULE_API] APIレスポンス生成完了");
+    return diagnostic;
+  } catch (error) {
+    Logger.log("[PAID_LEAVE_GRANT_SCHEDULE_API] API実行失敗: %s", String(error && error.message || error));
+    throw error;
+  }
+}
+
+function buildPaidLeaveGrantScheduleApiAfterP0004RepairDiagnostic_(response, p0004Schedule, fifoBalance) {
+  const apiResponse = response || {};
+  const schedule = p0004Schedule || {};
+  const fifo = fifoBalance || {};
+  const activeLots = (fifo.grant_details || [])
+    .filter(lot => Number(lot.active_remaining_days || 0) > 0)
+    .slice()
+    .sort((a, b) => String(a.valid_to || "").localeCompare(String(b.valid_to || "")));
+  const nearestExpiryLot = activeLots[0] || null;
+  const nearestExpiryDate = nearestExpiryLot ? String(nearestExpiryLot.valid_to || "") : "";
+  const nearestExpiryDateKey = nearestExpiryDate
+    ? formatInitialGrantDateKey_(nearestExpiryDate)
+    : "";
+
+  return {
+    ok: apiResponse.success === true,
+    read_only: true,
+    api_employee_count: Array.isArray(apiResponse.rows) ? apiResponse.rows.length : 0,
+    p0004: {
+      employee_id: "EMP0062",
+      display_employee_id: "P0004",
+      current_remaining_days: Number(fifo.current_remaining_days || 0),
+      expired_days: Number(fifo.expired_days || 0),
+      nearest_expiry_date: nearestExpiryDate,
+      grant_schedule_status: String(schedule.eligibility_status || ""),
+      warning_codes: Array.isArray(schedule.warning_codes) ? schedule.warning_codes.slice() : [],
+      fifo_lot_count: Array.isArray(fifo.grant_details) ? fifo.grant_details.length : 0
+    },
+    expected_values_check: {
+      current_remaining_days_9_5: Number(fifo.current_remaining_days || 0) === 9.5,
+      expired_days_0: Number(fifo.expired_days || 0) === 0,
+      nearest_expiry_date_2028_05_31: nearestExpiryDateKey === "2028-05-31"
+    }
+  };
+}
+
 function isPaidLeaveGrantScheduleCompanyMatch_(emp, companyCodeFilter) {
   const filter = String(companyCodeFilter || "ALL").trim().toUpperCase();
   return filter === "ALL" || String(emp && emp.company_code || "").trim().toUpperCase() === filter;
