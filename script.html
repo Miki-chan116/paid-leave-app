@@ -12,6 +12,17 @@ let selectedEndDateKey = "";
 let loadedHistoryEmployeeId = "";
 let employeeLeaveHistoryRows = [];
 let editingRequestId = "";
+let timeLeaveSelection = null;
+let timeLeaveModalState = {
+  mode: "",
+  leave_date: "",
+  half_day: "",
+  start_time: "",
+  requested_minutes: 0,
+  end_time: "",
+  candidates: null
+};
+let timeLeaveCandidateCache = {};
 
 function isPersonalPageMode() {
   if (typeof INITIAL_EMPLOYEE_ID === "undefined") {
@@ -56,6 +67,7 @@ function setupPersonalPageMode() {
    初期化
 ========================= */
 function initPage() {
+  clearTimeLeaveCandidateCache_();
   setupPersonalPageMode();
 
   google.script.run
@@ -268,6 +280,7 @@ function escapeHtml(str) {
 ========================= */
 function selectEmployee(emp) {
   selectedEmployee = emp;
+  clearTimeLeaveCandidateCache_();
   clearEditingRequestState();
 
   // 前の人の申請区分・選択状態をリセット
@@ -281,6 +294,7 @@ function selectEmployee(emp) {
   if (multiDayArea) {
     multiDayArea.style.display = "none";
   }
+  resetTimeLeaveFields_();
 
   resetSelectedDates();
 
@@ -308,6 +322,8 @@ function selectEmployee(emp) {
 
   document.getElementById("fiveDayMessage").textContent =
     emp.five_day_completed ? "達成済み" : `あと${remain}日`;
+
+  loadEmployeeTimeLeaveSummary_(emp.employee_id);
 
   calendarDisplayDate = new Date();
   renderRequestCalendar();
@@ -345,6 +361,12 @@ function handleReasonTypeChange() {
    申請区分
 ========================= */
 function selectRequestType(type) {
+  const isTimeLeaveType = type === "time_hourly" || type === "half_day_time_hourly";
+  if (isTimeLeaveType && isEditingRequest()) {
+    alert("時間年休の修正は現在この画面ではできません。編集をやめてから新規申請してください。");
+    return;
+  }
+
   const buttons = document.querySelectorAll(".type-btn");
   buttons.forEach(btn => btn.classList.remove("active"));
 
@@ -354,7 +376,9 @@ function selectRequestType(type) {
     one_day: "typeOneDay",
     half_am: "typeHalfAm",
     half_pm: "typeHalfPm",
-    multi_day: "typeMultiDay"
+    multi_day: "typeMultiDay",
+    time_hourly: "typeTimeLeave",
+    half_day_time_hourly: "typeCombinedTimeLeave"
   };
 
   const activeBtn = document.getElementById(map[type]);
@@ -366,6 +390,11 @@ function selectRequestType(type) {
   }
 
   resetSelectedDates();
+  if (!isTimeLeaveType) {
+    resetTimeLeaveFields_();
+  } else {
+    resetTimeLeaveSelection_();
+  }
   updateHiddenDateInputs();
   updateCalendarStatus();
   renderRequestCalendar();
@@ -411,6 +440,7 @@ function resetRequestFormForNewRequest() {
   if (multiDayArea) {
     multiDayArea.style.display = "none";
   }
+  resetTimeLeaveFields_();
 
   resetSelectedDates();
 
@@ -486,6 +516,23 @@ function resetSelectedDates() {
   updateHiddenDateInputs();
 }
 
+function resetTimeLeaveFields_() {
+  resetTimeLeaveSelection_();
+  ["timeLeaveModal", "combinedTimeLeaveModal"].forEach(id => {
+    const modal = document.getElementById(id);
+    if (modal) modal.style.display = "none";
+  });
+}
+
+function resetTimeLeaveSelection_() {
+  timeLeaveSelection = null;
+  timeLeaveModalState = {
+    mode: "", leave_date: "", half_day: "", start_time: "",
+    requested_minutes: 0, end_time: "", candidates: null
+  };
+  renderTimeLeaveSummary_();
+}
+
 /* =========================
    input連携
 ========================= */
@@ -505,6 +552,7 @@ function updateHiddenDateInputs() {
   if (rangeEndDate) {
     rangeEndDate.value = currentRequestType === "multi_day" ? selectedEndDateKey : "";
   }
+
 }
 
 function handleRequestTypeChange() {
@@ -530,6 +578,304 @@ function handleRequestTypeChange() {
 
 function syncCalendarFromInput() {
   handleRequestTypeChange();
+}
+
+function isTimeLeaveRequestType_(type) {
+  return type === "time_hourly" || type === "half_day_time_hourly";
+}
+
+function getTimeLeaveModalPrefix_(mode) {
+  return mode === "half_day_time_hourly" ? "combinedTimeLeave" : "timeLeave";
+}
+
+function getTimeLeaveModalId_(mode) {
+  return mode === "half_day_time_hourly" ? "combinedTimeLeaveModal" : "timeLeaveModal";
+}
+
+function getTimeLeaveCandidateCacheKey_(employeeId, leaveDate, mode, halfDay) {
+  return [String(employeeId || "").trim(), leaveDate || "", mode || "", halfDay || ""].join("|");
+}
+
+function clearTimeLeaveCandidateCache_() {
+  timeLeaveCandidateCache = {};
+}
+
+function openSelectedTimeLeaveModal() {
+  if (isTimeLeaveRequestType_(currentRequestType)) openTimeLeaveModal_(currentRequestType);
+}
+
+function openTimeLeaveModal_(mode, dateKey) {
+  if (!selectedEmployee) {
+    alert("社員を選択してください");
+    return;
+  }
+  const selection = timeLeaveSelection && timeLeaveSelection.mode === mode ? timeLeaveSelection : null;
+  timeLeaveModalState = {
+    mode: mode,
+    leave_date: dateKey || (selection ? selection.leave_date : selectedStartDateKey),
+    half_day: selection ? selection.half_day : "",
+    start_time: selection ? selection.start_time : "",
+    requested_minutes: selection ? selection.requested_minutes : 0,
+    end_time: selection ? selection.end_time : "",
+    candidates: null
+  };
+  const modal = document.getElementById(getTimeLeaveModalId_(mode));
+  if (modal) modal.style.display = "flex";
+  renderTimeLeaveModal_(mode);
+  if (timeLeaveModalState.leave_date && (mode === "time_hourly" || timeLeaveModalState.half_day)) {
+    fetchTimeLeaveCandidates_(mode);
+  }
+}
+
+function closeTimeLeaveModal(mode) {
+  const modal = document.getElementById(getTimeLeaveModalId_(mode));
+  if (modal) modal.style.display = "none";
+}
+
+function selectCombinedHalfDay(halfDay) {
+  if (timeLeaveModalState.half_day === halfDay && timeLeaveModalState.loading) return;
+  timeLeaveModalState.half_day = halfDay;
+  timeLeaveModalState.start_time = "";
+  timeLeaveModalState.requested_minutes = 0;
+  timeLeaveModalState.end_time = "";
+  timeLeaveModalState.candidates = null;
+  renderTimeLeaveModal_("half_day_time_hourly");
+  if (timeLeaveModalState.leave_date) fetchTimeLeaveCandidates_("half_day_time_hourly");
+}
+
+function fetchTimeLeaveCandidates_(mode) {
+  const state = timeLeaveModalState;
+  if (!state.leave_date || !selectedEmployee) return;
+  const cacheKey = getTimeLeaveCandidateCacheKey_(selectedEmployee.employee_id, state.leave_date, mode, state.half_day);
+  const requestKey = cacheKey + "|" + Date.now();
+  state.request_key = requestKey;
+  state.loading = true;
+  setTimeLeaveModalStatus_(mode, "有効な候補を確認しています...", "loading");
+  renderTimeLeaveModal_(mode);
+  if (timeLeaveCandidateCache[cacheKey]) {
+    state.candidates = timeLeaveCandidateCache[cacheKey];
+    state.loading = false;
+    const current = findTimeLeaveCandidate_(state.start_time, state.requested_minutes);
+    if (!current) {
+      state.start_time = "";
+      state.requested_minutes = 0;
+      state.end_time = "";
+    } else {
+      state.end_time = current.end_time;
+    }
+    renderTimeLeaveModal_(mode);
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(result => {
+      if (timeLeaveModalState.request_key !== requestKey) return;
+      timeLeaveModalState.candidates = result || null;
+      timeLeaveCandidateCache[cacheKey] = result || null;
+      timeLeaveModalState.loading = false;
+      const current = findTimeLeaveCandidate_(timeLeaveModalState.start_time, timeLeaveModalState.requested_minutes);
+      if (!current) {
+        timeLeaveModalState.start_time = "";
+        timeLeaveModalState.requested_minutes = 0;
+        timeLeaveModalState.end_time = "";
+      } else {
+        timeLeaveModalState.end_time = current.end_time;
+      }
+      renderTimeLeaveModal_(mode);
+    })
+    .withFailureHandler(err => {
+      if (timeLeaveModalState.request_key !== requestKey) return;
+      timeLeaveModalState.candidates = null;
+      timeLeaveModalState.loading = false;
+      renderTimeLeaveModal_(mode);
+      setTimeLeaveModalStatus_(mode, getErrorMessage_(err), "error");
+    })
+    .getTimeLeaveCandidates({
+      employee_id: selectedEmployee.employee_id,
+      leave_date: state.leave_date,
+      request_mode: mode,
+      half_day: mode === "half_day_time_hourly" ? state.half_day : ""
+    });
+}
+
+function getErrorMessage_(err) {
+  return err && err.message ? err.message : (typeof err === "string" ? err : "エラーが発生しました");
+}
+
+function getTimeLeaveStartOptions_() {
+  const data = timeLeaveModalState.candidates || {};
+  return Array.isArray(data.start_options) ? data.start_options : [];
+}
+
+function findTimeLeaveCandidate_(startTime, requestedMinutes) {
+  return (timeLeaveModalState.candidates && timeLeaveModalState.candidates.candidates || []).find(item =>
+    item.start_time === startTime && Number(item.requested_minutes) === Number(requestedMinutes)
+  );
+}
+
+function selectTimeLeaveStart_(startTime) {
+  timeLeaveModalState.start_time = startTime;
+  timeLeaveModalState.requested_minutes = 0;
+  timeLeaveModalState.end_time = "";
+  renderTimeLeaveModal_(timeLeaveModalState.mode);
+}
+
+function selectTimeLeaveDuration_(requestedMinutes) {
+  const candidate = findTimeLeaveCandidate_(timeLeaveModalState.start_time, requestedMinutes);
+  if (!candidate) return;
+  timeLeaveModalState.requested_minutes = Number(candidate.requested_minutes);
+  timeLeaveModalState.end_time = candidate.end_time;
+  renderTimeLeaveModal_(timeLeaveModalState.mode);
+}
+
+function createTimeLeaveChoiceButton_(label, active, callback) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "time-leave-choice-btn" + (active ? " active" : "");
+  button.textContent = label;
+  button.onclick = callback;
+  return button;
+}
+
+function formatLeaveHours_(minutes) {
+  const value = Number(minutes || 0);
+  const hours = Math.floor(value / 60);
+  const remainder = value % 60;
+  return remainder ? `${hours}時間${remainder}分` : `${hours}時間`;
+}
+
+function loadEmployeeTimeLeaveSummary_(employeeId) {
+  const wrap = document.getElementById("timeLeaveUsage");
+  const remaining = document.getElementById("timeLeaveRemaining");
+  const detail = document.getElementById("timeLeaveUsageDetail");
+  if (!wrap || !remaining || !detail) return;
+  wrap.style.display = "none";
+  const targetId = String(employeeId || "").trim();
+  if (!targetId) return;
+
+  google.script.run
+    .withSuccessHandler(result => {
+      if (!selectedEmployee || String(selectedEmployee.employee_id || "").trim() !== targetId) return;
+      const annual = result && result.annual_time_leave;
+      if (!annual) return;
+      wrap.style.display = "grid";
+      remaining.textContent = `残 ${formatLeaveHours_(annual.remaining_minutes)} / ${formatLeaveHours_(annual.annual_limit_minutes)}`;
+      detail.textContent = `使用済 ${formatLeaveHours_(annual.approved_minutes)}｜申請中 ${formatLeaveHours_(annual.pending_minutes)}`;
+    })
+    .withFailureHandler(() => {
+      if (selectedEmployee && String(selectedEmployee.employee_id || "").trim() === targetId) {
+        wrap.style.display = "none";
+      }
+    })
+    .getEmployeeTimeLeaveSummary(targetId);
+}
+
+function setTimeLeaveModalStatus_(mode, message, kind) {
+  const status = document.getElementById(getTimeLeaveModalPrefix_(mode) + "ModalStatus");
+  if (!status) return;
+  status.className = "time-leave-modal-status" + (kind ? " " + kind : "");
+  status.textContent = message;
+}
+
+function renderTimeLeaveModal_(mode) {
+  const prefix = getTimeLeaveModalPrefix_(mode);
+  const state = timeLeaveModalState;
+  const dateLabel = document.getElementById(prefix + "ModalDateLabel");
+  if (dateLabel) dateLabel.textContent = formatTimeLeaveDateLabel_(state.leave_date);
+  if (mode === "half_day_time_hourly") {
+    ["am", "pm"].forEach(value => {
+      const button = document.getElementById(value === "am" ? "combinedHalfAm" : "combinedHalfPm");
+      if (button) button.classList.toggle("active", state.half_day === value);
+    });
+  }
+  const startContainer = document.getElementById(prefix + "StartOptions");
+  const durationContainer = document.getElementById(prefix + "DurationOptions");
+  if (startContainer) {
+    startContainer.innerHTML = "";
+    getTimeLeaveStartOptions_().forEach(option => {
+      const button = createTimeLeaveChoiceButton_(
+        option.start_time, state.start_time === option.start_time, () => selectTimeLeaveStart_(option.start_time)
+      );
+      button.disabled = !!state.loading;
+      startContainer.appendChild(button);
+    });
+  }
+  if (durationContainer) {
+    durationContainer.innerHTML = "";
+    const selectedStart = getTimeLeaveStartOptions_().find(item => item.start_time === state.start_time);
+    (selectedStart ? selectedStart.duration_options : []).forEach(option => {
+      const button = createTimeLeaveChoiceButton_(
+        formatLeaveHours_(option.requested_minutes), Number(state.requested_minutes) === Number(option.requested_minutes),
+        () => selectTimeLeaveDuration_(option.requested_minutes)
+      );
+      button.disabled = !!state.loading;
+      durationContainer.appendChild(button);
+    });
+  }
+  const candidateCount = (state.candidates && state.candidates.candidates || []).length;
+  const confirmButton = document.getElementById(mode === "half_day_time_hourly" ? "combinedTimeLeaveConfirmButton" : "timeLeaveConfirmButton");
+  if (confirmButton) confirmButton.disabled = !!state.loading || !state.end_time;
+  if (state.loading) setTimeLeaveModalStatus_(mode, "取得可能な時間を確認しています...", "loading");
+  else if (!state.leave_date) setTimeLeaveModalStatus_(mode, "カレンダーから取得日を選択してください。");
+  else if (mode === "half_day_time_hourly" && !state.half_day) setTimeLeaveModalStatus_(mode, "半休区分を選択してください。");
+  else if (state.candidates && candidateCount === 0) setTimeLeaveModalStatus_(mode, "この日は選択できる時間年休がありません。", "error");
+  else if (state.candidates && !state.start_time) setTimeLeaveModalStatus_(mode, "開始時刻を選択してください。", "ok");
+  else if (state.start_time && !state.requested_minutes) setTimeLeaveModalStatus_(mode, "取得時間を選択してください。", "ok");
+  else if (state.end_time) setTimeLeaveModalStatus_(mode, "申請内容を確認して設定してください。", "ok");
+
+  const summary = document.getElementById(prefix + "ModalSummary");
+  if (summary) summary.textContent = buildTimeLeaveSummaryText_(Object.assign({}, state, { mode: mode }), true);
+}
+
+function formatTimeLeaveDateLabel_(dateKey) {
+  if (!dateKey) return "—";
+  const date = new Date(dateKey + "T00:00:00");
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${date.getMonth() + 1}月${date.getDate()}日（${weekdays[date.getDay()]}）`;
+}
+
+function buildTimeLeaveSummaryText_(selection, detailed) {
+  if (!selection || !selection.leave_date || !selection.start_time || !selection.end_time || !selection.requested_minutes) return "";
+  const date = formatDateLabel(selection.leave_date);
+  if (selection.mode === "half_day_time_hourly") {
+    const half = selection.half_day === "am" ? "AM半休" : "PM半休";
+    const total = 210 + Number(selection.requested_minutes);
+    return detailed
+      ? `選択内容：${half} ＋ ${selection.start_time} → ${selection.end_time}\n時間年休：${formatLeaveHours_(selection.requested_minutes)}　当日の有給使用量：${formatLeaveHours_(total)}\n※休憩時間は自動的に除外されます`
+      : `半休＋時間年休\n${date}\n${half} ＋ ${selection.start_time}〜${selection.end_time}\n合計 ${formatLeaveHours_(total)}`;
+  }
+  return detailed
+    ? `選択内容：${selection.start_time} → ${selection.end_time}\n取得時間：${formatLeaveHours_(selection.requested_minutes)}\n※休憩時間は自動的に除外されます`
+    : `時間年休\n${date}\n${selection.start_time}〜${selection.end_time}\n取得 ${formatLeaveHours_(selection.requested_minutes)}`;
+}
+
+function confirmTimeLeaveModal(mode) {
+  const state = timeLeaveModalState;
+  const candidate = findTimeLeaveCandidate_(state.start_time, state.requested_minutes);
+  if (!state.leave_date || !candidate || !state.end_time) {
+    setTimeLeaveModalStatus_(mode, "取得日・開始時刻・取得時間を選択してください。", "error");
+    return;
+  }
+  timeLeaveSelection = {
+    mode: mode, leave_date: state.leave_date, half_day: mode === "half_day_time_hourly" ? state.half_day : "",
+    start_time: candidate.start_time, end_time: candidate.end_time, requested_minutes: Number(candidate.requested_minutes)
+  };
+  selectedStartDateKey = timeLeaveSelection.leave_date;
+  selectedEndDateKey = timeLeaveSelection.leave_date;
+  calendarDisplayDate = new Date(timeLeaveSelection.leave_date + "T00:00:00");
+  closeTimeLeaveModal(mode);
+  renderTimeLeaveSummary_();
+  updateHiddenDateInputs();
+  updateCalendarStatus();
+  renderRequestCalendar();
+}
+
+function renderTimeLeaveSummary_() {
+  const area = document.getElementById("timeLeaveSummaryArea");
+  const summary = document.getElementById("timeLeaveSummary");
+  if (!area || !summary) return;
+  const show = !!(timeLeaveSelection && isTimeLeaveRequestType_(currentRequestType));
+  area.style.display = show ? "block" : "none";
+  summary.textContent = show ? buildTimeLeaveSummaryText_(timeLeaveSelection, false) : "";
 }
 
 /* =========================
@@ -592,6 +938,16 @@ function selectCalendarDate(dateKey) {
 
   if (type !== "workday") {
     alert("この日は有給申請できません");
+    return;
+  }
+
+  if (isTimeLeaveRequestType_(currentRequestType)) {
+    selectedStartDateKey = dateKey;
+    selectedEndDateKey = dateKey;
+    updateHiddenDateInputs();
+    updateCalendarStatus();
+    renderRequestCalendar();
+    openTimeLeaveModal_(currentRequestType, dateKey);
     return;
   }
 
@@ -680,6 +1036,18 @@ function updateCalendarStatus() {
     box.classList.add("ok");
     box.textContent =
      `${formatDateLabel(selectedStartDateKey)} 〜 ${formatDateLabel(selectedEndDateKey)}（${leaveDays}日間）選択中`;
+    return;
+  }
+
+  if (isTimeLeaveRequestType_(currentRequestType)) {
+    if (!timeLeaveSelection) {
+      box.textContent = currentRequestType === "time_hourly"
+        ? "時間年休：モーダルで取得内容を設定してください。"
+        : "半休＋時間年休：モーダルで取得内容を設定してください。";
+      return;
+    }
+    box.classList.add("ok");
+    box.textContent = buildTimeLeaveSummaryText_(timeLeaveSelection, true);
     return;
   }
 
@@ -811,6 +1179,28 @@ function submitRequest() {
     return;
   }
 
+  const isTimeLeave = currentRequestType === "time_hourly";
+  const isCombinedTimeLeave = currentRequestType === "half_day_time_hourly";
+  const isTimeLeaveRelated = isTimeLeave || isCombinedTimeLeave;
+  let timeLeavePayload = null;
+  if (isTimeLeaveRelated) {
+    if (!timeLeaveSelection || timeLeaveSelection.mode !== currentRequestType) {
+      alert("時間年休の取得内容を設定してください。");
+      return;
+    }
+    timeLeavePayload = {
+      employee_id: selectedEmployee.employee_id,
+      leave_date: timeLeaveSelection.leave_date,
+      start_time: timeLeaveSelection.start_time,
+      end_time: timeLeaveSelection.end_time,
+      reason: reason,
+      reason_detail: detail
+    };
+    if (isCombinedTimeLeave) timeLeavePayload.half_day = timeLeaveSelection.half_day;
+    startDate = timeLeaveSelection.leave_date;
+    endDate = timeLeaveSelection.leave_date;
+  }
+
   const payload = {
     employee_id: selectedEmployee.employee_id,
     start_date: startDate,
@@ -854,7 +1244,9 @@ function submitRequest() {
       }
 
       clearEditingRequestState();
+      clearTimeLeaveCandidateCache_();
       resetSelectedDates();
+      if (isTimeLeaveRelated) resetTimeLeaveFields_();
       renderRequestCalendar();
       loadedHistoryEmployeeId = "";
       loadEmployeeLeaveHistory(targetEmployeeId);
@@ -932,7 +1324,7 @@ function submitRequest() {
 }, 2500);
     })
     .withFailureHandler(err => {
-      console.error(isEditing ? "updatePendingLeaveRequestForEmployee error:" : "submitLeaveRequest error:", err);
+      console.error(isTimeLeaveRelated ? "time leave submit error:" : (isEditing ? "updatePendingLeaveRequestForEmployee error:" : "submitLeaveRequest error:"), err);
 
       let message = "エラーが発生しました";
 
@@ -958,7 +1350,11 @@ function submitRequest() {
       }
     });
 
-  if (isEditing) {
+  if (isTimeLeave) {
+    runner.submitTimeLeaveRequest(timeLeavePayload);
+  } else if (isCombinedTimeLeave) {
+    runner.submitCombinedHalfDayAndTimeLeaveRequest(timeLeavePayload);
+  } else if (isEditing) {
     runner.updatePendingLeaveRequestForEmployee(targetRequestId, targetEmployeeId, payload);
   } else {
     runner.submitLeaveRequest(payload);
@@ -1191,6 +1587,7 @@ function cancelLeaveRequestFromHistory(requestId) {
 
   google.script.run
     .withSuccessHandler(() => {
+      clearTimeLeaveCandidateCache_();
       if (editingRequestId === targetId) {
         clearEditingRequestState();
         resetRequestFormForNewRequest();

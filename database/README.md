@@ -9,6 +9,7 @@ Run the files in this order:
 1. `001_initial_schema.sql`
 2. `002_indexes.sql`
 3. `003_triggers.sql`
+4. `004_add_time_leave.sql`
 
 ## Initial Setup
 
@@ -24,6 +25,7 @@ Run the files in this order:
    - `company_calendar`
    - `usage_logs`
    - `admin_users`
+   - `time_leave_segments` (after `004_add_time_leave.sql`)
 
 ## CSV Import Notes
 
@@ -37,8 +39,9 @@ Run the files in this order:
   2. `admin_users`
   3. `company_calendar`
   4. `leave_requests`
-  5. `paid_leave_grants`
-  6. `usage_logs`
+  5. `time_leave_segments` (when importing Phase 5 time-leave data)
+  6. `paid_leave_grants`
+  7. `usage_logs`
 - Exclude known test records such as `TEST-FIFO-001` from production import.
 - Keep `usage_logs.legacy_request_id` exactly as exported from Spreadsheet.
 - Populate `usage_logs.target_type`, `target_id`, `leave_request_id`, and `employee_id` only when the target can be classified safely.

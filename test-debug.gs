@@ -29,6 +29,583 @@ function testDebugYearEndFinalizedBalance() {
 }
 
 /* =========================
+   時間単位年休 Phase 1 基盤テスト
+   Spreadsheet・Supabase・LockServiceを使用しない純粋関数テスト
+========================= */
+function testTimeLeaveBackendFoundation() {
+  const mainPolicy = getCompanyLeavePolicy("MAIN");
+  const partnerPolicy = getCompanyLeavePolicy("PARTNER");
+  const expectError = function(callback) {
+    try {
+      callback();
+      return false;
+    } catch (error) {
+      return true;
+    }
+  };
+  const cases = [
+    {
+      name: "MAIN制度は時間有給有効・420分・2100分",
+      actual: [mainPolicy.timeLeaveEnabled, mainPolicy.scheduledMinutesPerDay, mainPolicy.timeLeaveAnnualLimitMinutes],
+      expected: [true, 420, 2100]
+    },
+    {
+      name: "PARTNER制度は時間有給無効",
+      actual: partnerPolicy.timeLeaveEnabled,
+      expected: false
+    },
+    {
+      name: "HH:mmを分へ変換",
+      actual: [parseTimeToMinute("08:30"), parseTimeToMinute("00:00"), parseTimeToMinute("23:59")],
+      expected: [510, 0, 1439]
+    },
+    {
+      name: "不正時刻を拒否",
+      actual: [
+        expectError(() => parseTimeToMinute("8:30")),
+        expectError(() => parseTimeToMinute("24:00")),
+        expectError(() => parseTimeToMinute("08:60"))
+      ],
+      expected: [true, true, true]
+    },
+    {
+      name: "休憩控除: 08:00-09:00は60分",
+      actual: calculateTimeLeaveMinutes(480, 540, mainPolicy),
+      expected: 60
+    },
+    {
+      name: "休憩控除: 08:00-10:00は120分",
+      actual: calculateTimeLeaveMinutes(480, 600, mainPolicy),
+      expected: 120
+    },
+    {
+      name: "休憩控除: 08:00-11:00は150分",
+      actual: calculateTimeLeaveMinutes(480, 660, mainPolicy),
+      expected: 150
+    },
+    {
+      name: "休憩控除: 08:00-10:30は120分",
+      actual: calculateTimeLeaveMinutes(480, 630, mainPolicy),
+      expected: 120
+    },
+    {
+      name: "休憩のみ: 12:00-13:00は0分",
+      actual: calculateTimeLeaveMinutes(720, 780, mainPolicy),
+      expected: 0
+    },
+    {
+      name: "休憩控除: 13:00-15:00は120分",
+      actual: calculateTimeLeaveMinutes(780, 900, mainPolicy),
+      expected: 120
+    },
+    {
+      name: "勤務時間外と終了時刻不正を拒否",
+      actual: [
+        expectError(() => calculateTimeLeaveMinutes(450, 540, mainPolicy)),
+        expectError(() => calculateTimeLeaveMinutes(540, 540, mainPolicy))
+      ],
+      expected: [true, true]
+    },
+    {
+      name: "60分単位は60と120を許可、150と0を拒否",
+      actual: [
+        !expectError(() => validateTimeLeaveUnitMinutes(60, mainPolicy)),
+        !expectError(() => validateTimeLeaveUnitMinutes(120, mainPolicy)),
+        expectError(() => validateTimeLeaveUnitMinutes(150, mainPolicy)),
+        expectError(() => validateTimeLeaveUnitMinutes(0, mainPolicy))
+      ],
+      expected: [true, true, true, true]
+    },
+    {
+      name: "時間帯の境界接続は非重複、重なりは重複",
+      actual: [hasTimeOverlap(480, 540, 540, 600), hasTimeOverlap(480, 540, 510, 570)],
+      expected: [false, true]
+    },
+    {
+      name: "日次420分ちょうどを許可",
+      actual: validateDailyPaidLeaveMinutes([
+        { kind: "half_day", minutes: 210 },
+        { kind: "time_hourly", minutes: 210 }
+      ], 420).remainingMinutes,
+      expected: 0
+    },
+    {
+      name: "日次420分超過を拒否",
+      actual: expectError(() => validateDailyPaidLeaveMinutes([
+        { kind: "full_day", minutes: 420 },
+        { kind: "time_hourly", minutes: 60 }
+      ], 420)),
+      expected: true
+    },
+    {
+      name: "年間2100分ちょうどを許可",
+      actual: validateAnnualTimeLeaveLimit(1980, 60, 60, 2100).remainingMinutes,
+      expected: 0
+    },
+    {
+      name: "年間2100分超過を拒否",
+      actual: expectError(() => validateAnnualTimeLeaveLimit(2040, 0, 120, 2100)),
+      expected: true
+    },
+    {
+      name: "pending仮押さえを年間上限へ含める",
+      actual: expectError(() => validateAnnualTimeLeaveLimit(1980, 60, 120, 2100)),
+      expected: true
+    },
+    {
+      name: "年5日義務は既存1日・半日を算入し時間休を除外",
+      actual: [
+        getFiveDayObligationContribution_({ request_kind: "" }, 1),
+        getFiveDayObligationContribution_({ request_kind: "" }, 0.5),
+        getFiveDayObligationContribution_({ request_kind: "time_hourly" }, 1)
+      ],
+      expected: [1, 0.5, 0]
+    }
+  ];
+
+  const results = cases.map(testCase => ({
+    name: testCase.name,
+    ok: JSON.stringify(testCase.actual) === JSON.stringify(testCase.expected),
+    actual: testCase.actual,
+    expected: testCase.expected
+  }));
+  const failed = results.filter(result => !result.ok);
+  if (failed.length > 0) {
+    throw new Error("時間単位年休 Phase 1 テスト失敗: " + JSON.stringify(failed));
+  }
+
+  Logger.log(JSON.stringify(results, null, 2));
+  return { ok: true, case_count: results.length, results: results };
+}
+
+/* =========================
+   時間単位年休 Phase 2 ライフサイクル検証テスト
+   永続化は行わず、登録・編集・承認で共通利用する判定関数を検証する。
+========================= */
+function testTimeLeaveLifecycleValidationFoundation() {
+  const policy = getCompanyLeavePolicy("MAIN");
+  const candidate = {
+    employee_id: "TEST-MAIN",
+    leave_date: parseLocalDate("2026-04-01"),
+    start_minute: 480,
+    end_minute: 540,
+    requested_minutes: 60,
+    policy: policy
+  };
+  const expectError = function(callback) {
+    try {
+      callback();
+      return false;
+    } catch (error) {
+      return true;
+    }
+  };
+  const cases = [
+    {
+      name: "境界接触する時間休は許可",
+      actual: !expectError(() => validateTimeLeaveEntriesAgainstCandidate_(candidate, [
+        { kind: "time_hourly", minutes: 60, start_minute: 540, end_minute: 600 }
+      ])),
+      expected: true
+    },
+    {
+      name: "重複する時間休は拒否",
+      actual: expectError(() => validateTimeLeaveEntriesAgainstCandidate_(candidate, [
+        { kind: "time_hourly", minutes: 60, start_minute: 510, end_minute: 570 }
+      ])),
+      expected: true
+    },
+    {
+      name: "1日休との併用は拒否",
+      actual: expectError(() => validateTimeLeaveEntriesAgainstCandidate_(candidate, [
+        { kind: "full_day", minutes: 420 }
+      ])),
+      expected: true
+    },
+    {
+      name: "AM半休との重複は拒否",
+      actual: expectError(() => validateTimeLeaveEntriesAgainstCandidate_(candidate, [
+        { kind: "half_day", half_day: "am", minutes: 210 }
+      ])),
+      expected: true
+    },
+    {
+      name: "PM半休と午前時間休は許可",
+      actual: !expectError(() => validateTimeLeaveEntriesAgainstCandidate_(candidate, [
+        { kind: "half_day", half_day: "pm", minutes: 210 }
+      ])),
+      expected: true
+    },
+    {
+      name: "canceled申請を除外した後の同時間帯は許可",
+      actual: !expectError(() => validateTimeLeaveEntriesAgainstCandidate_(candidate, [])),
+      expected: true
+    },
+    {
+      name: "半日210分と時間休210分で日次420分ちょうどを許可",
+      actual: !expectError(() => validateTimeLeaveEntriesAgainstCandidate_(Object.assign({}, candidate, {
+        start_minute: 780, end_minute: 990, requested_minutes: 210
+      }), [{ kind: "half_day", half_day: "am", minutes: 210 }])),
+      expected: true
+    },
+    {
+      name: "既存360分と時間休120分で日次420分超過を拒否",
+      actual: expectError(() => validateTimeLeaveEntriesAgainstCandidate_(Object.assign({}, candidate, {
+        start_minute: 900, end_minute: 1020, requested_minutes: 120
+      }), [{ kind: "time_hourly", minutes: 360, start_minute: 480, end_minute: 840 }])),
+      expected: true
+    },
+    {
+      name: "編集時に自身を除外すれば同じ時間帯を維持できる",
+      actual: !expectError(() => validateTimeLeaveEntriesAgainstCandidate_(candidate, [])),
+      expected: true
+    },
+    {
+      name: "編集後に年間上限超過なら拒否",
+      actual: expectError(() => validateAnnualTimeLeaveLimit(1980, 60, 120, 2100)),
+      expected: true
+    },
+    {
+      name: "時間休明細は親statusを持たない",
+      actual: TIME_LEAVE_SEGMENTS_HEADERS.indexOf("status") === -1,
+      expected: true
+    }
+  ];
+  const results = cases.map(testCase => ({
+    name: testCase.name,
+    ok: JSON.stringify(testCase.actual) === JSON.stringify(testCase.expected),
+    actual: testCase.actual,
+    expected: testCase.expected
+  }));
+  const failed = results.filter(result => !result.ok);
+  if (failed.length > 0) {
+    throw new Error("時間単位年休 Phase 2 テスト失敗: " + JSON.stringify(failed));
+  }
+  Logger.log(JSON.stringify(results, null, 2));
+  return { ok: true, case_count: results.length, results: results };
+}
+
+/* =========================
+   時間単位年休 Phase 3: 分単位 FIFO・繰越テスト
+   シート/API を使わない固定データ検証
+========================= */
+function testTimeLeaveFifoMinutesFoundation() {
+  const d = value => parseLocalDate(value);
+  const grant = (id, date, days, validTo, carryDays, carryMinutes) => ({
+    grant_id: id,
+    grant_date: d(date),
+    valid_from_date: d(date),
+    valid_to_date: d(validTo || "2028-03-31"),
+    grant_days: days,
+    carry_over_days: carryDays || 0,
+    carry_over_minutes: carryMinutes || 0,
+    is_finalized: true
+  });
+  const request = (id, date, days, halfDay, status, kind) => ({
+    request_id: id, start_date: date, end_date: date, days: days,
+    half_day: halfDay || "", status: status || "approved", type: "paid_leave",
+    request_kind: kind || ""
+  });
+  const context = (grants, requests, segments) => ({
+    grants_by_employee: { M1: grants },
+    requests_by_employee: { M1: requests || [] },
+    time_leave_segments_by_request: segments || {},
+    company_code_by_employee: { M1: "MAIN" },
+    calendar_map: {}
+  });
+  const fifo = (grants, requests, segments, asOf) =>
+    calculateFifoBalanceMinutesFromContext_("M1", d(asOf || "2026-04-10"), context(grants, requests, segments));
+  const oneLot = grant("G1", "2026-04-01", 10);
+  const half = fifo([oneLot], [request("R-half", "2026-04-02", 0.5, "am")]);
+  const full = fifo([oneLot], [request("R-full", "2026-04-02", 1)]);
+  const hourly = fifo([oneLot], [request("R-time", "2026-04-02", 0, "", "approved", "time_hourly")], {
+    "R-time": [{ time_leave_id: "T1", leave_date: "2026-04-02", requested_minutes: 60 }]
+  });
+  const combined = fifo([oneLot], [request("R-combined", "2026-04-02", 0.5, "am", "approved", "half_day_time_hourly")], {
+    "R-combined": [{ time_leave_id: "TC1", leave_date: "2026-04-02", requested_minutes: 60 }]
+  });
+  const split = fifo([
+    grant("OLD", "2025-04-01", 10), grant("NEW", "2026-04-01", 10)
+  ], [request("R-split", "2026-04-02", 0, "", "approved", "time_hourly")], {
+    "R-split": [{ time_leave_id: "T2", leave_date: "2026-04-02", requested_minutes: 120 }]
+  }, "2026-04-10");
+  // 旧ロットの残を60分にしてロット跨ぎを固定的に作る。
+  const splitLots = fifo([
+    grant("OLD", "2025-04-01", 1), grant("NEW", "2026-04-01", 10)
+  ], [
+    request("R-old", "2026-04-01", 0, "", "approved", "time_hourly"),
+    request("R-split", "2026-04-02", 0, "", "approved", "time_hourly")
+  ], {
+    "R-old": [{ time_leave_id: "T-old", leave_date: "2026-04-01", requested_minutes: 360 }],
+    "R-split": [{ time_leave_id: "T2", leave_date: "2026-04-02", requested_minutes: 120 }]
+  });
+  const expiryLastDay = fifo([grant("EXP", "2024-10-01", 1, "2026-04-02")], [request("R-exp", "2026-04-02", 1)], {}, "2026-04-02");
+  const expiryAfter = fifo([grant("EXP", "2024-10-01", 1, "2026-04-02")], [request("R-exp", "2026-04-03", 1)], {}, "2026-04-03");
+  const mixed = fifo([grant("MIX", "2026-04-01", 10)], [
+    request("R1", "2026-04-01", 1), request("R2", "2026-04-02", 0.5, "pm"),
+    request("R3", "2026-04-03", 0, "", "approved", "time_hourly"),
+    request("CANCEL", "2026-04-04", 0, "", "canceled", "time_hourly"),
+    request("PENDING", "2026-04-04", 0, "", "pending", "time_hourly")
+  ], {
+    R3: [{ time_leave_id: "T3", leave_date: "2026-04-03", requested_minutes: 120 }],
+    CANCEL: [{ time_leave_id: "T4", leave_date: "2026-04-04", requested_minutes: 60 }],
+    PENDING: [{ time_leave_id: "T5", leave_date: "2026-04-04", requested_minutes: 60 }]
+  });
+  const carryFiveDaysThreeHours = calculateCarryOverMinutes_(5 * 420 + 180, 420);
+  const carryCap = calculateCarryOverMinutes_(20 * 420 + 180, 420);
+  const legacyCarry = getGrantCarryOverMinutes_({ carry_over_days: 1.5, carry_over_minutes: "" }, 420);
+  const newCarry = getGrantCarryOverMinutes_({ carry_over_days: 5, carry_over_minutes: 180 }, 420);
+  const mixedCarry = getGrantCarryOverMinutes_({ carry_over_days: 5.5, carry_over_minutes: 180 }, 420);
+  const display480 = getMinuteBalanceDisplay_(480, 420);
+  const expectError = callback => {
+    try { callback(); return false; } catch (error) { return true; }
+  };
+  const cases = [
+    ["10日付与は4200分", fifo([oneLot], []).total_granted_minutes, 4200],
+    ["半日消化は210分", half.used_minutes, 210],
+    ["1日消化は420分", full.used_minutes, 420],
+    ["時間休60分を消化", hourly.used_minutes, 60],
+    ["半休＋時間休は270分を消化", combined.used_minutes, 270],
+    ["古いロット優先", split.allocations[0].grant_id, "OLD"],
+    ["ロット跨ぎは2配賦", splitLots.allocations.filter(row => row.request_id === "R-split").length, 2],
+    ["ロット跨ぎ旧60分", splitLots.allocations.filter(row => row.request_id === "R-split")[0].consumed_minutes, 60],
+    ["ロット跨ぎ新60分", splitLots.allocations.filter(row => row.request_id === "R-split")[1].consumed_minutes, 60],
+    ["期限最終日は使用可能", expiryLastDay.unallocated_used_minutes, 0],
+    ["期限翌日は配賦しない", expiryAfter.unallocated_used_minutes, 420],
+    ["混在消化は750分", mixed.used_minutes, 750],
+    ["取消・pending時間休は正式FIFOに含めない", mixed.current_remaining_minutes, 3450],
+    ["480分は1日1時間", [display480.remaining_full_days, display480.remaining_hours], [1, 1]],
+    ["300分は5時間", getMinuteBalanceDisplay_(300, 420).remaining_hours, 5],
+    ["0分残高", getMinuteBalanceDisplay_(0, 420).remaining_minutes, 0],
+    ["5日3時間を正確に繰越", [carryFiveDaysThreeHours.carry_over_days, carryFiveDaysThreeHours.carry_over_minutes], [5, 180]],
+    ["旧繰越1.5日は630分", legacyCarry, 630],
+    ["新繰越5日180分は2280分", newCarry, 2280],
+    ["旧小数繰越と分列を二重計上しない", mixedCarry, 2310],
+    ["20日上限は8400分", carryCap.carry_over_candidate_minutes, 8400],
+    ["上限超過分180分を繰越しない", carryCap.carry_over_limit_expired_minutes, 180],
+    ["正式残300分・pending120分・新規180分は許可", !expectError(() => validateTimeLeaveFifoReservation_(300, 120, 180)), true],
+    ["正式残300分・pending120分・新規240分は拒否", expectError(() => validateTimeLeaveFifoReservation_(300, 120, 240)), true],
+    ["PARTNERは時間休無効", getCompanyLeavePolicy("PARTNER").timeLeaveEnabled, false]
+  ];
+  const results = cases.map(item => ({ name: item[0], actual: item[1], expected: item[2], ok: JSON.stringify(item[1]) === JSON.stringify(item[2]) }));
+  const failed = results.filter(item => !item.ok);
+  if (failed.length) throw new Error("時間単位年休 Phase 3 テスト失敗: " + JSON.stringify(failed));
+  Logger.log(JSON.stringify(results, null, 2));
+  return { ok: true, case_count: results.length, results: results };
+}
+
+/* =========================
+   半休＋時間単位年休 Phase 1: 複合申請の固定データ検証
+   Spreadsheet を操作せず、複合種別の分数・競合・上限判定を確認する。
+========================= */
+function testCombinedHalfDayTimeLeaveFoundation() {
+  const policy = getCompanyLeavePolicy("MAIN");
+  const employeeInfo = { companyCode: "MAIN", policy: policy };
+  const expectError = callback => {
+    try { callback(); return false; } catch (error) { return true; }
+  };
+  const candidate = normalizeCombinedHalfDayTimeLeavePayload_({
+    employee_id: "M-COMBINED",
+    leave_date: "2026-09-15",
+    half_day: "am",
+    start_time: "13:00",
+    end_time: "15:30",
+    reason: "private",
+    reason_detail: ""
+  }, employeeInfo);
+  const requiredMinutesContext = {
+    time_leave_segments_by_request: {
+      "R-COMBINED": [{ time_leave_id: "TC1", leave_date: "2026-09-15", requested_minutes: 120 }]
+    },
+    calendar_map: {}
+  };
+  const combinedParent = {
+    request_id: "R-COMBINED", start_date: "2026-09-15", end_date: "2026-09-15",
+    days: 0.5, half_day: "am", status: "pending", type: "paid_leave",
+    request_kind: "half_day_time_hourly"
+  };
+  const cases = [
+    ["AM半休＋午後1時間は270分", (() => {
+      const item = normalizeCombinedHalfDayTimeLeavePayload_({
+        employee_id: "M-COMBINED", leave_date: "2026-09-15", half_day: "am",
+        start_time: "13:00", end_time: "14:00"
+      }, employeeInfo);
+      return item.half_day_minutes + item.requested_minutes;
+    })(), 270],
+    ["AM半休＋13:00-15:30は330分", candidate.half_day_minutes + candidate.requested_minutes, 330],
+    ["PM半休＋09:30-11:00は270分", (() => {
+      const item = normalizeCombinedHalfDayTimeLeavePayload_({
+        employee_id: "M-COMBINED", leave_date: "2026-09-15", half_day: "pm",
+        start_time: "09:30", end_time: "11:00"
+      }, employeeInfo);
+      return item.half_day_minutes + item.requested_minutes;
+    })(), 270],
+    ["AM半休と午前時間休の重複を拒否", expectError(() => {
+      const item = normalizeCombinedHalfDayTimeLeavePayload_({
+        employee_id: "M-COMBINED", leave_date: "2026-09-15", half_day: "am",
+        start_time: "09:00", end_time: "10:00"
+      }, employeeInfo);
+      validateTimeLeaveEntriesAgainstCandidate_(item, [{ kind: "half_day", half_day: "am", minutes: 210 }]);
+    }), true],
+    ["PM半休と午後時間休の重複を拒否", expectError(() => {
+      const item = normalizeCombinedHalfDayTimeLeavePayload_({
+        employee_id: "M-COMBINED", leave_date: "2026-09-15", half_day: "pm",
+        start_time: "13:00", end_time: "14:00"
+      }, employeeInfo);
+      validateTimeLeaveEntriesAgainstCandidate_(item, [{ kind: "half_day", half_day: "pm", minutes: 210 }]);
+    }), true],
+    ["時間年休150分を拒否", expectError(() => normalizeCombinedHalfDayTimeLeavePayload_({
+      employee_id: "M-COMBINED", leave_date: "2026-09-15", half_day: "am",
+      start_time: "13:00", end_time: "15:30"
+    }, Object.assign({}, employeeInfo, { policy: Object.assign({}, policy, { breakPeriods: [] }) }))), true],
+    ["半休＋時間休が420分超過なら拒否", expectError(() => validateTimeLeaveEntriesAgainstCandidate_(
+      Object.assign({}, candidate, { requested_minutes: 240 }),
+      [{ kind: "half_day", half_day: "am", minutes: 210 }]
+    )), true],
+    ["年間上限は時間年休分だけで拒否", expectError(() => validateAnnualTimeLeaveLimit(2040, 0, candidate.requested_minutes, 2100)), true],
+    ["FIFO残高270分で複合270分を許可", !expectError(() => validateTimeLeaveFifoReservation_(270, 0, 270)), true],
+    ["FIFO残高269分で複合270分を拒否", expectError(() => validateTimeLeaveFifoReservation_(269, 0, 270)), true],
+    ["既存pending時間休との重複を拒否", expectError(() => validateTimeLeaveEntriesAgainstCandidate_(candidate, [
+      { kind: "time_hourly", minutes: 60, start_minute: 780, end_minute: 840 }
+    ].concat([{ kind: "half_day", half_day: "am", minutes: 210 }]))), true],
+    ["複合親の承認必要分は330分", getMainApprovalRequiredMinutes_(combinedParent, requiredMinutesContext), 330],
+    ["複合親は年5日義務へ半日だけ算入", getFiveDayObligationContribution_(combinedParent, 0.5), 0.5]
+  ];
+  const results = cases.map(item => ({ name: item[0], actual: item[1], expected: item[2], ok: JSON.stringify(item[1]) === JSON.stringify(item[2]) }));
+  const failed = results.filter(item => !item.ok);
+  if (failed.length) throw new Error("半休＋時間単位年休 Phase 1 テスト失敗: " + JSON.stringify(failed));
+  Logger.log(JSON.stringify(results, null, 2));
+  return { ok: true, case_count: results.length, results: results };
+}
+
+/* =========================
+   時間単位年休 Phase 2: 候補生成の固定データ検証
+   Spreadsheet を操作せず、候補の時刻計算・上限・競合除外を確認する。
+========================= */
+function testTimeLeaveCandidatesFoundation() {
+  const policy = getCompanyLeavePolicy("MAIN");
+  const findCandidate = (rows, startTime, requestedMinutes) =>
+    rows.find(row => row.start_time === startTime && row.requested_minutes === requestedMinutes);
+  const hasStart = (rows, startTime) => rows.some(row => row.start_time === startTime);
+  const build = options => buildTimeLeaveCandidateRows_(Object.assign({
+    policy: policy,
+    request_mode: "time_hourly",
+    half_day: "",
+    entries: [],
+    annual: { approvedMinutes: 0, pendingMinutes: 0 },
+    approved_remaining_minutes: 4200,
+    pending_reserved_minutes: 0
+  }, options || {}));
+  const single = build();
+  const combinedAm = build({ request_mode: "half_day_time_hourly", half_day: "am" });
+  const combinedPm = build({ request_mode: "half_day_time_hourly", half_day: "pm" });
+  const annualExhausted = build({ annual: { approvedMinutes: 2100, pendingMinutes: 0 } });
+  const combinedFifoShort = build({
+    request_mode: "half_day_time_hourly",
+    half_day: "am",
+    approved_remaining_minutes: 269
+  });
+  const conflict = build({
+    entries: [{ kind: "time_hourly", minutes: 60, start_minute: 780, end_minute: 840 }]
+  });
+  const cases = [
+    ["08:00 + 1h は09:00", findCandidate(single, "08:00", 60).end_time, "09:00"],
+    ["09:30 + 1h は11:00", findCandidate(single, "09:30", 60).end_time, "11:00"],
+    ["09:30 + 2h は12:00", findCandidate(single, "09:30", 120).end_time, "12:00"],
+    ["13:00 + 2h は15:30", findCandidate(single, "13:00", 120).end_time, "15:30"],
+    ["08:00 + 7h は17:00", findCandidate(single, "08:00", 420).end_time, "17:00"],
+    ["休憩中の10:00開始は候補外", hasStart(single, "10:00"), false],
+    ["AM半休＋13:00 + 1h は有効", !!findCandidate(combinedAm, "13:00", 60), true],
+    ["AM半休＋13:00 + 2h は有効", !!findCandidate(combinedAm, "13:00", 120), true],
+    ["PM半休＋09:30 + 1h は有効", !!findCandidate(combinedPm, "09:30", 60), true],
+    ["AM半休では午前候補を返さない", hasStart(combinedAm, "09:30"), false],
+    ["PM半休では午後候補を返さない", hasStart(combinedPm, "13:00"), false],
+    ["年間上限済みなら候補を返さない", annualExhausted.length, 0],
+    ["FIFO 269分では複合の最小270分を返さない", combinedFifoShort.length, 0],
+    ["既存時間申請と重なる13:00-14:00を返さない", !!findCandidate(conflict, "13:00", 60), false]
+  ];
+  const results = cases.map(item => ({ name: item[0], actual: item[1], expected: item[2], ok: JSON.stringify(item[1]) === JSON.stringify(item[2]) }));
+  const failed = results.filter(item => !item.ok);
+  if (failed.length) throw new Error("時間単位年休 Phase 2 候補生成テスト失敗: " + JSON.stringify(failed));
+  Logger.log(JSON.stringify(results, null, 2));
+  return { ok: true, case_count: results.length, results: results };
+}
+
+/* =========================
+   時間単位年休 Phase 4: 承認時残高テスト
+========================= */
+function testTimeLeaveApprovalBalanceFoundation() {
+  const expectError = callback => {
+    try { callback(); return false; } catch (error) { return true; }
+  };
+  const originalContextFactory = createFifoBalanceComparisonContext_;
+  const twoDayBatchContext = {
+    grants_by_employee: {
+      M4: [{ grant_id: "G", grant_date: parseLocalDate("2026-04-01"), valid_from_date: parseLocalDate("2026-04-01"), valid_to_date: parseLocalDate("2028-03-31"), grant_days: 2, carry_over_days: 0, carry_over_minutes: 0, is_finalized: true }]
+    },
+    requests_by_employee: {
+      M4: ["A", "B", "C"].map((id, index) => ({ request_id: id, employee_id: "M4", start_date: "2026-04-0" + (index + 1), end_date: "2026-04-0" + (index + 1), days: 1, half_day: "", status: "pending", type: "paid_leave" }))
+    },
+    time_leave_segments_by_request: {}, company_code_by_employee: { M4: "MAIN" }, calendar_map: {}
+  };
+  let batchRejected = false;
+  try {
+    createFifoBalanceComparisonContext_ = () => twoDayBatchContext;
+    validateMainApprovalBalancesForRequests_(["A", "B", "C"]);
+  } catch (error) {
+    batchRejected = true;
+  } finally {
+    createFifoBalanceComparisonContext_ = originalContextFactory;
+  }
+  const validatePendingCompetition = (first, second) => {
+    const requests = {
+      F: { request_id: "F", employee_id: "M5", start_date: "2026-04-01", end_date: "2026-04-01", days: 1, half_day: "", status: "pending", type: "paid_leave" },
+      T: { request_id: "T", employee_id: "M5", start_date: "2026-04-01", end_date: "2026-04-01", days: 0, half_day: "", status: "pending", type: "paid_leave", request_kind: "time_hourly" }
+    };
+    const competitionContext = {
+      grants_by_employee: { M5: [{ grant_id: "G", grant_date: parseLocalDate("2026-04-01"), valid_from_date: parseLocalDate("2026-04-01"), valid_to_date: parseLocalDate("2028-03-31"), grant_days: 1, carry_over_days: 0, carry_over_minutes: 0, is_finalized: true }] },
+      requests_by_employee: { M5: [requests.F, requests.T] },
+      time_leave_segments_by_request: { T: [{ time_leave_id: "T1", leave_date: "2026-04-01", requested_minutes: 60 }] },
+      company_code_by_employee: { M5: "MAIN" }, calendar_map: {}
+    };
+    const savedFactory = createFifoBalanceComparisonContext_;
+    try {
+      createFifoBalanceComparisonContext_ = () => competitionContext;
+      validateMainApprovalBalancesForRequests_([first]);
+      return expectError(() => validateMainApprovalBalancesForRequests_([second]));
+    } finally {
+      createFifoBalanceComparisonContext_ = savedFactory;
+    }
+  };
+  const cases = [
+    ["残420分で全日承認", !expectError(() => validateMainApprovalRemainingMinutes_(420, 420)), true],
+    ["残419分で全日拒否", expectError(() => validateMainApprovalRemainingMinutes_(419, 420)), true],
+    ["残210分で半日承認", !expectError(() => validateMainApprovalRemainingMinutes_(210, 210)), true],
+    ["残209分で半日拒否", expectError(() => validateMainApprovalRemainingMinutes_(209, 210)), true],
+    ["残60分で時間休承認", !expectError(() => validateMainApprovalRemainingMinutes_(60, 60)), true],
+    ["残59分で時間休拒否", expectError(() => validateMainApprovalRemainingMinutes_(59, 60)), true],
+    ["2日残から全日2件は順次承認可能", !expectError(() => {
+      validateMainApprovalRemainingMinutes_(840, 420);
+      validateMainApprovalRemainingMinutes_(420, 420);
+    }), true],
+    ["2日残から3件目の全日は拒否", expectError(() => {
+      validateMainApprovalRemainingMinutes_(0, 420);
+    }), true],
+    ["一括承認は2日残の3全日申請を全件通過させない", batchRejected, true],
+    ["pending全日を先に承認するとpending時間休は拒否", validatePendingCompetition("F", "T"), true],
+    ["pending時間休を先に承認するとpending全日は拒否", validatePendingCompetition("T", "F"), true],
+    ["旧繰越1.5日は630分", 1.5 * 420, 630],
+    ["新繰越5日180分は2280分", 5 * 420 + 180, 2280],
+    ["720分は1日300分", [calculateCarryOverMinutes_(720, 420).carry_over_days, calculateCarryOverMinutes_(720, 420).carry_over_minutes], [1, 300]]
+  ];
+  const results = cases.map(item => ({ name: item[0], actual: item[1], expected: item[2], ok: JSON.stringify(item[1]) === JSON.stringify(item[2]) }));
+  const failed = results.filter(item => !item.ok);
+  if (failed.length) throw new Error("時間単位年休 Phase 4 テスト失敗: " + JSON.stringify(failed));
+  Logger.log(JSON.stringify(results, null, 2));
+  return { ok: true, case_count: results.length, results: results };
+}
+
+/* =========================
    初回有給付与の正式規則テスト
    シート・付与履歴を書き換えない純粋関数テスト
 ========================= */

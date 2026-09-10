@@ -76,6 +76,9 @@ const OUTPUT_COLUMNS = {
     "rejected_reason",
     "cancel_reason",
     "year",
+    "request_kind",
+    "company_code_snapshot",
+    "policy_version",
     "created_at",
     "updated_at"
   ],
@@ -85,6 +88,7 @@ const OUTPUT_COLUMNS = {
     "grant_date",
     "grant_days",
     "carry_over_days",
+    "carry_over_minutes",
     "valid_from",
     "valid_to",
     "grant_type",
@@ -381,6 +385,9 @@ function convertLeaveRequests(rows, employeeIds) {
       rejected_reason: text(row.rejected_reason),
       cancel_reason: firstText(row.cancel_reason, row.canceled_reason, row.cancelled_reason),
       year: normalizeInteger(row.year, "leave_requests", "year", row),
+      request_kind: text(row.request_kind),
+      company_code_snapshot: text(row.company_code_snapshot),
+      policy_version: text(row.policy_version),
       created_at: normalizeTimestamp(row.created_at, "leave_requests", "created_at", row) || generatedAt,
       updated_at: normalizeTimestamp(row.updated_at, "leave_requests", "updated_at", row) || generatedAt
     });
@@ -420,6 +427,7 @@ function convertPaidLeaveGrants(rows, employeeIds) {
       grant_date: normalizeDate(row.grant_date, "paid_leave_grants", "grant_date", row),
       grant_days: normalizeNumber(row.grant_days || "0", "paid_leave_grants", "grant_days", row),
       carry_over_days: normalizeNumber(row.carry_over_days || "0", "paid_leave_grants", "carry_over_days", row),
+      carry_over_minutes: normalizeInteger(row.carry_over_minutes, "paid_leave_grants", "carry_over_minutes", row),
       valid_from: normalizeDate(row.valid_from, "paid_leave_grants", "valid_from", row),
       valid_to: normalizeDate(row.valid_to, "paid_leave_grants", "valid_to", row),
       grant_type: grantType,

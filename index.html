@@ -23,7 +23,6 @@
 
     <header class="app-header">
       <h1 id="appTitle" class="app-title">有給申請</h1>
-      <p id="appSubtitle" class="app-subtitle">名前を選んで申請してください</p>
     </header>
 
     <!-- 社員選択画面 -->
@@ -103,6 +102,12 @@
                 あと5日
               </div>
 
+              <div id="timeLeaveUsage" class="mini-time-leave-usage" style="display:none;">
+                <span class="mini-info-label">時間年休</span>
+                <strong id="timeLeaveRemaining">残 — / 35時間</strong>
+                <small id="timeLeaveUsageDetail">使用済 —｜申請中 —</small>
+              </div>
+
             </div>
 
           </div>
@@ -146,6 +151,8 @@
                 <button class="type-btn" id="typeHalfAm" type="button" onclick="selectRequestType('half_am')">半日 AM</button>
                 <button class="type-btn" id="typeHalfPm" type="button" onclick="selectRequestType('half_pm')">半日 PM</button>
                 <button class="type-btn" id="typeMultiDay" type="button" onclick="selectRequestType('multi_day')">複数日</button>
+                <button class="type-btn" id="typeTimeLeave" type="button" onclick="selectRequestType('time_hourly')">時間年休</button>
+                <button class="type-btn" id="typeCombinedTimeLeave" type="button" onclick="selectRequestType('half_day_time_hourly')">半休＋時間休</button>
               </div>
             </div>
 
@@ -170,6 +177,13 @@
                          onchange="handleRequestTypeChange()">
                 </div>
               </div>
+            </div>
+
+            <div id="timeLeaveSummaryArea"
+                 class="request-section time-leave-summary-section"
+                 style="display:none;">
+              <div id="timeLeaveSummary" class="time-leave-summary" aria-live="polite"></div>
+              <button type="button" class="time-leave-change-btn" onclick="openSelectedTimeLeaveModal()">変更</button>
             </div>
 
             <div class="request-section reason-section">
@@ -303,6 +317,47 @@
 
     </section>
 
+  </div>
+
+  <div id="timeLeaveModal" class="modal-overlay time-leave-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="timeLeaveModalTitle">
+    <div class="modal-card time-leave-modal-card">
+      <div class="modal-header">
+        <div>
+          <div id="timeLeaveModalTitle" class="modal-title">時間年休を申請</div>
+          <div class="modal-subtitle">開始時刻と取得時間を選択してください。</div>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeTimeLeaveModal('time_hourly')" aria-label="閉じる">×</button>
+      </div>
+      <div class="time-leave-modal-grid">
+        <div class="time-leave-date-label"><span>取得日</span><strong id="timeLeaveModalDateLabel">—</strong></div>
+        <div class="time-leave-choice-panel"><div class="time-leave-choice-label">開始時刻</div><div id="timeLeaveStartOptions" class="time-leave-choice-grid"></div></div>
+        <div class="time-leave-choice-panel"><div class="time-leave-choice-label">取得時間</div><div id="timeLeaveDurationOptions" class="time-leave-choice-grid"></div></div>
+      </div>
+      <div id="timeLeaveModalStatus" class="time-leave-modal-status" aria-live="polite">取得日を選択してください。</div>
+      <div id="timeLeaveModalSummary" class="time-leave-modal-summary"></div>
+      <div class="modal-actions"><button type="button" class="submit-btn modal-cancel-btn" onclick="closeTimeLeaveModal('time_hourly')">キャンセル</button><button id="timeLeaveConfirmButton" type="button" class="submit-btn time-leave-confirm-btn" onclick="confirmTimeLeaveModal('time_hourly')">この内容で設定</button></div>
+    </div>
+  </div>
+
+  <div id="combinedTimeLeaveModal" class="modal-overlay time-leave-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="combinedTimeLeaveModalTitle">
+    <div class="modal-card time-leave-modal-card">
+      <div class="modal-header">
+        <div>
+          <div id="combinedTimeLeaveModalTitle" class="modal-title">半休＋時間年休を申請</div>
+          <div class="modal-subtitle">半休区分と時間を選択してください。</div>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeTimeLeaveModal('half_day_time_hourly')" aria-label="閉じる">×</button>
+      </div>
+      <div class="time-leave-modal-grid combined-time-leave-modal-grid">
+        <div class="time-leave-date-label"><span>取得日</span><strong id="combinedTimeLeaveModalDateLabel">—</strong></div>
+        <div class="time-leave-choice-panel"><div class="time-leave-choice-label">半休区分</div><div class="time-leave-choice-grid two-options"><button type="button" id="combinedHalfAm" class="time-leave-choice-btn" onclick="selectCombinedHalfDay('am')">AM半休</button><button type="button" id="combinedHalfPm" class="time-leave-choice-btn" onclick="selectCombinedHalfDay('pm')">PM半休</button></div></div>
+        <div class="time-leave-choice-panel"><div class="time-leave-choice-label">開始時刻</div><div id="combinedTimeLeaveStartOptions" class="time-leave-choice-grid"></div></div>
+        <div class="time-leave-choice-panel"><div class="time-leave-choice-label">取得時間</div><div id="combinedTimeLeaveDurationOptions" class="time-leave-choice-grid"></div></div>
+      </div>
+      <div id="combinedTimeLeaveModalStatus" class="time-leave-modal-status" aria-live="polite">取得日と半休区分を選択してください。</div>
+      <div id="combinedTimeLeaveModalSummary" class="time-leave-modal-summary"></div>
+      <div class="modal-actions"><button type="button" class="submit-btn modal-cancel-btn" onclick="closeTimeLeaveModal('half_day_time_hourly')">キャンセル</button><button id="combinedTimeLeaveConfirmButton" type="button" class="submit-btn time-leave-confirm-btn" onclick="confirmTimeLeaveModal('half_day_time_hourly')">この内容で設定</button></div>
+    </div>
   </div>
 
   <?!= include('script'); ?>

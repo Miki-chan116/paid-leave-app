@@ -32,6 +32,55 @@ const CALENDAR_TYPE = {
 };
 
 /* =========================
+   会社別有給制度設定
+
+   現時点では静的設定。呼出側はこの関数だけを経由し、将来は
+   company_leave_policies シート等の読取実装へ差し替える。
+========================= */
+function getCompanyLeavePolicy(companyCode) {
+  const code = String(companyCode || "").trim().toUpperCase();
+  const policies = {
+    MAIN: {
+      companyCode: "MAIN",
+      fiscalStartMonth: 4,
+      timeLeaveEnabled: true,
+      scheduledMinutesPerDay: 420,
+      timeLeaveUnitMinutes: 60,
+      timeLeaveAnnualLimitMinutes: 2100,
+      workStartMinute: 480,
+      workEndMinute: 1020,
+      breakPeriods: [
+        { startMinute: 600, endMinute: 630 },
+        { startMinute: 720, endMinute: 780 },
+        { startMinute: 900, endMinute: 930 }
+      ],
+      policyVersion: "v1"
+    },
+    PARTNER: {
+      companyCode: "PARTNER",
+      fiscalStartMonth: 6,
+      timeLeaveEnabled: false,
+      scheduledMinutesPerDay: null,
+      timeLeaveUnitMinutes: null,
+      timeLeaveAnnualLimitMinutes: null,
+      workStartMinute: null,
+      workEndMinute: null,
+      breakPeriods: [],
+      policyVersion: "v1"
+    }
+  };
+
+  if (!policies[code]) {
+    throw new Error("有給制度設定がない会社コードです: " + code);
+  }
+
+  // 呼出側が配列・オブジェクトを変更しても静的定義を壊さないよう複製して返す。
+  return Object.assign({}, policies[code], {
+    breakPeriods: policies[code].breakPeriods.map(period => Object.assign({}, period))
+  });
+}
+
+/* =========================
    出力シート名
 ========================= */
 const OUTPUT_SHEET = {
@@ -286,6 +335,146 @@ function toDateKey(value) {
 
   const date = parseLocalDate(value);
   return Utilities.formatDate(date, getAppTimeZone(), "yyyy-MM-dd");
+}
+
+/* =========================
+   時間単位年休: 時刻・分の純粋計算
+
+   時刻は Date を使用せず、HH:mm と 0:00 からの整数分だけで扱う。
+========================= */
+function parseTimeToMinute(value) {
+  const text = String(value == null ? "" : value).trim();
+  const match = text.match(/^([01][0-9]|2[0-3]):([0-5][0-9])$/);
+
+  if (!match) {
+    throw new Error("時刻は00:00から23:59のHH:mm形式で入力してください: " + text);
+  }
+
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function assertMinuteRange_(startMinute, endMinute, label) {
+  const start = Number(startMinute);
+  const end = Number(endMinute);
+  const prefix = label ? label + ": " : "";
+
+  if (!Number.isInteger(start) || !Number.isInteger(end)) {
+    throw new Error(prefix + "時刻は整数分で指定してください");
+  }
+  if (start < 0 || start >= 24 * 60 || end < 0 || end >= 24 * 60) {
+    throw new Error(prefix + "時刻は0分から1439分の範囲で指定してください");
+  }
+  if (end <= start) {
+    throw new Error(prefix + "終了時刻は開始時刻より後で指定してください");
+  }
+
+  return { startMinute: start, endMinute: end };
+}
+
+function calculateTimeLeaveMinutes(startMinute, endMinute, policy) {
+  const rules = policy || {};
+  const range = assertMinuteRange_(startMinute, endMinute, "時間有給");
+  const workStart = Number(rules.workStartMinute);
+  const workEnd = Number(rules.workEndMinute);
+
+  if (!Number.isInteger(workStart) || !Number.isInteger(workEnd) || workEnd <= workStart) {
+    throw new Error("勤務時間の制度設定が不正です");
+  }
+  if (range.startMinute < workStart || range.endMinute > workEnd) {
+    throw new Error("時間有給は所定勤務時間内で指定してください");
+  }
+
+  const breakMinutes = (Array.isArray(rules.breakPeriods) ? rules.breakPeriods : [])
+    .reduce((sum, period) => {
+      const breakStart = Number(period && period.startMinute);
+      const breakEnd = Number(period && period.endMinute);
+      if (!Number.isInteger(breakStart) || !Number.isInteger(breakEnd) || breakEnd <= breakStart) {
+        throw new Error("休憩時間の制度設定が不正です");
+      }
+      const overlap = Math.max(
+        0,
+        Math.min(range.endMinute, breakEnd) - Math.max(range.startMinute, breakStart)
+      );
+      return sum + overlap;
+    }, 0);
+
+  return range.endMinute - range.startMinute - breakMinutes;
+}
+
+function validateTimeLeaveUnitMinutes(minutes, policy) {
+  const value = Number(minutes);
+  const unit = Number(policy && policy.timeLeaveUnitMinutes);
+
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("時間有給の取得分は0より大きい整数分で指定してください");
+  }
+  if (!Number.isInteger(unit) || unit <= 0) {
+    throw new Error("時間有給単位の制度設定が不正です");
+  }
+  if (value % unit !== 0) {
+    throw new Error("時間有給の取得分は" + unit + "分単位で指定してください");
+  }
+
+  return { ok: true, minutes: value, unitMinutes: unit };
+}
+
+function hasTimeOverlap(startA, endA, startB, endB) {
+  const a = assertMinuteRange_(startA, endA, "時間帯A");
+  const b = assertMinuteRange_(startB, endB, "時間帯B");
+  return a.startMinute < b.endMinute && b.startMinute < a.endMinute;
+}
+
+function validateDailyPaidLeaveMinutes(entries, limitMinutes) {
+  const limit = Number(limitMinutes);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error("日次有給上限は0より大きい整数分で指定してください");
+  }
+
+  const totalMinutes = (Array.isArray(entries) ? entries : []).reduce((sum, entry) => {
+    const minutes = Number(entry && entry.minutes);
+    if (!Number.isInteger(minutes) || minutes < 0) {
+      throw new Error("日次有給の各取得分は0以上の整数分で指定してください");
+    }
+    return sum + minutes;
+  }, 0);
+
+  if (totalMinutes > limit) {
+    throw new Error("同日の有給消化は" + limit + "分を超えられません: " + totalMinutes + "分");
+  }
+
+  return {
+    ok: true,
+    totalMinutes: totalMinutes,
+    limitMinutes: limit,
+    remainingMinutes: limit - totalMinutes
+  };
+}
+
+function validateAnnualTimeLeaveLimit(approvedMinutes, pendingMinutes, requestedMinutes, annualLimitMinutes) {
+  const approved = Number(approvedMinutes);
+  const pending = Number(pendingMinutes);
+  const requested = Number(requestedMinutes);
+  const limit = Number(annualLimitMinutes);
+  const values = [approved, pending, requested, limit];
+
+  if (!values.every(value => Number.isInteger(value)) || approved < 0 || pending < 0 || requested <= 0 || limit <= 0) {
+    throw new Error("年間時間有給上限の分数は正しい整数分で指定してください");
+  }
+
+  const totalMinutes = approved + pending + requested;
+  if (totalMinutes > limit) {
+    throw new Error("年間時間有給上限" + limit + "分を超えます: " + totalMinutes + "分");
+  }
+
+  return {
+    ok: true,
+    approvedMinutes: approved,
+    pendingMinutes: pending,
+    requestedMinutes: requested,
+    totalMinutes: totalMinutes,
+    annualLimitMinutes: limit,
+    remainingMinutes: limit - totalMinutes
+  };
 }
 
 /* =========================
@@ -883,6 +1072,8 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
       if (!employeeId) return;
       if (!targetIds.has(employeeId)) return;
       if (status !== STATUS.APPROVED) return;
+      // 時間有給の残高消化は分単位FIFOを導入するPhase 3まで保留する。
+      if (isTimeLeaveRequestRow_(rowObj)) return;
       if (!rowObj.start_date || !rowObj.end_date) return;
 
       const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId, employeeDetailMap);
@@ -935,6 +1126,8 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
     if (!employeeId) return;
     if (!targetIds.has(employeeId)) return;
     if (status !== STATUS.APPROVED) return;
+    // 時間有給の残高消化は分単位FIFOを導入するPhase 3まで保留する。
+    if (isTimeLeaveRequestRow_(rowObj)) return;
     if (!rowObj.start_date || !rowObj.end_date) return;
 
     const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId, employeeDetailMap);
@@ -956,6 +1149,78 @@ function getApprovedUsedDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) 
       }
 
       result[employeeId] += Number(item.days || 0);
+    });
+  });
+
+  return result;
+}
+
+/* =========================
+   年5日取得義務: 通常残高用の取得日数とは別集計
+
+   時間単位年休（request_kind=time_hourly）は通常有給残高の消化対象でも、
+   年5日取得義務には一切算入しない。既存行で request_kind が空欄の場合は
+   従来どおり1日・半日・複数日の申請として扱う。
+========================= */
+function getFiveDayObligationDaysByFiscalYear(fiscalYear) {
+  const employees = getEmployees();
+  return getFiveDayObligationDaysByFiscalYearForEmployeeIds(
+    fiscalYear,
+    employees.map(emp => emp.id)
+  );
+}
+
+function getFiveDayObligationContribution_(requestRow, dailyDays) {
+  const requestKind = norm(requestRow && requestRow.request_kind);
+  if (requestKind === "time_hourly") return 0;
+  return Number(dailyDays || 0);
+}
+
+function getFiveDayObligationDaysByFiscalYearForEmployeeIds(fiscalYear, employeeIds) {
+  const targetIds = new Set(
+    (employeeIds || [])
+      .map(id => String(id || "").trim())
+      .filter(Boolean)
+  );
+  if (targetIds.size === 0) return {};
+
+  const result = {};
+  const calendarMap = getCompanyCalendarMap();
+  const employeeDetailMap = getEmployeeDetailMap();
+  const rows = shouldUseSupabaseReads_()
+    ? getLeaveRequestsFromSupabase_()
+    : (function() {
+      const sheet = getSheet("leave_requests");
+      const headerInfo = requireHeaders(sheet, [
+        "employee_id", "start_date", "end_date", "days", "half_day", "status"
+      ]);
+      const data = sheet.getDataRange().getValues();
+      return data.length <= 1
+        ? []
+        : data.slice(1).map(row => rowToObject(row, headerInfo.headers));
+    })();
+
+  rows.forEach(rowObj => {
+    const employeeId = String(rowObj.employee_id || "").trim();
+    if (!employeeId || !targetIds.has(employeeId)) return;
+    if (norm(rowObj.status) !== STATUS.APPROVED) return;
+    if (!rowObj.start_date || !rowObj.end_date) return;
+
+    const fiscalStartMonth = getFiscalStartMonthByEmployeeId(employeeId, employeeDetailMap);
+    const range = getFiscalYearRangeWithStart(fiscalYear, fiscalStartMonth);
+    const dailyRows = expandLeaveRequestToDailyRows(
+      rowObj.start_date,
+      rowObj.end_date,
+      rowObj.days,
+      rowObj.half_day,
+      calendarMap
+    );
+
+    dailyRows.forEach(item => {
+      if (!isDateInRange(item.date, range.start, range.end)) return;
+      const contribution = getFiveDayObligationContribution_(rowObj, item.days);
+      if (contribution === 0) return;
+      result[employeeId] = Number(result[employeeId] || 0) + contribution;
     });
   });
 
@@ -1055,6 +1320,23 @@ function calculateYearlyBalanceByEmployee(employeeId, fiscalYear) {
   return buildBalance(employeeId, grantInfo, usedMap[employeeId] || 0);
 }
 
+// 申請画面等で使う現在時点の正式残高。MAIN のみ分単位 FIFO を正とし、
+// PARTNER は既存の日数年度集計を呼出側で引き続き使う。
+function getCurrentMinuteFifoBalanceMapForEmployeeIds_(employeeIds) {
+  const ids = (employeeIds || []).map(id => String(id || "").trim()).filter(Boolean);
+  if (ids.length === 0) return {};
+  const asOfDate = parseLocalDate(new Date());
+  const context = createFifoBalanceComparisonContext_(asOfDate);
+  const result = {};
+  ids.forEach(employeeId => {
+    if (!isMainTimeLeaveEmployeeForFifo_(employeeId, context)) return;
+    result[employeeId] = calculateFifoBalanceMinutesFromContext_(
+      employeeId, asOfDate, context
+    );
+  });
+  return result;
+}
+
 /* =========================
    FIFO残日数計算（試験実装）
    既存表示には未接続
@@ -1064,6 +1346,10 @@ function calculateFifoPaidLeaveBalance(employeeId, asOfDateValue) {
   if (!targetEmployeeId) throw new Error("employeeId がありません");
 
   const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
+  const context = createFifoBalanceComparisonContext_(asOfDate);
+  if (isMainTimeLeaveEmployeeForFifo_(targetEmployeeId, context)) {
+    return calculateFifoBalanceMinutesFromContext_(targetEmployeeId, asOfDate, context);
+  }
   const grants = getFifoPaidLeaveGrantRows_(targetEmployeeId, asOfDate);
   const usedRows = getFifoApprovedLeaveUseRows_(targetEmployeeId, asOfDate);
   const allocations = [];
@@ -1158,6 +1444,10 @@ function calculateFifoBalanceWithOpeningBalance_(employeeId, asOfDate) {
 }
 
 function calculateFifoBalanceWithOpeningBalanceFromContext_(employeeId, asOfDate, context) {
+  if (isMainTimeLeaveEmployeeForFifo_(employeeId, context)) {
+    return calculateFifoBalanceMinutesFromContext_(employeeId, asOfDate, context);
+  }
+
   const grantData = getFifoGrantRowsWithOpeningBalanceFromContext_(
     employeeId,
     asOfDate,
@@ -1253,6 +1543,292 @@ function calculateFifoBalanceWithOpeningBalanceFromContext_(employeeId, asOfDate
     validity_warning: grantData.opening_balance_records.some(row => row.validity_needs_review)
       ? "初期導入残高に valid_from または valid_to が不足する行があります。試算では grant_date 起点の2年期限を仮定していますが、本番切替前に期限確認が必要です。"
       : ""
+  };
+}
+
+/* =========================
+   MAIN 時間有給対応: 分単位 FIFO
+   既存の物理日数は変更せず、計算境界だけで整数分に正規化する。
+========================= */
+function isMainTimeLeaveEmployeeForFifo_(employeeId, context) {
+  const code = String(
+    context && context.company_code_by_employee && context.company_code_by_employee[employeeId] || ""
+  ).trim().toUpperCase();
+  return code === "MAIN" && getCompanyLeavePolicy(code).timeLeaveEnabled === true;
+}
+
+function getMinuteBalanceDisplay_(remainingMinutes, scheduledMinutesPerDay) {
+  const minutes = Math.max(0, Number(remainingMinutes || 0));
+  const perDay = Number(scheduledMinutesPerDay || 420);
+  const fullDays = Math.floor(minutes / perDay);
+  const remainderMinutes = minutes % perDay;
+  return {
+    remaining_minutes: minutes,
+    remaining_days: minutes / perDay,
+    remaining_full_days: fullDays,
+    remaining_hours: Math.floor(remainderMinutes / 60),
+    remaining_remainder_minutes: remainderMinutes
+  };
+}
+
+// 旧データは carry_over_days に小数日（例: 1.5日）を保持している。
+// 新方式では carry_over_days は整数日、端数は carry_over_minutes にだけ保持する。
+// 小数日と分列が混在した不整合行では、既存の小数日を正として分列を加算しない。
+// これにより旧形式を壊さず、移行途中の二重計上も防ぐ。
+function getGrantCarryOverMinutes_(grant, scheduledMinutesPerDay) {
+  const perDay = Number(scheduledMinutesPerDay || 420);
+  const carryDays = Number(grant && grant.carry_over_days || 0);
+  const rawCarryMinutes = grant && grant.carry_over_minutes;
+  const carryMinutes = rawCarryMinutes === "" || rawCarryMinutes == null ? 0 : Number(rawCarryMinutes);
+  if (!Number.isFinite(carryDays) || !Number.isInteger(carryMinutes) || carryMinutes < 0) {
+    throw new Error("繰越有給の値が不正です");
+  }
+  if (!Number.isInteger(carryDays)) return carryDays * perDay;
+  return carryDays * perDay + carryMinutes;
+}
+
+function calculateCarryOverMinutes_(remainingMinutes, scheduledMinutesPerDay) {
+  const remaining = Math.max(0, Number(remainingMinutes || 0));
+  const perDay = Number(scheduledMinutesPerDay || 420);
+  const candidateMinutes = Math.min(remaining, 20 * perDay);
+  return {
+    carry_over_candidate_minutes: candidateMinutes,
+    carry_over_days: Math.floor(candidateMinutes / perDay),
+    carry_over_minutes: candidateMinutes % perDay,
+    carry_over_limit_expired_minutes: Math.max(0, remaining - candidateMinutes)
+  };
+}
+
+function getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, context, policy) {
+  const requests = context.requests_by_employee[employeeId] || [];
+  const segmentsByRequest = context.time_leave_segments_by_request || {};
+  const result = [];
+
+  requests.forEach(rowObj => {
+    const status = norm(rowObj.status);
+    const requestType = String(rowObj.type || "paid_leave").trim();
+    if (status !== STATUS.APPROVED || (requestType && requestType !== "paid_leave")) return;
+
+    const requestId = String(rowObj.request_id || "").trim();
+    if (isTimeLeaveSegmentRequestRow_(rowObj)) {
+      if (isCombinedHalfDayTimeLeaveRequestRow_(rowObj)) {
+        const halfDay = norm(rowObj.half_day);
+        if (halfDay !== "am" && halfDay !== "pm") {
+          throw new Error("複合申請の半休区分が不正です: " + requestId);
+        }
+        result.push({
+          request_id: requestId,
+          time_leave_id: "",
+          use_date: parseLocalDate(rowObj.start_date),
+          leave_kind: "half_day",
+          consumed_minutes: policy.scheduledMinutesPerDay / 2,
+          unallocated_minutes: 0
+        });
+      }
+      (segmentsByRequest[requestId] || []).forEach(segment => {
+        const useDate = parseLocalDate(segment.leave_date);
+        if (useDate > asOfDate) return;
+        const consumedMinutes = Number(segment.requested_minutes || 0);
+        if (!Number.isInteger(consumedMinutes) || consumedMinutes <= 0) {
+          throw new Error("時間有給明細の取得分が不正です: " + requestId);
+        }
+        result.push({
+          request_id: requestId,
+          time_leave_id: String(segment.time_leave_id || "").trim(),
+          use_date: useDate,
+          leave_kind: "time_hourly",
+          consumed_minutes: consumedMinutes,
+          unallocated_minutes: 0
+        });
+      });
+      return;
+    }
+
+    if (!rowObj.start_date || !rowObj.end_date) return;
+    const dailyRows = expandLeaveRequestToDailyRows(
+      rowObj.start_date, rowObj.end_date, rowObj.days, rowObj.half_day, context.calendar_map
+    );
+    dailyRows.forEach(item => {
+      const useDate = parseLocalDate(item.date);
+      if (useDate > asOfDate) return;
+      const isHalfDay = !!norm(rowObj.half_day);
+      result.push({
+        request_id: requestId,
+        time_leave_id: "",
+        use_date: useDate,
+        leave_kind: isHalfDay ? "half_day" : "full_day",
+        consumed_minutes: isHalfDay
+          ? policy.scheduledMinutesPerDay / 2
+          : policy.scheduledMinutesPerDay,
+        unallocated_minutes: 0
+      });
+    });
+  });
+
+  return result.sort((a, b) => {
+    if (a.use_date.getTime() !== b.use_date.getTime()) return a.use_date - b.use_date;
+    if (a.request_id !== b.request_id) return a.request_id.localeCompare(b.request_id);
+    return a.time_leave_id.localeCompare(b.time_leave_id);
+  });
+}
+
+function calculateFifoBalanceMinutesFromContext_(employeeId, asOfDate, context) {
+  const policy = getCompanyLeavePolicy("MAIN");
+  const grants = (context.grants_by_employee[employeeId] || [])
+    .filter(grant => grant.is_finalized && grant.valid_from_date <= asOfDate)
+    .map(grant => {
+      const grantMinutes = Number(grant.grant_days || 0) * policy.scheduledMinutesPerDay;
+      const carryOverMinutes = getGrantCarryOverMinutes_(grant, policy.scheduledMinutesPerDay);
+      const totalMinutes = grantMinutes + carryOverMinutes;
+      return {
+        grant_id: grant.grant_id,
+        grant_date: grant.grant_date,
+        valid_from_date: grant.valid_from_date,
+        valid_to_date: grant.valid_to_date,
+        grant_type: grant.grant_type,
+        year: grant.year,
+        grant_days: Number(grant.grant_days || 0),
+        carry_over_days: Number(grant.carry_over_days || 0),
+        carry_over_minutes: Number(grant.carry_over_minutes || 0),
+        total_minutes: totalMinutes,
+        used_minutes: 0,
+        remaining_minutes: totalMinutes,
+        active_remaining_minutes: 0,
+        expired_minutes: 0,
+        is_expired: false
+      };
+    })
+    .sort((a, b) => a.grant_date.getTime() !== b.grant_date.getTime()
+      ? a.grant_date - b.grant_date
+      : String(a.grant_id).localeCompare(String(b.grant_id)));
+  const usedRows = getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, context, policy);
+  const allocations = [];
+
+  usedRows.forEach(useRow => {
+    let remainingUseMinutes = useRow.consumed_minutes;
+    grants.forEach(grant => {
+      if (remainingUseMinutes <= 0 || grant.remaining_minutes <= 0) return;
+      if (useRow.use_date < grant.valid_from_date || useRow.use_date > grant.valid_to_date) return;
+      const consumedMinutes = Math.min(grant.remaining_minutes, remainingUseMinutes);
+      grant.remaining_minutes -= consumedMinutes;
+      grant.used_minutes += consumedMinutes;
+      remainingUseMinutes -= consumedMinutes;
+      allocations.push({
+        request_id: useRow.request_id,
+        time_leave_id: useRow.time_leave_id,
+        use_date: formatDateValue(useRow.use_date),
+        leave_kind: useRow.leave_kind,
+        grant_id: grant.grant_id,
+        consumed_minutes: consumedMinutes,
+        grant_valid_to: formatDateValue(grant.valid_to_date),
+        calculation_version: "fifo_minutes_v1"
+      });
+    });
+    useRow.unallocated_minutes = Math.max(0, remainingUseMinutes);
+  });
+
+  grants.forEach(grant => {
+    grant.is_expired = grant.valid_to_date < asOfDate;
+    grant.expired_minutes = grant.is_expired ? grant.remaining_minutes : 0;
+    grant.active_remaining_minutes = grant.is_expired ? 0 : grant.remaining_minutes;
+  });
+  const currentRemainingMinutes = grants.reduce((sum, grant) => sum + grant.active_remaining_minutes, 0);
+  const display = getMinuteBalanceDisplay_(currentRemainingMinutes, policy.scheduledMinutesPerDay);
+  return Object.assign({
+    employee_id: employeeId,
+    as_of_date: formatDateValue(asOfDate),
+    calculation_mode: "fifo_minutes_v1",
+    scheduled_minutes_per_day: policy.scheduledMinutesPerDay,
+    current_remaining_minutes: currentRemainingMinutes,
+    total_granted_minutes: grants.reduce((sum, grant) => sum + grant.total_minutes, 0),
+    used_minutes: usedRows.reduce((sum, row) => sum + row.consumed_minutes, 0),
+    allocated_used_minutes: allocations.reduce((sum, row) => sum + row.consumed_minutes, 0),
+    unallocated_used_minutes: usedRows.reduce((sum, row) => sum + row.unallocated_minutes, 0),
+    expired_minutes: grants.reduce((sum, grant) => sum + grant.expired_minutes, 0),
+    grant_details: grants.map(grant => Object.assign({}, grant, {
+      grant_date: formatDateValue(grant.grant_date),
+      valid_from: formatDateValue(grant.valid_from_date),
+      valid_to: formatDateValue(grant.valid_to_date),
+      total_days: grant.total_minutes / policy.scheduledMinutesPerDay,
+      used_days: grant.used_minutes / policy.scheduledMinutesPerDay,
+      remaining_days: grant.remaining_minutes / policy.scheduledMinutesPerDay,
+      active_remaining_days: grant.active_remaining_minutes / policy.scheduledMinutesPerDay,
+      expired_days: grant.expired_minutes / policy.scheduledMinutesPerDay
+    })),
+    used_details: usedRows.map(row => Object.assign({}, row, {
+      use_date: formatDateValue(row.use_date),
+      days: row.consumed_minutes / policy.scheduledMinutesPerDay,
+      unallocated_days: row.unallocated_minutes / policy.scheduledMinutesPerDay
+    })),
+    allocations: allocations
+  }, display, {
+    total_granted_days: grants.reduce((sum, grant) => sum + grant.total_minutes, 0) / policy.scheduledMinutesPerDay,
+    used_days: usedRows.reduce((sum, row) => sum + row.consumed_minutes, 0) / policy.scheduledMinutesPerDay,
+    allocated_used_days: allocations.reduce((sum, row) => sum + row.consumed_minutes, 0) / policy.scheduledMinutesPerDay,
+    unallocated_used_days: usedRows.reduce((sum, row) => sum + row.unallocated_minutes, 0) / policy.scheduledMinutesPerDay,
+    expired_days: grants.reduce((sum, grant) => sum + grant.expired_minutes, 0) / policy.scheduledMinutesPerDay,
+    current_remaining_days: currentRemainingMinutes / policy.scheduledMinutesPerDay
+  });
+}
+
+function getPendingTimeLeaveReservationMinutes_(employeeId, asOfDate, context, excludedRequestId) {
+  const targetId = String(employeeId || "").trim();
+  const excludedId = String(excludedRequestId || "").trim();
+  const targetDate = parseLocalDate(asOfDate);
+  const segmentsByRequest = context.time_leave_segments_by_request || {};
+  let total = 0;
+  (context.requests_by_employee[targetId] || []).forEach(parent => {
+    const requestId = String(parent.request_id || "").trim();
+    if (requestId === excludedId || !isTimeLeaveSegmentRequestRow_(parent)) return;
+    if (norm(parent.status) !== STATUS.PENDING) return;
+    (segmentsByRequest[requestId] || []).forEach(segment => {
+      if (parseLocalDate(segment.leave_date) > targetDate) return;
+      const minutes = Number(segment.requested_minutes || 0);
+      if (!Number.isInteger(minutes) || minutes < 0) {
+        throw new Error("時間有給明細の取得分が不正です: " + requestId);
+      }
+      total += minutes;
+    });
+  });
+  return total;
+}
+
+function validateTimeLeaveFifoBalanceAvailability_(candidate, excludedRequestId) {
+  const context = createFifoBalanceComparisonContext_(candidate.leave_date);
+  const balance = calculateFifoBalanceWithOpeningBalanceFromContext_(
+    candidate.employee_id,
+    candidate.leave_date,
+    context
+  );
+  const approvedRemainingMinutes = Number(balance.current_remaining_minutes || 0);
+  const pendingReservedMinutes = getPendingPaidLeaveReservationMinutes_(
+    candidate.employee_id,
+    candidate.leave_date,
+    context,
+    excludedRequestId
+  );
+  return validateTimeLeaveFifoReservation_(
+    approvedRemainingMinutes,
+    pendingReservedMinutes,
+    candidate.requested_minutes
+  );
+}
+
+function validateTimeLeaveFifoReservation_(approvedRemainingMinutes, pendingReservedMinutes, requestedMinutes) {
+  const approved = Number(approvedRemainingMinutes || 0);
+  const pending = Number(pendingReservedMinutes || 0);
+  const requested = Number(requestedMinutes || 0);
+  if (![approved, pending, requested].every(Number.isInteger) || approved < 0 || pending < 0 || requested <= 0) {
+    throw new Error("時間有給残高の分数が不正です");
+  }
+  const availableMinutes = approved - pending;
+  if (availableMinutes < requested) {
+    throw new Error("通常有給残高が不足しています（承認済み残高から他の時間有給申請を仮押さえしています）");
+  }
+  return {
+    approved_remaining_minutes: approvedRemainingMinutes,
+    pending_reserved_minutes: pendingReservedMinutes,
+    available_minutes: availableMinutes
   };
 }
 
@@ -1477,14 +2053,41 @@ function buildPagedResponse_(rows, options) {
 
 function createFifoBalanceComparisonContext_(asOfDate, options) {
   const opts = options || {};
+  const companyCodeByEmployee = {};
+  getEmployeesForAdmin().forEach(employee => {
+    const employeeId = String(employee.employee_id || "").trim();
+    if (employeeId) companyCodeByEmployee[employeeId] = String(employee.company_code || "").trim().toUpperCase();
+  });
   return {
     as_of_date: asOfDate,
     calendar_map: opts.read_only === true
       ? getCompanyCalendarMapReadOnly_()
       : getCompanyCalendarMap(),
     grants_by_employee: getPaidLeaveGrantRowsByEmployeeForFifoCompare_(),
-    requests_by_employee: getLeaveRequestRowsByEmployeeForFifoCompare_()
+    requests_by_employee: getLeaveRequestRowsByEmployeeForFifoCompare_(),
+    time_leave_segments_by_request: getTimeLeaveSegmentsByRequestForFifoCompare_(),
+    company_code_by_employee: companyCodeByEmployee
   };
+}
+
+function getTimeLeaveSegmentsByRequestForFifoCompare_() {
+  // 時間有給の子明細は、USE_SUPABASE_READS の設定に関係なくSpreadsheetを正とする。
+  // 現行Supabase schemaには time_leave_segments を追加しないため、ここから読みに行かない。
+  const sheet = getAppSpreadsheet().getSheetByName(TIME_LEAVE_SEGMENTS_SHEET);
+  if (!sheet) return {};
+  const headerInfo = requireHeaders(sheet, [
+    "time_leave_id", "request_id", "leave_date", "requested_minutes"
+  ]);
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const requestId = String(rowObj.request_id || "").trim();
+    if (!requestId) return;
+    if (!result[requestId]) result[requestId] = [];
+    result[requestId].push(rowObj);
+  });
+  return result;
 }
 
 function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
@@ -1502,6 +2105,7 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
         : addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
       const grantDays = Number(rowObj.grant_days || 0);
       const carryOverDays = Number(rowObj.carry_over_days || 0);
+      const carryOverMinutes = Number(rowObj.carry_over_minutes || 0);
 
       if (!result[employeeId]) result[employeeId] = [];
 
@@ -1516,6 +2120,7 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
         grant_days: grantDays,
         carry_over_days: carryOverDays,
         total_days: grantDays + carryOverDays,
+        carry_over_minutes: carryOverMinutes,
         notes: String(rowObj.notes || ""),
         has_recorded_valid_from: !!rowObj.valid_from,
         has_recorded_valid_to: !!rowObj.valid_to,
@@ -1523,9 +2128,26 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
       });
     });
 
+    // MAINの分FIFOには、Supabase未適用のcarry_over_minutesと新年度付与を含める必要がある。
+    // そのためMAINのロットだけSpreadsheet正本で置換し、PARTNERの既存Supabase readは維持する。
+    const mainEmployeeIds = {};
+    getEmployeesForAdmin().forEach(employee => {
+      if (String(employee.company_code || "").trim().toUpperCase() !== "MAIN") return;
+      mainEmployeeIds[String(employee.employee_id || "").trim()] = true;
+    });
+    const spreadsheetMainGrants = getSpreadsheetPaidLeaveGrantRowsForFifoCompare_();
+    Object.keys(mainEmployeeIds).forEach(employeeId => {
+      delete result[employeeId];
+      if (spreadsheetMainGrants[employeeId]) result[employeeId] = spreadsheetMainGrants[employeeId];
+    });
+
     return result;
   }
 
+  return getSpreadsheetPaidLeaveGrantRowsForFifoCompare_();
+}
+
+function getSpreadsheetPaidLeaveGrantRowsForFifoCompare_() {
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "grant_id",
@@ -1556,6 +2178,7 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
       : addDaysLocal_(addYearsLocal_(grantDate, 2), -1);
     const grantDays = Number(rowObj.grant_days || 0);
     const carryOverDays = Number(rowObj.carry_over_days || 0);
+    const carryOverMinutes = Number(rowObj.carry_over_minutes || 0);
     const finalizedValue = String(rowObj.is_finalized == null ? "" : rowObj.is_finalized)
       .trim()
       .toUpperCase();
@@ -1573,6 +2196,7 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
       grant_days: grantDays,
       carry_over_days: carryOverDays,
       total_days: grantDays + carryOverDays,
+      carry_over_minutes: carryOverMinutes,
       notes: String(rowObj.notes || ""),
       has_recorded_valid_from: !!rowObj.valid_from,
       has_recorded_valid_to: !!rowObj.valid_to,
@@ -1586,6 +2210,7 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
 function getLeaveRequestRowsByEmployeeForFifoCompare_() {
   if (shouldUseSupabaseReads_()) {
     const result = {};
+    const knownRequestIds = {};
 
     getLeaveRequestsFromSupabase_().forEach(rowObj => {
       const employeeId = String(rowObj.employee_id || "").trim();
@@ -1593,11 +2218,31 @@ function getLeaveRequestRowsByEmployeeForFifoCompare_() {
 
       if (!result[employeeId]) result[employeeId] = [];
       result[employeeId].push(rowObj);
+      knownRequestIds[String(rowObj.request_id || "").trim()] = true;
+    });
+
+    // 時間有給親はSupabaseへdual writeしない。通常申請の既存Supabase readを維持しつつ、
+    // Spreadsheetにのみ存在する時間有給親だけをFIFOコンテキストへ補う。
+    const sheet = getSheet("leave_requests");
+    const headerInfo = requireHeaders(sheet, [
+      "request_id", "employee_id", "start_date", "end_date", "days", "half_day", "status"
+    ]);
+    sheet.getDataRange().getValues().slice(1).forEach(row => {
+      const rowObj = rowToObject(row, headerInfo.headers);
+      const requestId = String(rowObj.request_id || "").trim();
+      const employeeId = String(rowObj.employee_id || "").trim();
+      if (!requestId || !employeeId || knownRequestIds[requestId] || !isTimeLeaveSegmentRequestRow_(rowObj)) return;
+      if (!result[employeeId]) result[employeeId] = [];
+      result[employeeId].push(rowObj);
     });
 
     return result;
   }
 
+  return getSpreadsheetLeaveRequestRowsByEmployeeForFifoCompare_();
+}
+
+function getSpreadsheetLeaveRequestRowsByEmployeeForFifoCompare_() {
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
@@ -1732,6 +2377,7 @@ function getFifoApprovedLeaveUseRowsFromContext_(employeeId, asOfDate, context) 
 
     if (status !== STATUS.APPROVED) return;
     if (requestType && requestType !== "paid_leave") return;
+    if (isTimeLeaveRequestRow_(rowObj)) return;
     if (!rowObj.start_date || !rowObj.end_date) return;
 
     const dailyRows = expandLeaveRequestToDailyRows(
@@ -1899,6 +2545,7 @@ function getFifoApprovedLeaveUseRows_(employeeId, asOfDate) {
       if (targetEmployeeId !== String(employeeId)) return;
       if (status !== STATUS.APPROVED) return;
       if (requestType && requestType !== "paid_leave") return;
+      if (isTimeLeaveRequestRow_(rowObj)) return;
       if (!rowObj.start_date || !rowObj.end_date) return;
 
       const dailyRows = expandLeaveRequestToDailyRows(
@@ -1955,6 +2602,7 @@ function getFifoApprovedLeaveUseRows_(employeeId, asOfDate) {
     if (targetEmployeeId !== String(employeeId)) return;
     if (status !== STATUS.APPROVED) return;
     if (requestType && requestType !== "paid_leave") return;
+    if (isTimeLeaveRequestRow_(rowObj)) return;
     if (!rowObj.start_date || !rowObj.end_date) return;
 
     const dailyRows = expandLeaveRequestToDailyRows(
@@ -2048,6 +2696,1234 @@ function appendEmployeeMasterLog(actionType, employeeId, comment) {
 }
 
 /* =========================
+   時間単位年休: Spreadsheet 構造
+
+   この初期化関数は時間休の登録処理からのみ呼ぶ。デプロイ時や通常の
+   既存申請処理では実行しないため、既存シートの列・既存データを変更しない。
+========================= */
+const TIME_LEAVE_SEGMENTS_SHEET = "time_leave_segments";
+const TIME_LEAVE_SEGMENTS_HEADERS = [
+  "time_leave_id",
+  "request_id",
+  "employee_id",
+  "company_code",
+  "leave_date",
+  "start_time",
+  "end_time",
+  "start_minute",
+  "end_minute",
+  "requested_minutes",
+  "scheduled_minutes_per_day",
+  "time_leave_unit_minutes",
+  "work_start_minute",
+  "work_end_minute",
+  "break_periods_json",
+  "calculation_version",
+  "created_at",
+  "updated_at"
+];
+const TIME_LEAVE_REQUEST_HEADERS = [
+  "request_kind",
+  "company_code_snapshot",
+  "policy_version"
+];
+
+function ensureTimeLeaveInfrastructure_() {
+  const requestSheet = getSheet("leave_requests");
+  TIME_LEAVE_REQUEST_HEADERS.forEach(header => ensureSheetColumn_(requestSheet, header));
+
+  const ss = getAppSpreadsheet();
+  let segmentSheet = ss.getSheetByName(TIME_LEAVE_SEGMENTS_SHEET);
+  if (!segmentSheet) {
+    segmentSheet = ss.insertSheet(TIME_LEAVE_SEGMENTS_SHEET);
+    segmentSheet.getRange(1, 1, 1, TIME_LEAVE_SEGMENTS_HEADERS.length)
+      .setValues([TIME_LEAVE_SEGMENTS_HEADERS]);
+    segmentSheet.setFrozenRows(1);
+  }
+  // 既存シートではヘッダーを末尾追加するだけに留める。列順・既存値・書式を変更しない。
+  TIME_LEAVE_SEGMENTS_HEADERS.forEach(header => ensureSheetColumn_(segmentSheet, header));
+  requireHeaders(segmentSheet, TIME_LEAVE_SEGMENTS_HEADERS);
+  return { requestSheet: requestSheet, segmentSheet: segmentSheet };
+}
+
+// 年度切替の確定処理だけが呼び出す。通常の読取・残高計算ではシート構造を変更しない。
+function ensurePaidLeaveMinutesInfrastructure_() {
+  const grantSheet = getSheet("paid_leave_grants");
+  ensureSheetColumn_(grantSheet, "carry_over_minutes");
+  return grantSheet;
+}
+
+// 本番実行は呼出側の明示的操作に限る初期化入口。既存列やデータには触れず、足りない
+// ヘッダーだけを末尾追加する。Phase 5ではこの関数を実行しない。
+function initializeTimeLeaveProductionStructure_() {
+  const timeLeave = ensureTimeLeaveInfrastructure_();
+  const grantSheet = ensurePaidLeaveMinutesInfrastructure_();
+  const retirementSheet = ensureLeaveRetirementRecordsSheet_();
+  return {
+    ok: true,
+    leave_requests_headers: getHeaderMap(timeLeave.requestSheet).headers,
+    time_leave_segments_headers: getHeaderMap(timeLeave.segmentSheet).headers,
+    paid_leave_grants_headers: getHeaderMap(grantSheet).headers,
+    leave_retirement_records_headers: getHeaderMap(retirementSheet).headers
+  };
+}
+
+// Apps Scriptエディタの関数一覧から、本番Spreadsheet構造の初期化を明示実行する入口。
+// 実処理は内部関数へ完全委譲し、この関数自身はSpreadsheet操作を持たない。
+function initializeTimeLeaveProductionStructure() {
+  const result = initializeTimeLeaveProductionStructure_();
+  console.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function formatMinuteAsTime_(minute) {
+  const value = Number(minute);
+  if (!Number.isInteger(value) || value < 0 || value >= 24 * 60) {
+    throw new Error("時刻分数が不正です");
+  }
+  return String(Math.floor(value / 60)).padStart(2, "0") + ":" +
+    String(value % 60).padStart(2, "0");
+}
+
+function getLeaveRequestRecordById_(requestId) {
+  const targetId = String(requestId || "").trim();
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, ["request_id"]);
+  const data = sheet.getDataRange().getValues();
+  const index = data.findIndex((row, rowIndex) =>
+    rowIndex > 0 && String(row[headerInfo.map.request_id] || "").trim() === targetId
+  );
+  if (index < 0) return null;
+  return {
+    sheet: sheet,
+    headerInfo: headerInfo,
+    sheetRow: index + 1,
+    rowObj: rowToObject(data[index], headerInfo.headers)
+  };
+}
+
+function deleteLeaveRequestById_(requestId) {
+  const record = getLeaveRequestRecordById_(requestId);
+  if (!record) return false;
+  record.sheet.deleteRow(record.sheetRow);
+  return true;
+}
+
+function isTimeLeaveRequestRow_(rowObj) {
+  return norm(rowObj && rowObj.request_kind) === "time_hourly";
+}
+
+function isCombinedHalfDayTimeLeaveRequestRow_(rowObj) {
+  return norm(rowObj && rowObj.request_kind) === "half_day_time_hourly";
+}
+
+// time_leave_segments を持つ親申請を判定する。年5日義務の扱いとは分け、
+// 単独時間休と半休＋時間休の双方をここで扱う。
+function isTimeLeaveSegmentRequestRow_(rowObj) {
+  return isTimeLeaveRequestRow_(rowObj) || isCombinedHalfDayTimeLeaveRequestRow_(rowObj);
+}
+
+function isTimeLeaveRequestById_(requestId) {
+  const record = getLeaveRequestRecordById_(requestId);
+  return !!(record && isTimeLeaveSegmentRequestRow_(record.rowObj));
+}
+
+function getTimeLeaveSegmentRecordByRequestId_(requestId) {
+  const targetId = String(requestId || "").trim();
+  const sheet = getSheet(TIME_LEAVE_SEGMENTS_SHEET);
+  const headerInfo = requireHeaders(sheet, TIME_LEAVE_SEGMENTS_HEADERS);
+  const data = sheet.getDataRange().getValues();
+  const matched = data
+    .map((row, index) => ({ row: row, index: index }))
+    .filter(item => item.index > 0 &&
+      String(item.row[headerInfo.map.request_id] || "").trim() === targetId);
+
+  if (matched.length === 0) return null;
+  if (matched.length > 1) {
+    throw new Error("時間有給明細が複数あります: request_id=" + targetId);
+  }
+  return {
+    sheet: sheet,
+    headerInfo: headerInfo,
+    sheetRow: matched[0].index + 1,
+    rowObj: rowToObject(matched[0].row, headerInfo.headers)
+  };
+}
+
+function getTimeLeaveSegmentsForEmployeeDate_(employeeId, leaveDate) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const targetDate = toDateKey(leaveDate);
+  const sheet = getSheet(TIME_LEAVE_SEGMENTS_SHEET);
+  const headerInfo = requireHeaders(sheet, TIME_LEAVE_SEGMENTS_HEADERS);
+  const data = sheet.getDataRange().getValues();
+
+  return data.slice(1)
+    .map((row, index) => ({ rowObj: rowToObject(row, headerInfo.headers), sheetRow: index + 2 }))
+    .filter(item =>
+      String(item.rowObj.employee_id || "").trim() === targetEmployeeId &&
+      item.rowObj.leave_date && toDateKey(item.rowObj.leave_date) === targetDate
+    );
+}
+
+function getTimeLeaveParentRows_() {
+  const sheet = getSheet("leave_requests");
+  const headerInfo = requireHeaders(sheet, [
+    "request_id", "employee_id", "start_date", "end_date", "days", "half_day", "status"
+  ]);
+  const data = sheet.getDataRange().getValues();
+  const result = {};
+  data.slice(1).forEach(row => {
+    const rowObj = rowToObject(row, headerInfo.headers);
+    const requestId = String(rowObj.request_id || "").trim();
+    if (requestId) result[requestId] = rowObj;
+  });
+  return result;
+}
+
+function isActiveTimeLeaveStatus_(status) {
+  const value = norm(status);
+  return value === STATUS.PENDING || value === STATUS.APPROVED;
+}
+
+function validateTimeLeaveEmployee_(employeeId) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const employee = getEmployeesForAdmin().find(row =>
+    String(row.employee_id || "").trim() === targetEmployeeId
+  );
+  if (!employee) throw new Error("対象社員が見つかりません");
+
+  const status = norm(employee.employment_status);
+  if (status !== "active" && status !== "在職") {
+    throw new Error("在職中の社員だけ時間有給を申請できます");
+  }
+  if (employee.leave_management_target !== true) {
+    throw new Error("この社員は有給管理対象ではありません");
+  }
+
+  const companyCode = String(employee.company_code || "").trim().toUpperCase();
+  const policy = getCompanyLeavePolicy(companyCode);
+  if (!policy.timeLeaveEnabled) {
+    throw new Error("この会社では時間有給を利用できません");
+  }
+  return { employee: employee, companyCode: companyCode, policy: policy };
+}
+
+function normalizeTimeLeavePayload_(payload, employeeInfo) {
+  const data = payload || {};
+  if (!data.leave_date) throw new Error("leave_date がありません");
+  const leaveDate = parseLocalDate(data.leave_date);
+  const startMinute = parseTimeToMinute(data.start_time);
+  const endMinute = parseTimeToMinute(data.end_time);
+  const policy = employeeInfo.policy;
+
+  validateLeaveRequestDates(leaveDate, leaveDate, "");
+  const requestedMinutes = calculateTimeLeaveMinutes(startMinute, endMinute, policy);
+  validateTimeLeaveUnitMinutes(requestedMinutes, policy);
+
+  return {
+    employee_id: String(data.employee_id || "").trim(),
+    leave_date: leaveDate,
+    leave_date_key: toDateKey(leaveDate),
+    start_minute: startMinute,
+    end_minute: endMinute,
+    start_time: formatMinuteAsTime_(startMinute),
+    end_time: formatMinuteAsTime_(endMinute),
+    requested_minutes: requestedMinutes,
+    reason: String(data.reason || "").trim(),
+    reason_detail: String(data.reason_detail || "").trim(),
+    company_code: employeeInfo.companyCode,
+    policy: policy
+  };
+}
+
+function getDailyPaidLeaveEntries_(employeeId, leaveDate, excludedRequestId) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const targetDateKey = toDateKey(leaveDate);
+  const excludedId = String(excludedRequestId || "").trim();
+  const parentRows = getTimeLeaveParentRows_();
+  const calendarMap = getCompanyCalendarMap();
+  const policy = validateTimeLeaveEmployee_(targetEmployeeId).policy;
+  const entries = [];
+
+  Object.keys(parentRows).forEach(requestId => {
+    const rowObj = parentRows[requestId];
+    if (requestId === excludedId) return;
+    if (String(rowObj.employee_id || "").trim() !== targetEmployeeId) return;
+    if (!isActiveTimeLeaveStatus_(rowObj.status)) return;
+    if (isTimeLeaveRequestRow_(rowObj)) return;
+
+    const dailyRows = expandLeaveRequestToDailyRows(
+      rowObj.start_date, rowObj.end_date, rowObj.days, rowObj.half_day, calendarMap
+    );
+    dailyRows.forEach(item => {
+      if (toDateKey(item.date) !== targetDateKey) return;
+      entries.push({
+        request_id: requestId,
+        kind: norm(rowObj.half_day) ? "half_day" : "full_day",
+        half_day: String(rowObj.half_day || ""),
+        minutes: norm(rowObj.half_day)
+          ? policy.scheduledMinutesPerDay / 2
+          : policy.scheduledMinutesPerDay
+      });
+    });
+  });
+
+  getTimeLeaveSegmentsForEmployeeDate_(targetEmployeeId, targetDateKey).forEach(item => {
+    const parent = parentRows[String(item.rowObj.request_id || "").trim()];
+    if (!parent || !isActiveTimeLeaveStatus_(parent.status)) return;
+    if (String(item.rowObj.request_id || "").trim() === excludedId) return;
+    entries.push({
+      request_id: String(item.rowObj.request_id || "").trim(),
+      time_leave_id: String(item.rowObj.time_leave_id || "").trim(),
+      kind: "time_hourly",
+      minutes: Number(item.rowObj.requested_minutes || 0),
+      start_minute: Number(item.rowObj.start_minute),
+      end_minute: Number(item.rowObj.end_minute)
+    });
+  });
+
+  return entries;
+}
+
+function getTimeLeaveMinutesForFiscalYear_(employeeId, leaveDate, policy, excludedRequestId) {
+  const date = parseLocalDate(leaveDate);
+  const fiscalYear = getFiscalYearFromDateWithStart(date, policy.fiscalStartMonth);
+  const range = getFiscalYearRangeWithStart(fiscalYear, policy.fiscalStartMonth);
+  const excludedId = String(excludedRequestId || "").trim();
+  const parentRows = getTimeLeaveParentRows_();
+  const result = { approvedMinutes: 0, pendingMinutes: 0, fiscalYear: fiscalYear };
+  const sheet = getSheet(TIME_LEAVE_SEGMENTS_SHEET);
+  const headerInfo = requireHeaders(sheet, TIME_LEAVE_SEGMENTS_HEADERS);
+  const data = sheet.getDataRange().getValues();
+
+  data.slice(1).forEach(row => {
+    const segment = rowToObject(row, headerInfo.headers);
+    if (String(segment.employee_id || "").trim() !== String(employeeId || "").trim()) return;
+    const requestId = String(segment.request_id || "").trim();
+    if (requestId === excludedId) return;
+    const parent = parentRows[requestId];
+    if (!parent || !isTimeLeaveSegmentRequestRow_(parent) || !segment.leave_date || !isDateInRange(segment.leave_date, range.start, range.end)) return;
+    const minutes = Number(segment.requested_minutes || 0);
+    if (!Number.isInteger(minutes) || minutes < 0) {
+      throw new Error("時間有給明細の取得分が不正です: " + requestId);
+    }
+    if (norm(parent.status) === STATUS.APPROVED) result.approvedMinutes += minutes;
+    if (norm(parent.status) === STATUS.PENDING) result.pendingMinutes += minutes;
+  });
+  return result;
+}
+
+function getHalfDayOccupiedRange_(halfDay, policy) {
+  const value = norm(halfDay);
+  if (value === "am") {
+    return { startMinute: policy.workStartMinute, endMinute: 720 };
+  }
+  if (value === "pm") {
+    return { startMinute: 780, endMinute: policy.workEndMinute };
+  }
+  throw new Error("半日有給区分が不正です");
+}
+
+function normalizeCombinedHalfDayTimeLeavePayload_(payload, employeeInfo) {
+  const candidate = normalizeTimeLeavePayload_(payload, employeeInfo);
+  const halfDay = norm(payload && payload.half_day);
+  if (halfDay !== "am" && halfDay !== "pm") {
+    throw new Error("half_day は am または pm で指定してください");
+  }
+  return Object.assign({}, candidate, {
+    half_day: halfDay,
+    half_day_minutes: employeeInfo.policy.scheduledMinutesPerDay / 2
+  });
+}
+
+function validateTimeLeaveEntriesAgainstCandidate_(candidate, entries) {
+  const policy = candidate.policy;
+
+  (entries || []).forEach(entry => {
+    if (entry.kind === "full_day") {
+      throw new Error("同日に1日有給の申請があります");
+    }
+    if (entry.kind === "half_day") {
+      const halfRange = getHalfDayOccupiedRange_(entry.half_day, policy);
+      if (hasTimeOverlap(candidate.start_minute, candidate.end_minute, halfRange.startMinute, halfRange.endMinute)) {
+        throw new Error("同日に重複する半日有給の申請があります");
+      }
+      return;
+    }
+    if (entry.kind === "time_hourly" && hasTimeOverlap(
+      candidate.start_minute, candidate.end_minute, entry.start_minute, entry.end_minute
+    )) {
+      throw new Error("同日に重複する時間有給の申請があります");
+    }
+  });
+
+  validateDailyPaidLeaveMinutes(
+    (entries || []).concat([{ kind: "time_hourly", minutes: candidate.requested_minutes }]),
+    policy.scheduledMinutesPerDay
+  );
+  return { ok: true };
+}
+
+function validateTimeLeaveRequestConflicts_(candidate, excludedRequestId) {
+  const policy = candidate.policy;
+  const entries = getDailyPaidLeaveEntries_(
+    candidate.employee_id,
+    candidate.leave_date,
+    excludedRequestId
+  );
+  validateTimeLeaveEntriesAgainstCandidate_(candidate, entries);
+  const annual = getTimeLeaveMinutesForFiscalYear_(
+    candidate.employee_id,
+    candidate.leave_date,
+    policy,
+    excludedRequestId
+  );
+  validateAnnualTimeLeaveLimit(
+    annual.approvedMinutes,
+    annual.pendingMinutes,
+    candidate.requested_minutes,
+    policy.timeLeaveAnnualLimitMinutes
+  );
+  const balanceReservation = validateTimeLeaveFifoBalanceAvailability_(candidate, excludedRequestId);
+  return { dailyEntries: entries, annual: annual, balance_reservation: balanceReservation };
+}
+
+function getPendingPaidLeaveReservationMinutes_(employeeId, asOfDate, context, excludedRequestId) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const excludedId = String(excludedRequestId || "").trim();
+  const targetDate = parseLocalDate(asOfDate);
+  let total = 0;
+
+  (context.requests_by_employee[targetEmployeeId] || []).forEach(rowObj => {
+    const requestId = String(rowObj.request_id || "").trim();
+    if (requestId === excludedId || norm(rowObj.status) !== STATUS.PENDING) return;
+    const useDate = getApprovalRequestEndDate_(rowObj, context);
+    if (useDate > targetDate) return;
+    total += getMainApprovalRequiredMinutes_(rowObj, context);
+  });
+  return total;
+}
+
+function validateCombinedHalfDayTimeLeaveRequestConflicts_(candidate, excludedRequestId) {
+  const policy = candidate.policy;
+  const entries = getDailyPaidLeaveEntries_(candidate.employee_id, candidate.leave_date, excludedRequestId);
+  const entriesWithPlannedHalfDay = entries.concat([{
+    kind: "half_day",
+    half_day: candidate.half_day,
+    minutes: candidate.half_day_minutes
+  }]);
+
+  validateTimeLeaveEntriesAgainstCandidate_(candidate, entriesWithPlannedHalfDay);
+
+  const annual = getTimeLeaveMinutesForFiscalYear_(
+    candidate.employee_id,
+    candidate.leave_date,
+    policy,
+    excludedRequestId
+  );
+  // 半休210分は含めず、時間年休子明細の分だけを年間上限へ算入する。
+  validateAnnualTimeLeaveLimit(
+    annual.approvedMinutes,
+    annual.pendingMinutes,
+    candidate.requested_minutes,
+    policy.timeLeaveAnnualLimitMinutes
+  );
+
+  const context = createFifoBalanceComparisonContext_(candidate.leave_date);
+  const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(
+    candidate.employee_id,
+    candidate.leave_date,
+    context
+  );
+  const requiredMinutes = candidate.half_day_minutes + candidate.requested_minutes;
+  const pendingReservedMinutes = getPendingPaidLeaveReservationMinutes_(
+    candidate.employee_id,
+    candidate.leave_date,
+    context,
+    excludedRequestId
+  );
+  const balanceReservation = validateTimeLeaveFifoReservation_(
+    Number(fifoBalance.current_remaining_minutes || 0),
+    pendingReservedMinutes,
+    requiredMinutes
+  );
+
+  return {
+    daily_entries: entries,
+    annual: annual,
+    required_minutes: requiredMinutes,
+    balance_reservation: balanceReservation
+  };
+}
+
+// 通常の半休を時間年休の後に申請する逆順でも、同日の重複・420分超過を防ぐ。
+// PARTNERの既存日数処理には適用しない。
+function validateMainHalfDayRequestAgainstTimeLeave_(employeeId, leaveDate, halfDay) {
+  const employeeInfo = validateTimeLeaveEmployee_(employeeId);
+  const policy = employeeInfo.policy;
+  const normalizedHalfDay = norm(halfDay);
+  if (normalizedHalfDay !== "am" && normalizedHalfDay !== "pm") {
+    throw new Error("半休区分が不正です");
+  }
+
+  const halfRange = getHalfDayOccupiedRange_(normalizedHalfDay, policy);
+  const entries = getDailyPaidLeaveEntries_(employeeId, leaveDate, "");
+  entries.forEach(entry => {
+    if (entry.kind === "time_hourly" && hasTimeOverlap(
+      halfRange.startMinute,
+      halfRange.endMinute,
+      entry.start_minute,
+      entry.end_minute
+    )) {
+      throw new Error("同日に重複する時間有給の申請があります");
+    }
+  });
+  validateDailyPaidLeaveMinutes(entries.concat([{
+    kind: "half_day",
+    half_day: normalizedHalfDay,
+    minutes: policy.scheduledMinutesPerDay / 2
+  }]), policy.scheduledMinutesPerDay);
+  return { ok: true };
+}
+
+function isMinuteInBreakPeriod_(minute, policy) {
+  return (policy.breakPeriods || []).some(period =>
+    minute >= Number(period.startMinute) && minute < Number(period.endMinute)
+  );
+}
+
+// 指定した実労働分だけ、休憩を飛ばして終了時刻を求める。勤務終了を越える候補は null。
+function calculateTimeLeaveEndMinute_(startMinute, requestedMinutes, policy) {
+  const start = Number(startMinute);
+  const requested = Number(requestedMinutes);
+  const workStart = Number(policy.workStartMinute);
+  const workEnd = Number(policy.workEndMinute);
+  if (!Number.isInteger(start) || !Number.isInteger(requested) || requested <= 0) return null;
+  if (start < workStart || start >= workEnd || isMinuteInBreakPeriod_(start, policy)) return null;
+
+  let cursor = start;
+  let remaining = requested;
+  const breaks = (policy.breakPeriods || []).slice().sort((a, b) => a.startMinute - b.startMinute);
+  while (remaining > 0 && cursor < workEnd) {
+    const currentBreak = breaks.find(period =>
+      cursor >= Number(period.startMinute) && cursor < Number(period.endMinute)
+    );
+    if (currentBreak) {
+      cursor = Number(currentBreak.endMinute);
+      continue;
+    }
+
+    const nextBreak = breaks.find(period => Number(period.startMinute) > cursor);
+    const nextBoundary = Math.min(workEnd, nextBreak ? Number(nextBreak.startMinute) : workEnd);
+    const available = nextBoundary - cursor;
+    if (available <= 0) {
+      cursor = nextBreak ? Number(nextBreak.endMinute) : workEnd;
+      continue;
+    }
+    const consumed = Math.min(available, remaining);
+    cursor += consumed;
+    remaining -= consumed;
+  }
+  if (remaining !== 0 || cursor > workEnd) return null;
+
+  // 15:00 は午後休憩の開始点であるため、候補UIでは休憩の直前で終了する
+  // 表示を避け、休憩後の 15:30 を終了時刻として返す。保存時も 13:00-15:30
+  // の休憩控除後分数は 120 分となり、制度上の取得分は変わらない。
+  const afternoonBreak = breaks.find(period =>
+    Number(period.startMinute) === 900 && Number(period.endMinute) === 930
+  );
+  if (afternoonBreak && cursor === Number(afternoonBreak.startMinute)) {
+    cursor = Number(afternoonBreak.endMinute);
+  }
+  return cursor <= workEnd ? cursor : null;
+}
+
+// Spreadsheet を読まず、与えられた最新スナップショットだけから有効候補を作る純粋関数。
+function buildTimeLeaveCandidateRows_(options) {
+  const opts = options || {};
+  const policy = opts.policy;
+  const mode = String(opts.request_mode || "").trim();
+  const halfDay = norm(opts.half_day);
+  const entries = Array.isArray(opts.entries) ? opts.entries : [];
+  const annual = opts.annual || { approvedMinutes: 0, pendingMinutes: 0 };
+  const approvedRemainingMinutes = Number(opts.approved_remaining_minutes || 0);
+  const pendingReservedMinutes = Number(opts.pending_reserved_minutes || 0);
+  const isCombined = mode === "half_day_time_hourly";
+  const plannedHalfDayMinutes = isCombined ? Number(policy.scheduledMinutesPerDay) / 2 : 0;
+
+  if (mode !== "time_hourly" && !isCombined) {
+    throw new Error("request_mode が不正です");
+  }
+  if (isCombined && halfDay !== "am" && halfDay !== "pm") {
+    throw new Error("half_day は am または pm で指定してください");
+  }
+
+  const entriesForCandidate = isCombined
+    ? entries.concat([{ kind: "half_day", half_day: halfDay, minutes: plannedHalfDayMinutes }])
+    : entries.slice();
+  const maxRequestedMinutes = Number(policy.scheduledMinutesPerDay);
+  const candidates = [];
+
+  for (let startMinute = Number(policy.workStartMinute); startMinute < Number(policy.workEndMinute); startMinute += 30) {
+    if (isMinuteInBreakPeriod_(startMinute, policy)) continue;
+
+    for (let requestedMinutes = Number(policy.timeLeaveUnitMinutes);
+      requestedMinutes <= maxRequestedMinutes;
+      requestedMinutes += Number(policy.timeLeaveUnitMinutes)) {
+      const endMinute = calculateTimeLeaveEndMinute_(startMinute, requestedMinutes, policy);
+      if (endMinute == null) continue;
+
+      const candidate = {
+        policy: policy,
+        start_minute: startMinute,
+        end_minute: endMinute,
+        requested_minutes: requestedMinutes
+      };
+      try {
+        validateTimeLeaveEntriesAgainstCandidate_(candidate, entriesForCandidate);
+        validateAnnualTimeLeaveLimit(
+          Number(annual.approvedMinutes || 0),
+          Number(annual.pendingMinutes || 0),
+          requestedMinutes,
+          Number(policy.timeLeaveAnnualLimitMinutes)
+        );
+        validateTimeLeaveFifoReservation_(
+          approvedRemainingMinutes,
+          pendingReservedMinutes,
+          plannedHalfDayMinutes + requestedMinutes
+        );
+      } catch (error) {
+        continue;
+      }
+
+      candidates.push({
+        start_time: formatMinuteAsTime_(startMinute),
+        requested_minutes: requestedMinutes,
+        requested_hours: requestedMinutes / 60,
+        end_time: formatMinuteAsTime_(endMinute)
+      });
+    }
+  }
+  return candidates;
+}
+
+function groupTimeLeaveCandidatesByStart_(candidates) {
+  const map = {};
+  (candidates || []).forEach(candidate => {
+    if (!map[candidate.start_time]) {
+      map[candidate.start_time] = { start_time: candidate.start_time, duration_options: [] };
+    }
+    map[candidate.start_time].duration_options.push({
+      requested_minutes: candidate.requested_minutes,
+      requested_hours: candidate.requested_hours,
+      end_time: candidate.end_time
+    });
+  });
+  return Object.keys(map).sort().map(key => map[key]);
+}
+
+// 候補API専用のSpreadsheet正本読取り。USE_SUPABASE_READS の設定に関係なく
+// 時間年休候補がSupabaseへ通信しないよう、必要な最小列だけを直接参照する。
+function getTimeLeaveEmployeeFromSpreadsheet_(employeeId) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const sheet = getSheet("employees");
+  const headerInfo = requireHeaders(sheet, [
+    "employee_id", "company_code", "employment_status", "leave_management_target"
+  ]);
+  const row = sheet.getDataRange().getValues().slice(1).find(values =>
+    String(rowToObject(values, headerInfo.headers).employee_id || "").trim() === targetEmployeeId
+  );
+  return row ? rowToObject(row, headerInfo.headers) : null;
+}
+
+function validateTimeLeaveSpreadsheetEmployee_(employeeId) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const employee = getTimeLeaveEmployeeFromSpreadsheet_(targetEmployeeId);
+  if (!employee) throw new Error("対象社員が見つかりません");
+
+  const status = norm(employee.employment_status);
+  if (status !== "active" && status !== "在職") {
+    throw new Error("在職中の社員だけ時間有給を申請できます");
+  }
+  if (String(employee.leave_management_target || "").toUpperCase() !== "TRUE") {
+    throw new Error("この社員は有給管理対象ではありません");
+  }
+
+  const companyCode = String(employee.company_code || "").trim().toUpperCase();
+  const policy = getCompanyLeavePolicy(companyCode);
+  if (!policy.timeLeaveEnabled) {
+    throw new Error("この会社では時間有給を利用できません");
+  }
+  return { employee: employee, companyCode: companyCode, policy: policy };
+}
+
+function getSpreadsheetCompanyCalendarMapForTimeLeave_() {
+  const sheet = getSheet("company_calendar");
+  const headerInfo = requireHeaders(sheet, ["date", "type"]);
+  return buildCompanyCalendarMapFromRows_(
+    sheet.getDataRange().getValues().slice(1).map(row => rowToObject(row, headerInfo.headers))
+  );
+}
+
+function validateTimeLeaveSpreadsheetDate_(leaveDate) {
+  const date = parseLocalDate(leaveDate);
+  const type = getCalendarTypeForDate(date, getSpreadsheetCompanyCalendarMapForTimeLeave_());
+  if (type !== CALENDAR_TYPE.WORKDAY) {
+    throw new Error(formatDateValue(date) + " は " + getCalendarLabel(type) + " のため有給申請できません");
+  }
+  return date;
+}
+
+function createTimeLeaveCandidateFifoContext_(employeeId, leaveDate, companyCode) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  return {
+    as_of_date: leaveDate,
+    calendar_map: getSpreadsheetCompanyCalendarMapForTimeLeave_(),
+    grants_by_employee: getSpreadsheetPaidLeaveGrantRowsForFifoCompare_(),
+    requests_by_employee: getSpreadsheetLeaveRequestRowsByEmployeeForFifoCompare_(),
+    time_leave_segments_by_request: getTimeLeaveSegmentsByRequestForFifoCompare_(),
+    company_code_by_employee: { [targetEmployeeId]: String(companyCode || "").trim().toUpperCase() }
+  };
+}
+
+function getDailyPaidLeaveEntriesFromSpreadsheetForTimeLeaveCandidates_(employeeId, leaveDate, policy) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  const targetDateKey = toDateKey(leaveDate);
+  const parentRows = getTimeLeaveParentRows_();
+  const calendarMap = getSpreadsheetCompanyCalendarMapForTimeLeave_();
+  const entries = [];
+
+  Object.keys(parentRows).forEach(requestId => {
+    const rowObj = parentRows[requestId];
+    if (String(rowObj.employee_id || "").trim() !== targetEmployeeId) return;
+    if (!isActiveTimeLeaveStatus_(rowObj.status)) return;
+    if (isTimeLeaveRequestRow_(rowObj)) return;
+
+    expandLeaveRequestToDailyRows(
+      rowObj.start_date, rowObj.end_date, rowObj.days, rowObj.half_day, calendarMap
+    ).forEach(item => {
+      if (toDateKey(item.date) !== targetDateKey) return;
+      entries.push({
+        request_id: requestId,
+        kind: norm(rowObj.half_day) ? "half_day" : "full_day",
+        half_day: String(rowObj.half_day || ""),
+        minutes: norm(rowObj.half_day)
+          ? policy.scheduledMinutesPerDay / 2
+          : policy.scheduledMinutesPerDay
+      });
+    });
+  });
+
+  getTimeLeaveSegmentsForEmployeeDate_(targetEmployeeId, targetDateKey).forEach(item => {
+    const parent = parentRows[String(item.rowObj.request_id || "").trim()];
+    if (!parent || !isActiveTimeLeaveStatus_(parent.status)) return;
+    entries.push({
+      request_id: String(item.rowObj.request_id || "").trim(),
+      time_leave_id: String(item.rowObj.time_leave_id || "").trim(),
+      kind: "time_hourly",
+      minutes: Number(item.rowObj.requested_minutes || 0),
+      start_minute: Number(item.rowObj.start_minute),
+      end_minute: Number(item.rowObj.end_minute)
+    });
+  });
+  return entries;
+}
+
+// UI候補表示専用。保存APIはこの結果を信用せず、ロック下で同じ検証を再実行する。
+function getTimeLeaveCandidates(payload) {
+  const data = payload || {};
+  const employeeId = String(data.employee_id || "").trim();
+  if (!employeeId) throw new Error("employee_id がありません");
+  if (!data.leave_date) throw new Error("leave_date がありません");
+
+  const mode = String(data.request_mode || "").trim();
+  const halfDay = norm(data.half_day);
+  const employeeInfo = validateTimeLeaveSpreadsheetEmployee_(employeeId);
+  const policy = employeeInfo.policy;
+  const leaveDate = validateTimeLeaveSpreadsheetDate_(data.leave_date);
+  if (mode !== "time_hourly" && mode !== "half_day_time_hourly") {
+    throw new Error("request_mode は time_hourly または half_day_time_hourly で指定してください");
+  }
+  if (mode === "half_day_time_hourly" && halfDay !== "am" && halfDay !== "pm") {
+    throw new Error("half_day は am または pm で指定してください");
+  }
+  if (mode === "time_hourly" && halfDay) {
+    throw new Error("単独時間年休では half_day を指定できません");
+  }
+
+  const entries = getDailyPaidLeaveEntriesFromSpreadsheetForTimeLeaveCandidates_(employeeId, leaveDate, policy);
+  const annual = getTimeLeaveMinutesForFiscalYear_(employeeId, leaveDate, policy, "");
+  const context = createTimeLeaveCandidateFifoContext_(employeeId, leaveDate, employeeInfo.companyCode);
+  const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(employeeId, leaveDate, context);
+  const pendingReservedMinutes = getPendingPaidLeaveReservationMinutes_(employeeId, leaveDate, context, "");
+  const plannedHalfDayMinutes = mode === "half_day_time_hourly"
+    ? policy.scheduledMinutesPerDay / 2
+    : 0;
+  const existingMinutes = entries.reduce((sum, entry) => sum + Number(entry.minutes || 0), 0);
+  const approvedRemainingMinutes = Number(fifoBalance.current_remaining_minutes || 0);
+  const candidates = buildTimeLeaveCandidateRows_({
+    policy: policy,
+    request_mode: mode,
+    half_day: halfDay,
+    entries: entries,
+    annual: annual,
+    approved_remaining_minutes: approvedRemainingMinutes,
+    pending_reserved_minutes: pendingReservedMinutes
+  });
+
+  return {
+    ok: true,
+    request_mode: mode,
+    half_day: halfDay,
+    policy: {
+      work_start_time: formatMinuteAsTime_(policy.workStartMinute),
+      work_end_time: formatMinuteAsTime_(policy.workEndMinute),
+      scheduled_minutes_per_day: policy.scheduledMinutesPerDay,
+      unit_minutes: policy.timeLeaveUnitMinutes
+    },
+    daily_summary: {
+      existing_minutes: existingMinutes,
+      planned_half_day_minutes: plannedHalfDayMinutes,
+      available_minutes: Math.max(0, policy.scheduledMinutesPerDay - existingMinutes - plannedHalfDayMinutes)
+    },
+    annual_time_leave: {
+      approved_minutes: annual.approvedMinutes,
+      pending_minutes: annual.pendingMinutes,
+      remaining_minutes: Math.max(0, policy.timeLeaveAnnualLimitMinutes - annual.approvedMinutes - annual.pendingMinutes)
+    },
+    fifo: {
+      approved_remaining_minutes: approvedRemainingMinutes,
+      pending_reserved_minutes: pendingReservedMinutes,
+      available_minutes: Math.max(0, approvedRemainingMinutes - pendingReservedMinutes)
+    },
+    candidates: candidates,
+    start_options: groupTimeLeaveCandidatesByStart_(candidates)
+  };
+}
+
+// 利用者画面上部の表示専用。候補APIと同じSpreadsheet正本・年間集計を用い、
+// 指定日なしで当年度の時間年休利用状況だけを返す。
+function getEmployeeTimeLeaveSummary(employeeId) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) throw new Error("employee_id がありません");
+  const employeeInfo = validateTimeLeaveSpreadsheetEmployee_(targetEmployeeId);
+  const policy = employeeInfo.policy;
+  const annual = getTimeLeaveMinutesForFiscalYear_(targetEmployeeId, new Date(), policy, "");
+  const approvedMinutes = Number(annual.approvedMinutes || 0);
+  const pendingMinutes = Number(annual.pendingMinutes || 0);
+  const annualLimitMinutes = Number(policy.timeLeaveAnnualLimitMinutes || 0);
+  return {
+    ok: true,
+    fiscal_year: annual.fiscalYear,
+    annual_time_leave: {
+      approved_minutes: approvedMinutes,
+      pending_minutes: pendingMinutes,
+      remaining_minutes: Math.max(0, annualLimitMinutes - approvedMinutes - pendingMinutes),
+      annual_limit_minutes: annualLimitMinutes
+    }
+  };
+}
+
+function buildTimeLeaveSegmentRow_(headerInfo, requestId, candidate, now) {
+  const policy = candidate.policy;
+  const rowObj = createEmptyRowObject(headerInfo.headers);
+  rowObj.time_leave_id = Utilities.getUuid();
+  rowObj.request_id = requestId;
+  rowObj.employee_id = candidate.employee_id;
+  rowObj.company_code = candidate.company_code;
+  rowObj.leave_date = candidate.leave_date;
+  rowObj.start_time = candidate.start_time;
+  rowObj.end_time = candidate.end_time;
+  rowObj.start_minute = candidate.start_minute;
+  rowObj.end_minute = candidate.end_minute;
+  rowObj.requested_minutes = candidate.requested_minutes;
+  rowObj.scheduled_minutes_per_day = policy.scheduledMinutesPerDay;
+  rowObj.time_leave_unit_minutes = policy.timeLeaveUnitMinutes;
+  rowObj.work_start_minute = policy.workStartMinute;
+  rowObj.work_end_minute = policy.workEndMinute;
+  rowObj.break_periods_json = JSON.stringify(policy.breakPeriods);
+  rowObj.calculation_version = "time_leave_v1";
+  rowObj.created_at = now;
+  rowObj.updated_at = now;
+  return rowObj;
+}
+
+function submitTimeLeaveRequest(payload) {
+  const data = payload || {};
+  const employeeId = String(data.employee_id || "").trim();
+  if (!employeeId) throw new Error("employee_id がありません");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  let parentSheet;
+  try {
+    const infrastructure = ensureTimeLeaveInfrastructure_();
+    parentSheet = infrastructure.requestSheet;
+    const parentHeaderInfo = requireHeaders(parentSheet, [
+      "request_id", "employee_id", "request_date", "start_date", "end_date", "days", "type",
+      "half_day", "reason", "reason_detail", "status", "approver_id", "approver_name",
+      "approved_at", "rejected_reason", "year", "created_at", "updated_at"
+    ]);
+    const segmentHeaderInfo = requireHeaders(infrastructure.segmentSheet, TIME_LEAVE_SEGMENTS_HEADERS);
+    const employeeInfo = validateTimeLeaveEmployee_(employeeId);
+    const candidate = normalizeTimeLeavePayload_(data, employeeInfo);
+    validateTimeLeaveRequestConflicts_(candidate, "");
+
+    const now = new Date();
+    const requestId = Utilities.getUuid();
+    const parent = createEmptyRowObject(parentHeaderInfo.headers);
+    parent.request_id = requestId;
+    parent.employee_id = employeeId;
+    parent.request_date = now;
+    parent.start_date = candidate.leave_date;
+    parent.end_date = candidate.leave_date;
+    parent.days = 0;
+    parent.type = "paid_leave";
+    parent.half_day = "";
+    parent.reason = candidate.reason;
+    parent.reason_detail = candidate.reason_detail;
+    parent.status = STATUS.PENDING;
+    parent.approver_id = "";
+    parent.approver_name = "";
+    parent.approved_at = "";
+    parent.rejected_reason = "";
+    parent.year = getFiscalYearFromDateWithStart(candidate.leave_date, candidate.policy.fiscalStartMonth);
+    parent.created_at = now;
+    parent.updated_at = now;
+    parent.request_kind = "time_hourly";
+    parent.company_code_snapshot = candidate.company_code;
+    parent.policy_version = candidate.policy.policyVersion;
+
+    appendRowFast_(parentSheet, objectToRow(parent, parentHeaderInfo.headers));
+    const segment = buildTimeLeaveSegmentRow_(segmentHeaderInfo, requestId, candidate, now);
+    try {
+      appendRowFast_(infrastructure.segmentSheet, objectToRow(segment, segmentHeaderInfo.headers));
+    } catch (segmentError) {
+      try {
+        if (!deleteLeaveRequestById_(requestId)) {
+          throw new Error("保存直後の親申請が見つかりません");
+        }
+      } catch (rollbackError) {
+        throw new Error("時間有給明細の保存に失敗し、親申請のロールバックにも失敗しました: " +
+          segmentError.message + " / " + rollbackError.message);
+      }
+      throw segmentError;
+    }
+
+    appendUsageLog({
+      request_id: requestId,
+      action_type: "time_leave_submit",
+      operator_id: employeeId,
+      operator_name: "申請者",
+      comment: "Time leave request submitted: " + candidate.leave_date_key + " " +
+        candidate.start_time + "-" + candidate.end_time + " / " + candidate.requested_minutes + "分"
+    });
+    clearAppCache();
+    return { ok: true, request_id: requestId, time_leave_id: segment.time_leave_id, requested_minutes: candidate.requested_minutes };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 半休（210分）と時間年休を、1件の親申請と1件の時間明細として原子的に登録する。
+// 親 request_id が複合申請全体の識別子となるため、request_group_id は使用しない。
+function submitCombinedHalfDayAndTimeLeaveRequest(payload) {
+  const data = payload || {};
+  const employeeId = String(data.employee_id || "").trim();
+  if (!employeeId) throw new Error("employee_id がありません");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const infrastructure = ensureTimeLeaveInfrastructure_();
+    const parentSheet = infrastructure.requestSheet;
+    const parentHeaderInfo = requireHeaders(parentSheet, [
+      "request_id", "employee_id", "request_date", "start_date", "end_date", "days", "type",
+      "half_day", "reason", "reason_detail", "status", "approver_id", "approver_name",
+      "approved_at", "rejected_reason", "year", "created_at", "updated_at"
+    ]);
+    const segmentHeaderInfo = requireHeaders(infrastructure.segmentSheet, TIME_LEAVE_SEGMENTS_HEADERS);
+    const employeeInfo = validateTimeLeaveEmployee_(employeeId);
+    const candidate = normalizeCombinedHalfDayTimeLeavePayload_(data, employeeInfo);
+    const validation = validateCombinedHalfDayTimeLeaveRequestConflicts_(candidate, "");
+
+    const now = new Date();
+    const requestId = Utilities.getUuid();
+    const parent = createEmptyRowObject(parentHeaderInfo.headers);
+    parent.request_id = requestId;
+    parent.employee_id = employeeId;
+    parent.request_date = now;
+    parent.start_date = candidate.leave_date;
+    parent.end_date = candidate.leave_date;
+    parent.days = 0.5;
+    parent.type = "paid_leave";
+    parent.half_day = candidate.half_day;
+    parent.reason = candidate.reason;
+    parent.reason_detail = candidate.reason_detail;
+    parent.status = STATUS.PENDING;
+    parent.approver_id = "";
+    parent.approver_name = "";
+    parent.approved_at = "";
+    parent.rejected_reason = "";
+    parent.year = getFiscalYearFromDateWithStart(candidate.leave_date, candidate.policy.fiscalStartMonth);
+    parent.created_at = now;
+    parent.updated_at = now;
+    parent.request_kind = "half_day_time_hourly";
+    parent.company_code_snapshot = candidate.company_code;
+    parent.policy_version = candidate.policy.policyVersion;
+
+    appendRowFast_(parentSheet, objectToRow(parent, parentHeaderInfo.headers));
+    const segment = buildTimeLeaveSegmentRow_(segmentHeaderInfo, requestId, candidate, now);
+    try {
+      appendRowFast_(infrastructure.segmentSheet, objectToRow(segment, segmentHeaderInfo.headers));
+    } catch (segmentError) {
+      try {
+        if (!deleteLeaveRequestById_(requestId)) {
+          throw new Error("保存直後の複合親申請が見つかりません");
+        }
+      } catch (rollbackError) {
+        throw new Error("複合申請の時間明細保存に失敗し、親申請のロールバックにも失敗しました: " +
+          segmentError.message + " / " + rollbackError.message);
+      }
+      throw segmentError;
+    }
+
+    appendUsageLog({
+      request_id: requestId,
+      action_type: "combined_half_day_time_leave_submit",
+      operator_id: employeeId,
+      operator_name: "申請者",
+      comment: "Combined half-day and time leave submitted: " + candidate.leave_date_key +
+        " / " + candidate.half_day + " half-day / " + candidate.start_time + "-" +
+        candidate.end_time + " / 合計" + validation.required_minutes + "分"
+    });
+    clearAppCache();
+    return {
+      ok: true,
+      request_id: requestId,
+      time_leave_id: segment.time_leave_id,
+      half_day_minutes: candidate.half_day_minutes,
+      requested_minutes: candidate.requested_minutes,
+      total_requested_minutes: validation.required_minutes
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function updatePendingTimeLeaveRequest(requestId, employeeId, payload) {
+  const targetRequestId = String(requestId || "").trim();
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetRequestId) throw new Error("requestId がありません");
+  if (!targetEmployeeId) throw new Error("employeeId がありません");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const parentRecord = getLeaveRequestRecordById_(targetRequestId);
+    if (!parentRecord || !isTimeLeaveRequestRow_(parentRecord.rowObj)) {
+      throw new Error("対象の時間有給申請が見つかりません");
+    }
+    if (String(parentRecord.rowObj.employee_id || "").trim() !== targetEmployeeId) {
+      throw new Error("申請者が一致しません");
+    }
+    if (norm(parentRecord.rowObj.status) !== STATUS.PENDING) {
+      throw new Error("承認待ちの時間有給申請だけ修正できます");
+    }
+
+    const segmentRecord = getTimeLeaveSegmentRecordByRequestId_(targetRequestId);
+    if (!segmentRecord) throw new Error("時間有給明細が見つかりません");
+    const employeeInfo = validateTimeLeaveEmployee_(targetEmployeeId);
+    const input = Object.assign({}, payload || {}, { employee_id: targetEmployeeId });
+    const candidate = normalizeTimeLeavePayload_(input, employeeInfo);
+    validateTimeLeaveRequestConflicts_(candidate, targetRequestId);
+
+    const now = new Date();
+    const previousParent = objectToRow(parentRecord.rowObj, parentRecord.headerInfo.headers);
+    const previousSegment = objectToRow(segmentRecord.rowObj, segmentRecord.headerInfo.headers);
+    const parent = Object.assign({}, parentRecord.rowObj, {
+      start_date: candidate.leave_date,
+      end_date: candidate.leave_date,
+      days: 0,
+      half_day: "",
+      reason: candidate.reason,
+      reason_detail: candidate.reason_detail,
+      year: getFiscalYearFromDateWithStart(candidate.leave_date, candidate.policy.fiscalStartMonth),
+      company_code_snapshot: candidate.company_code,
+      policy_version: candidate.policy.policyVersion,
+      updated_at: now
+    });
+    const segment = buildTimeLeaveSegmentRow_(
+      segmentRecord.headerInfo,
+      targetRequestId,
+      candidate,
+      now
+    );
+    segment.time_leave_id = segmentRecord.rowObj.time_leave_id;
+    segment.created_at = segmentRecord.rowObj.created_at;
+
+    updateSheetRowFast_(
+      parentRecord.sheet,
+      parentRecord.sheetRow,
+      objectToRow(parent, parentRecord.headerInfo.headers)
+    );
+    try {
+      updateSheetRowFast_(
+        segmentRecord.sheet,
+        segmentRecord.sheetRow,
+        objectToRow(segment, segmentRecord.headerInfo.headers)
+      );
+    } catch (segmentError) {
+      try {
+        updateSheetRowFast_(parentRecord.sheet, parentRecord.sheetRow, previousParent);
+        updateSheetRowFast_(segmentRecord.sheet, segmentRecord.sheetRow, previousSegment);
+      } catch (rollbackError) {
+        throw new Error("時間有給編集に失敗し、ロールバックにも失敗しました: " +
+          segmentError.message + " / " + rollbackError.message);
+      }
+      throw segmentError;
+    }
+
+    appendUsageLog({
+      request_id: targetRequestId,
+      action_type: "time_leave_update",
+      operator_id: targetEmployeeId,
+      operator_name: "申請者",
+      comment: "Pending time leave request updated: " + candidate.leave_date_key + " " +
+        candidate.start_time + "-" + candidate.end_time + " / " + candidate.requested_minutes + "分"
+    });
+    clearAppCache();
+    return { ok: true, request_id: targetRequestId, requested_minutes: candidate.requested_minutes };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function validatePendingTimeLeaveRequestForApproval_(requestId) {
+  const parentRecord = getLeaveRequestRecordById_(requestId);
+  if (!parentRecord || !isTimeLeaveSegmentRequestRow_(parentRecord.rowObj)) {
+    throw new Error("対象の時間有給申請が見つかりません");
+  }
+  if (norm(parentRecord.rowObj.status) !== STATUS.PENDING) {
+    throw new Error("承認待ちの時間有給申請だけ承認できます");
+  }
+  const segmentRecord = getTimeLeaveSegmentRecordByRequestId_(requestId);
+  if (!segmentRecord) throw new Error("時間有給明細が見つかりません");
+  const employeeId = String(parentRecord.rowObj.employee_id || "").trim();
+  const employeeInfo = validateTimeLeaveEmployee_(employeeId);
+  const candidatePayload = {
+    employee_id: employeeId,
+    leave_date: segmentRecord.rowObj.leave_date,
+    start_time: segmentRecord.rowObj.start_time,
+    end_time: segmentRecord.rowObj.end_time,
+    reason: parentRecord.rowObj.reason,
+    reason_detail: parentRecord.rowObj.reason_detail
+  };
+  let candidate;
+  if (isCombinedHalfDayTimeLeaveRequestRow_(parentRecord.rowObj)) {
+    candidatePayload.half_day = parentRecord.rowObj.half_day;
+    candidate = normalizeCombinedHalfDayTimeLeavePayload_(candidatePayload, employeeInfo);
+    validateCombinedHalfDayTimeLeaveRequestConflicts_(candidate, requestId);
+  } else {
+    candidate = normalizeTimeLeavePayload_(candidatePayload, employeeInfo);
+    validateTimeLeaveRequestConflicts_(candidate, requestId);
+  }
+  return { parentRecord: parentRecord, segmentRecord: segmentRecord, candidate: candidate };
+}
+
+function approveTimeLeaveRequest_(requestId, adminUser) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    validateMainApprovalBalancesForRequests_([requestId]);
+    const validation = validatePendingTimeLeaveRequestForApproval_(requestId);
+    const headerInfo = validation.parentRecord.headerInfo;
+    const rowObj = validation.parentRecord.rowObj;
+    const isCombined = isCombinedHalfDayTimeLeaveRequestRow_(rowObj);
+    const now = new Date();
+    const operatorId = adminUser && adminUser.admin_id ? String(adminUser.admin_id).trim() : "admin";
+    const operatorName = adminUser && adminUser.admin_name ? String(adminUser.admin_name).trim() : "管理者";
+    rowObj.status = STATUS.APPROVED;
+    rowObj.approver_id = operatorId;
+    rowObj.approver_name = operatorName;
+    rowObj.approved_at = now;
+    rowObj.updated_at = now;
+    updateSheetRowFast_(
+      validation.parentRecord.sheet,
+      validation.parentRecord.sheetRow,
+      objectToRow(rowObj, headerInfo.headers)
+    );
+    appendUsageLog({
+      request_id: requestId,
+      action_type: isCombined ? "combined_half_day_time_leave_approve" : "time_leave_approve",
+      operator_id: operatorId,
+      operator_name: operatorName,
+      comment: (isCombined ? "Combined half-day and time leave" : "Time leave") + " approved by " + operatorName
+    });
+    clearAppCache();
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function approveRequestsBatchWithFifoValidation_(requestIds, adminUser) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    validateMainApprovalBalancesForRequests_(requestIds);
+    const timeRequestIds = requestIds.filter(requestId => isTimeLeaveRequestById_(requestId));
+    // 状態を書き換える前に全時間有給を検証する。相互のpending申請も検証対象に残る。
+    timeRequestIds.forEach(requestId => validatePendingTimeLeaveRequestForApproval_(requestId));
+
+    const sheet = getSheet("leave_requests");
+    const headerInfo = requireHeaders(sheet, [
+      "request_id", "status", "approver_id", "approver_name", "approved_at", "updated_at"
+    ]);
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    if (lastRow <= 1) throw new Error("申請データがありません");
+
+    const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    const targetIdSet = new Set(requestIds.map(id => String(id)));
+    const now = new Date();
+    const operatorId = adminUser && adminUser.admin_id ? String(adminUser.admin_id).trim() : "admin";
+    const operatorName = adminUser && adminUser.admin_name ? String(adminUser.admin_name).trim() : "管理者";
+    let updatedCount = 0;
+    const updatedRows = data.slice(1).map(row => {
+      if (!targetIdSet.has(String(row[headerInfo.map.request_id] || ""))) return row;
+      row[headerInfo.map.status] = STATUS.APPROVED;
+      row[headerInfo.map.approver_id] = operatorId;
+      row[headerInfo.map.approver_name] = operatorName;
+      row[headerInfo.map.approved_at] = now;
+      row[headerInfo.map.updated_at] = now;
+      updatedCount++;
+      return row;
+    });
+    if (updatedCount === 0) throw new Error("承認対象の申請が見つかりません");
+    sheet.getRange(2, 1, updatedRows.length, lastCol).setValues(updatedRows);
+
+    requestIds.forEach(requestId => {
+      const requestRecord = getLeaveRequestRecordById_(requestId);
+      const isCombined = !!(requestRecord && isCombinedHalfDayTimeLeaveRequestRow_(requestRecord.rowObj));
+      appendUsageLog({
+      request_id: requestId,
+      action_type: isCombined
+        ? "combined_half_day_time_leave_approve"
+        : (timeRequestIds.includes(requestId) ? "time_leave_approve" : "approve"),
+      operator_id: operatorId,
+      operator_name: operatorName,
+      comment: "Batch approved by " + operatorName
+      });
+    });
+    clearAppCache();
+    return { ok: true, count: updatedCount };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* =========================
    申請登録
 ========================= */
 function submitLeaveRequest(data) {
@@ -2113,6 +3989,14 @@ function submitLeaveRequest(data) {
   const employeeMap = getEmployeeDetailMap();
   const employee = employeeMap[String(data.employee_id || "").trim()];
   const fiscalStartMonth = employee ? Number(employee.fiscal_start_month || 4) : 4;
+
+  if (isHalf && employee && String(employee.company_code || "").trim().toUpperCase() === "MAIN") {
+    validateMainHalfDayRequestAgainstTimeLeave_(
+      String(data.employee_id || "").trim(),
+      start,
+      data.half_type || ""
+    );
+  }
 
   rowObj.year = getFiscalYearFromDateWithStart(start, fiscalStartMonth);
   rowObj.created_at = now;
@@ -2963,11 +4847,121 @@ function getRequestHistoryStatusLabel_(status) {
   return "承認待ち";
 }
 
+function getMainApprovalRequiredMinutes_(requestRow, context) {
+  const policy = getCompanyLeavePolicy("MAIN");
+  const requestId = String(requestRow.request_id || "").trim();
+  if (isTimeLeaveSegmentRequestRow_(requestRow)) {
+    const segments = (context.time_leave_segments_by_request || {})[requestId] || [];
+    const minutes = segments.reduce((sum, segment) => sum + Number(segment.requested_minutes || 0), 0);
+    if (!Number.isInteger(minutes) || minutes <= 0) {
+      throw new Error("時間有給明細の取得分が不正です: " + requestId);
+    }
+    if (isCombinedHalfDayTimeLeaveRequestRow_(requestRow)) {
+      const halfDay = norm(requestRow.half_day);
+      if (halfDay !== "am" && halfDay !== "pm") {
+        throw new Error("複合申請の半休区分が不正です: " + requestId);
+      }
+      return policy.scheduledMinutesPerDay / 2 + minutes;
+    }
+    return minutes;
+  }
+  const dailyRows = expandLeaveRequestToDailyRows(
+    requestRow.start_date, requestRow.end_date, requestRow.days, requestRow.half_day, context.calendar_map
+  );
+  return dailyRows.length * policy.scheduledMinutesPerDay -
+    (norm(requestRow.half_day) ? dailyRows.length * policy.scheduledMinutesPerDay / 2 : 0);
+}
+
+function getApprovalRequestEndDate_(requestRow, context) {
+  if (!isTimeLeaveSegmentRequestRow_(requestRow)) return parseLocalDate(requestRow.end_date);
+  const requestId = String(requestRow.request_id || "").trim();
+  const segments = (context.time_leave_segments_by_request || {})[requestId] || [];
+  if (!segments.length) throw new Error("時間有給明細が見つかりません: " + requestId);
+  return segments.reduce((latest, segment) => {
+    const date = parseLocalDate(segment.leave_date);
+    return date > latest ? date : latest;
+  }, parseLocalDate(segments[0].leave_date));
+}
+
+function formatPaidLeaveMinutesForError_(minutes) {
+  const display = getMinuteBalanceDisplay_(minutes, getCompanyLeavePolicy("MAIN").scheduledMinutesPerDay);
+  return display.remaining_full_days + "日" + display.remaining_hours + "時間" + display.remaining_remainder_minutes + "分";
+}
+
+function validateMainApprovalRemainingMinutes_(remainingMinutes, requiredMinutes) {
+  const remaining = Number(remainingMinutes || 0);
+  const required = Number(requiredMinutes || 0);
+  if (!Number.isInteger(remaining) || !Number.isInteger(required) || remaining < 0 || required <= 0) {
+    throw new Error("承認時有給残高の分数が不正です");
+  }
+  if (remaining < required) {
+    throw new Error(
+      "有給残高が不足しているため承認できません。現在残高：" +
+      formatPaidLeaveMinutesForError_(remaining) +
+      " / 申請必要量：" + formatPaidLeaveMinutesForError_(required)
+    );
+  }
+  return { ok: true, remaining_minutes: remaining, required_minutes: required };
+}
+
+// 承認処理専用。入力順ではなく利用開始日、同日なら request_id の順で仮承認する。
+// 既存一括承認と同じ all-or-nothing を維持し、書込み前に全件を検証する。
+function validateMainApprovalBalancesForRequests_(requestIds) {
+  const targetIds = new Set((requestIds || []).map(id => String(id || "").trim()).filter(Boolean));
+  if (!targetIds.size) return [];
+  const context = createFifoBalanceComparisonContext_(parseLocalDate(new Date()));
+  const targets = [];
+  Object.keys(context.requests_by_employee || {}).forEach(employeeId => {
+    (context.requests_by_employee[employeeId] || []).forEach(rowObj => {
+      if (!targetIds.has(String(rowObj.request_id || "").trim())) return;
+      if (!isMainTimeLeaveEmployeeForFifo_(employeeId, context)) return;
+      if (norm(rowObj.status) !== STATUS.PENDING) {
+        throw new Error("承認待ちの申請だけ承認できます: " + rowObj.request_id);
+      }
+      targets.push(rowObj);
+    });
+  });
+  if (targets.length !== [...targetIds].filter(id => {
+    return Object.keys(context.requests_by_employee || {}).some(employeeId =>
+      (context.requests_by_employee[employeeId] || []).some(row => String(row.request_id || "").trim() === id)
+    );
+  }).length) {
+    throw new Error("承認対象の申請が見つかりません");
+  }
+  targets.sort((a, b) => {
+    const aDate = getApprovalRequestEndDate_(a, context);
+    const bDate = getApprovalRequestEndDate_(b, context);
+    if (aDate.getTime() !== bDate.getTime()) return aDate - bDate;
+    return String(a.request_id).localeCompare(String(b.request_id));
+  });
+
+  const result = [];
+  targets.forEach(rowObj => {
+    const employeeId = String(rowObj.employee_id || "").trim();
+    const useDate = getApprovalRequestEndDate_(rowObj, context);
+    const requiredMinutes = getMainApprovalRequiredMinutes_(rowObj, context);
+    const before = calculateFifoBalanceMinutesFromContext_(employeeId, useDate, context);
+    validateMainApprovalRemainingMinutes_(before.current_remaining_minutes, requiredMinutes);
+    rowObj.status = STATUS.APPROVED;
+    const after = calculateFifoBalanceMinutesFromContext_(employeeId, useDate, context);
+    if (Number(after.unallocated_used_minutes || 0) > Number(before.unallocated_used_minutes || 0)) {
+      throw new Error("有給残高が不足しているため承認できません: " + rowObj.request_id);
+    }
+    result.push({ request_id: String(rowObj.request_id || ""), required_minutes: requiredMinutes });
+  });
+  return result;
+}
+
 function approveRequestsBatch(requestIds, adminUser) {
   if (!Array.isArray(requestIds) || requestIds.length === 0) {
     throw new Error("承認対象が選択されていません");
   }
 
+  return approveRequestsBatchWithFifoValidation_(requestIds, adminUser);
+}
+
+// 旧日数のみの一括承認実装。Phase 4以降は上記の共通FIFO検証経由でのみ呼び出す。
+function approveRequestsBatchLegacy_(requestIds, adminUser) {
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
@@ -3067,6 +5061,14 @@ function approveRequest(requestId, adminUser) {
     throw new Error("requestId がありません");
   }
 
+  if (isTimeLeaveRequestById_(requestId)) {
+    return approveTimeLeaveRequest_(requestId, adminUser);
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    validateMainApprovalBalancesForRequests_([requestId]);
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
@@ -3125,7 +5127,10 @@ function approveRequest(requestId, adminUser) {
 
   clearAppCache();
 
-  return { ok: true };
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* =========================
@@ -3744,6 +5749,7 @@ function getEmployeesForRequest() {
     });
 
     const balanceMapByFiscalYear = {};
+    const fiveDayMapByFiscalYear = {};
 
     Object.keys(fiscalYearGroups).forEach(fiscalYear => {
       balanceMapByFiscalYear[fiscalYear] =
@@ -3751,7 +5757,15 @@ function getEmployeesForRequest() {
           Number(fiscalYear),
           fiscalYearGroups[fiscalYear]
         );
+      fiveDayMapByFiscalYear[fiscalYear] =
+        getFiveDayObligationDaysByFiscalYearForEmployeeIds(
+          Number(fiscalYear),
+          fiscalYearGroups[fiscalYear]
+        );
     });
+    const currentMinuteFifoBalanceMap = getCurrentMinuteFifoBalanceMapForEmployeeIds_(
+      employeeRows.map(row => String(row.employee_id || "").trim())
+    );
 
     return employeeRows.map(rowObj => {
       const employeeId = String(rowObj.employee_id || "").trim();
@@ -3759,7 +5773,8 @@ function getEmployeesForRequest() {
       const fiscalYear = getFiscalYearFromDateWithStart(new Date(), fiscalStartMonth);
 
       const balanceMap = balanceMapByFiscalYear[fiscalYear] || {};
-      const balance = balanceMap[employeeId] || {
+      const fiveDayMap = fiveDayMapByFiscalYear[fiscalYear] || {};
+      const balance = currentMinuteFifoBalanceMap[employeeId] || balanceMap[employeeId] || {
         current_remaining_days: 0,
         carry_over_days: 0,
         grant_days: 0,
@@ -3767,8 +5782,8 @@ function getEmployeesForRequest() {
       };
 
       const usedDays = Number(balance.used_days || 0);
-      const fiveDayUsed = Math.min(usedDays, 5);
-      const fiveDayRemaining = Math.max(0, 5 - usedDays);
+      const fiveDayUsed = Math.min(Number(fiveDayMap[employeeId] || 0), 5);
+      const fiveDayRemaining = Math.max(0, 5 - fiveDayUsed);
 
       return {
         employee_id: employeeId,
@@ -3780,6 +5795,10 @@ function getEmployeesForRequest() {
         fiscal_start_month: fiscalStartMonth,
 
         current_remaining_days: Number(balance.current_remaining_days || 0),
+        current_remaining_minutes: balance.current_remaining_minutes == null ? null : Number(balance.current_remaining_minutes),
+        remaining_full_days: balance.remaining_full_days == null ? null : Number(balance.remaining_full_days),
+        remaining_hours: balance.remaining_hours == null ? null : Number(balance.remaining_hours),
+        remaining_remainder_minutes: balance.remaining_remainder_minutes == null ? null : Number(balance.remaining_remainder_minutes),
         carry_over_days: Number(balance.carry_over_days || 0),
         grant_days: Number(balance.grant_days || 0),
         used_days: usedDays,
@@ -3849,14 +5868,23 @@ function getEmployeesForRequest() {
   });
 
   const balanceMapByFiscalYear = {};
+  const fiveDayMapByFiscalYear = {};
 
-  Object.keys(fiscalYearGroups).forEach(fiscalYear => {
+    Object.keys(fiscalYearGroups).forEach(fiscalYear => {
     balanceMapByFiscalYear[fiscalYear] =
       getEmployeeBalanceMapForEmployeeIdsForFiscalYear(
         Number(fiscalYear),
         fiscalYearGroups[fiscalYear]
       );
-  });
+    fiveDayMapByFiscalYear[fiscalYear] =
+      getFiveDayObligationDaysByFiscalYearForEmployeeIds(
+        Number(fiscalYear),
+        fiscalYearGroups[fiscalYear]
+        );
+    });
+  const currentMinuteFifoBalanceMap = getCurrentMinuteFifoBalanceMapForEmployeeIds_(
+    employeeRows.map(row => String(row.employee_id || "").trim())
+  );
 
   return employeeRows.map(rowObj => {
     const employeeId = String(rowObj.employee_id || "").trim();
@@ -3864,7 +5892,8 @@ function getEmployeesForRequest() {
     const fiscalYear = getFiscalYearFromDateWithStart(new Date(), fiscalStartMonth);
 
     const balanceMap = balanceMapByFiscalYear[fiscalYear] || {};
-    const balance = balanceMap[employeeId] || {
+    const fiveDayMap = fiveDayMapByFiscalYear[fiscalYear] || {};
+    const balance = currentMinuteFifoBalanceMap[employeeId] || balanceMap[employeeId] || {
       current_remaining_days: 0,
       carry_over_days: 0,
       grant_days: 0,
@@ -3872,8 +5901,8 @@ function getEmployeesForRequest() {
     };
 
     const usedDays = Number(balance.used_days || 0);
-    const fiveDayUsed = Math.min(usedDays, 5);
-    const fiveDayRemaining = Math.max(0, 5 - usedDays);
+    const fiveDayUsed = Math.min(Number(fiveDayMap[employeeId] || 0), 5);
+    const fiveDayRemaining = Math.max(0, 5 - fiveDayUsed);
 
     return {
       employee_id: employeeId,
@@ -3885,6 +5914,10 @@ function getEmployeesForRequest() {
       fiscal_start_month: fiscalStartMonth,
 
       current_remaining_days: Number(balance.current_remaining_days || 0),
+      current_remaining_minutes: balance.current_remaining_minutes == null ? null : Number(balance.current_remaining_minutes),
+      remaining_full_days: balance.remaining_full_days == null ? null : Number(balance.remaining_full_days),
+      remaining_hours: balance.remaining_hours == null ? null : Number(balance.remaining_hours),
+      remaining_remainder_minutes: balance.remaining_remainder_minutes == null ? null : Number(balance.remaining_remainder_minutes),
       carry_over_days: Number(balance.carry_over_days || 0),
       grant_days: Number(balance.grant_days || 0),
       used_days: usedDays,
@@ -6099,6 +8132,10 @@ function getPaidLeaveDashboardData(filters) {
     fiscalYear,
     employeeIds
   );
+  const fiveDayMap = getFiveDayObligationDaysByFiscalYearForEmployeeIds(
+    fiscalYear,
+    employeeIds
+  );
   const context = createFifoBalanceComparisonContext_(asOfDate);
 
   const allRows = employees.map(emp => {
@@ -6112,7 +8149,8 @@ function getPaidLeaveDashboardData(filters) {
       used_days: 0
     };
     const usedDays = Number(fiscalBalance.used_days || 0);
-    const fiveDayRemaining = Math.max(0, 5 - usedDays);
+    const fiveDayUsed = Math.min(Number(fiveDayMap[employeeId] || 0), 5);
+    const fiveDayRemaining = Math.max(0, 5 - fiveDayUsed);
     const expiryInfo = buildPaidLeaveDashboardExpiryInfo_(fifoBalance, asOfDate);
 
     return {
@@ -6124,8 +8162,12 @@ function getPaidLeaveDashboardData(filters) {
       company_code: String(emp.company_code || ""),
       company_name: String(emp.company_name || ""),
       current_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+      current_remaining_minutes: fifoBalance.current_remaining_minutes == null ? null : Number(fifoBalance.current_remaining_minutes),
+      remaining_full_days: fifoBalance.remaining_full_days == null ? null : Number(fifoBalance.remaining_full_days),
+      remaining_hours: fifoBalance.remaining_hours == null ? null : Number(fifoBalance.remaining_hours),
+      remaining_remainder_minutes: fifoBalance.remaining_remainder_minutes == null ? null : Number(fifoBalance.remaining_remainder_minutes),
       fiscal_used_days: usedDays,
-      five_day_used: Math.min(usedDays, 5),
+      five_day_used: fiveDayUsed,
       five_day_remaining: fiveDayRemaining,
       five_day_completed: fiveDayRemaining === 0,
       expired_days: Number(fifoBalance.expired_days || 0),
@@ -6554,6 +8596,10 @@ function getPaidLeaveBalanceSnapshotForAttendance(employeeIds, asOfDate) {
         employee_name: getDisplayName(emp) || employeeId,
         fiscal_year: String(fiscalYear),
         current_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+        current_remaining_minutes: fifoBalance.current_remaining_minutes == null ? null : Number(fifoBalance.current_remaining_minutes),
+        remaining_full_days: fifoBalance.remaining_full_days == null ? null : Number(fifoBalance.remaining_full_days),
+        remaining_hours: fifoBalance.remaining_hours == null ? null : Number(fifoBalance.remaining_hours),
+        remaining_remainder_minutes: fifoBalance.remaining_remainder_minutes == null ? null : Number(fifoBalance.remaining_remainder_minutes),
         carry_over_days: Number(fiscalBalance.carry_over_days || 0),
         grant_days: Number(fiscalBalance.grant_days || 0),
         used_days: Number(fiscalBalance.used_days || 0),
@@ -6662,7 +8708,14 @@ function getPaidLeaveDashboardEmployeeDetail(employeeId, filters) {
     used_days: 0
   };
   const usedDays = Number(fiscalBalance.used_days || 0);
-  const fiveDayRemaining = Math.max(0, 5 - usedDays);
+  const fiveDayUsed = Math.min(
+    Number(getFiveDayObligationDaysByFiscalYearForEmployeeIds(
+      fiscalYear,
+      [targetEmployeeId]
+    )[targetEmployeeId] || 0),
+    5
+  );
+  const fiveDayRemaining = Math.max(0, 5 - fiveDayUsed);
   const expiryInfo = buildPaidLeaveDashboardExpiryInfo_(fifoBalance, asOfDate);
   const grantDetails = (fifoBalance.grant_details || [])
     .map(lot => buildPaidLeaveDashboardGrantDetail_(lot, asOfDate))
@@ -6698,8 +8751,12 @@ function getPaidLeaveDashboardEmployeeDetail(employeeId, filters) {
     },
     summary: {
       current_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+      current_remaining_minutes: fifoBalance.current_remaining_minutes == null ? null : Number(fifoBalance.current_remaining_minutes),
+      remaining_full_days: fifoBalance.remaining_full_days == null ? null : Number(fifoBalance.remaining_full_days),
+      remaining_hours: fifoBalance.remaining_hours == null ? null : Number(fifoBalance.remaining_hours),
+      remaining_remainder_minutes: fifoBalance.remaining_remainder_minutes == null ? null : Number(fifoBalance.remaining_remainder_minutes),
       fiscal_used_days: usedDays,
-      five_day_used: Math.min(usedDays, 5),
+      five_day_used: fiveDayUsed,
       five_day_remaining: fiveDayRemaining,
       five_day_completed: fiveDayRemaining === 0,
       expired_days: Number(fifoBalance.expired_days || 0),

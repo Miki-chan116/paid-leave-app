@@ -83,6 +83,8 @@ node database/migration/convert_spreadsheet_csv_to_supabase.js \
 - Timestamps are normalized to ISO 8601.
 - Boolean values are normalized to `true` or `false`.
 - `grant_type = initial` is preserved.
+- `leave_requests.request_kind`, `company_code_snapshot`, and `policy_version` are preserved when present; legacy rows remain empty/NULL.
+- `paid_leave_grants.carry_over_minutes` is preserved when present; blank legacy rows remain NULL.
 - `usage_log.csv` is converted to `usage_logs.csv`.
 - `usage_log.request_id` is copied to `usage_logs.legacy_request_id`.
 - If `usage_log.request_id` matches `leave_requests.request_id`, `target_type` becomes `leave_request`.

@@ -2,6 +2,8 @@
 let adminEmployees = [];
 let editingEmployeeId = "";
 let retiringEmployeeId = "";
+let retirementRecordEmployeeId = "";
+let retirementRecordPreview = null;
 
 function getDisplayName(emp) {
   return String((emp && (emp.display_name || emp.name)) || "").trim();
@@ -144,6 +146,9 @@ function renderEmployeeList(data) {
       <div class="admin-employee-actions">
         <button type="button" class="admin-action-btn edit-btn" data-action="edit" data-employee-id="${escapeHtml(emp.employee_id || "")}">✏️ 編集</button>
         <button type="button" class="admin-action-btn retire-btn" data-action="retire" data-employee-id="${escapeHtml(emp.employee_id || "")}">⚠️ 退職</button>
+        ${emp.employment_status === "retired"
+          ? `<button type="button" class="admin-action-btn" data-action="retirement-record" data-employee-id="${escapeHtml(emp.employee_id || "")}">🧾 退職時有給を記録</button>`
+          : ""}
       </div>
     `;
 
@@ -168,7 +173,179 @@ document.addEventListener("click", event => {
   if (button.dataset.action === "retire") {
     openRetireModal(emp);
   }
+
+  if (button.dataset.action === "retirement-record") {
+    openRetirementLeaveRecordModal(emp);
+  }
 });
+
+/* =========================
+   退職時有給記録（Phase 1: 後追い登録）
+========================= */
+function openRetirementLeaveRecordModal(emp) {
+  retirementRecordEmployeeId = emp.employee_id || "";
+  retirementRecordPreview = null;
+  setValue("retirementLeaveRecordSubTitle", "");
+  document.getElementById("retirementLeaveRecordSubTitle").textContent =
+    `${getDisplayName(emp)}（${emp.display_employee_id || emp.employee_id || ""}）`;
+  document.getElementById("retirementLeaveRecordLoading").style.display = "block";
+  document.getElementById("retirementLeaveRecordForm").style.display = "none";
+  document.getElementById("retirementLeaveRecordExisting").style.display = "none";
+  document.getElementById("createRetirementLeaveRecordBtn").disabled = false;
+  document.getElementById("createRetirementLeaveRecordBtn").style.display = "none";
+  document.getElementById("retirementLotDetails").style.display = "none";
+  setRetirementLeaveRecordStatus("", "");
+  document.getElementById("retirementLeaveRecordModal").style.display = "flex";
+
+  google.script.run
+    .withSuccessHandler(result => {
+      document.getElementById("retirementLeaveRecordLoading").style.display = "none";
+      retirementRecordPreview = result || null;
+      const existing = result && result.existing_record;
+      if (existing) {
+        document.getElementById("retirementLeaveRecordExisting").style.display = "block";
+        document.getElementById("retirementLeaveRecordExistingDetail").textContent =
+          `登録済み（退職日: ${formatRetirementDate(existing.leave_date)}、FIFO残高: ${formatRetirementDays(existing.balance_as_of_leave_date)}日、調整: ${formatRetirementDays(existing.adjustment_days)}日、調整後: ${formatRetirementDays(existing.balance_after_adjustment)}日、登録日: ${formatRetirementDate(existing.created_at)}）`;
+        return;
+      }
+
+      setValue("retirementRecordLeaveDate", toInputDate(result.employee.leave_date));
+      setValue("retirementRecordFifoBalance", `${formatRetirementDays(result.balance.current_remaining_days)}日`);
+      setValue("retirementAdjustmentMode", "record_only");
+      setValue("retirementAdjustmentReason", "retirement_settlement");
+      setValue("retirementAdjustmentNotes", "");
+      renderRetirementLotDetails(result.balance.grant_details || []);
+      document.getElementById("retirementLeaveRecordForm").style.display = "block";
+      document.getElementById("createRetirementLeaveRecordBtn").style.display = "inline-block";
+      syncRetirementAdjustmentFields();
+    })
+    .withFailureHandler(err => {
+      document.getElementById("retirementLeaveRecordLoading").style.display = "none";
+      setRetirementLeaveRecordStatus("退職日時点の残高を取得できませんでした。\n" + (err.message || err), "error");
+    })
+    .getRetirementLeaveBalancePreview(retirementRecordEmployeeId);
+}
+
+function closeRetirementLeaveRecordModal() {
+  retirementRecordEmployeeId = "";
+  retirementRecordPreview = null;
+  document.getElementById("retirementLeaveRecordModal").style.display = "none";
+}
+
+function syncRetirementAdjustmentFields() {
+  if (!retirementRecordPreview || !retirementRecordPreview.balance) return;
+  const balance = Number(retirementRecordPreview.balance.current_remaining_days || 0);
+  const mode = getValue("retirementAdjustmentMode");
+  const input = document.getElementById("retirementAdjustmentDays");
+  let adjustment = 0;
+
+  if (mode === "zero_out") {
+    adjustment = -balance;
+    input.readOnly = true;
+  } else if (mode === "manual") {
+    if (input.readOnly) input.value = "0";
+    input.readOnly = false;
+    adjustment = Number(input.value || 0);
+  } else {
+    input.readOnly = true;
+  }
+
+  if (mode !== "manual") input.value = adjustment;
+  const after = balance + adjustment;
+  setValue("retirementBalanceAfterAdjustment", `${formatRetirementDays(Math.max(0, after))}日`);
+  if (adjustment > 0 || after < 0) {
+    setRetirementLeaveRecordStatus("調整日数は0以下で、調整後管理残高は0日以上にしてください。", "error");
+  } else {
+    setRetirementLeaveRecordStatus("", "");
+  }
+}
+
+function toggleRetirementLotDetails() {
+  const area = document.getElementById("retirementLotDetails");
+  area.style.display = area.style.display === "none" ? "block" : "none";
+}
+
+function renderRetirementLotDetails(lots) {
+  const area = document.getElementById("retirementLotDetails");
+  if (!lots.length) {
+    area.textContent = "対象となる付与ロットはありません。";
+    return;
+  }
+  area.innerHTML = lots.map(lot =>
+    `${escapeHtml(lot.grant_date || "")} / 期限 ${escapeHtml(lot.valid_to || "")} / 付与 ${escapeHtml(formatRetirementDays(lot.total_days))}日 / 使用 ${escapeHtml(formatRetirementDays(lot.used_days))}日 / 残 ${escapeHtml(formatRetirementDays(lot.active_remaining_days))}日${lot.is_expired ? "（期限切れ）" : ""}`
+  ).join("<br>");
+}
+
+function submitRetirementLeaveRecord() {
+  if (!retirementRecordPreview || !retirementRecordEmployeeId) return;
+  const mode = getValue("retirementAdjustmentMode");
+  const balance = Number(retirementRecordPreview.balance.current_remaining_days || 0);
+  const adjustment = mode === "zero_out" ? -balance : Number(getValue("retirementAdjustmentDays") || 0);
+  const after = balance + adjustment;
+  if (adjustment > 0 || after < 0) {
+    setRetirementLeaveRecordStatus("調整日数または調整後管理残高が不正です。", "error");
+    return;
+  }
+
+  const reason = getValue("retirementAdjustmentReason");
+  const message = [
+    `退職日: ${formatRetirementDate(retirementRecordPreview.employee.leave_date)}`,
+    `退職日時点残高: ${formatRetirementDays(balance)}日`,
+    `退職時調整: ${formatRetirementDays(adjustment)}日`,
+    `調整後残高: ${formatRetirementDays(after)}日`,
+    `理由: ${getRetirementReasonLabel(reason)}`
+  ].join("\n");
+  if (!confirm(message + "\n\nこの内容で記録しますか？")) return;
+
+  document.getElementById("createRetirementLeaveRecordBtn").disabled = true;
+  setRetirementLeaveRecordStatus("退職時有給記録を保存しています...", "");
+  google.script.run
+    .withSuccessHandler(() => {
+      setRetirementLeaveRecordStatus("退職時有給記録を保存しました。", "ok");
+      document.getElementById("createRetirementLeaveRecordBtn").style.display = "none";
+      loadEmployees();
+    })
+    .withFailureHandler(err => {
+      document.getElementById("createRetirementLeaveRecordBtn").disabled = false;
+      setRetirementLeaveRecordStatus("保存できませんでした。\n" + (err.message || err), "error");
+    })
+    .createRetirementLeaveRecordForRetiredEmployee({
+      employee_id: retirementRecordEmployeeId,
+      adjustment_mode: mode,
+      adjustment_days: adjustment,
+      reason: reason,
+      notes: getValue("retirementAdjustmentNotes")
+    });
+}
+
+function setRetirementLeaveRecordStatus(message, type) {
+  const box = document.getElementById("retirementLeaveRecordStatus");
+  if (!box) return;
+  box.style.display = message ? "block" : "none";
+  box.classList.remove("ok", "error");
+  if (type) box.classList.add(type);
+  box.textContent = message || "";
+}
+
+function formatRetirementDays(value) {
+  const num = Number(value || 0);
+  return Number.isInteger(num) ? String(num) : String(num);
+}
+
+function formatRetirementDate(value) {
+  const inputDate = toInputDate(value);
+  return inputDate ? inputDate.replace(/-/g, "/") : "";
+}
+
+function getRetirementReasonLabel(reason) {
+  const labels = {
+    retirement_settlement: "退職時精算",
+    company_adjustment: "会社都合による調整",
+    data_correction: "データ補正",
+    other: "その他"
+  };
+  return labels[reason] || reason;
+}
 
 /* =========================
    編集モーダルを開く

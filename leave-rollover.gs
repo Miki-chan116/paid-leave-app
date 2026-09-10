@@ -64,9 +64,29 @@ function buildYearEndCarryOverCandidate_(emp, fiscalYear, context, finalizedMap)
     fiscalYearEndDate,
     context
   );
-  const previousRemainingDays = Number(fifoBalance.current_remaining_days || 0);
-  const carryOverCandidateDays = Math.min(previousRemainingDays, 20);
-  const carryOverLimitExpiredDays = Math.max(previousRemainingDays - 20, 0);
+  const policy = getCompanyLeavePolicy(String(emp.company_code || "").trim().toUpperCase());
+  const usesMinuteFifo = policy.timeLeaveEnabled === true;
+  const previousRemainingMinutes = usesMinuteFifo
+    ? Number(fifoBalance.current_remaining_minutes || 0)
+    : Number(fifoBalance.current_remaining_days || 0) * 420;
+  const carryOverMinuteBreakdown = usesMinuteFifo
+    ? calculateCarryOverMinutes_(previousRemainingMinutes, policy.scheduledMinutesPerDay)
+    : null;
+  const carryOverCandidateMinutes = carryOverMinuteBreakdown
+    ? carryOverMinuteBreakdown.carry_over_candidate_minutes
+    : 0;
+  const carryOverCandidateDays = usesMinuteFifo
+    ? Math.floor(carryOverCandidateMinutes / policy.scheduledMinutesPerDay)
+    : Math.min(Number(fifoBalance.current_remaining_days || 0), 20);
+  const carryOverRemainderMinutes = carryOverMinuteBreakdown
+    ? carryOverMinuteBreakdown.carry_over_minutes
+    : 0;
+  const carryOverLimitExpiredDays = usesMinuteFifo
+    ? carryOverMinuteBreakdown.carry_over_limit_expired_minutes / policy.scheduledMinutesPerDay
+    : Math.max(Number(fifoBalance.current_remaining_days || 0) - 20, 0);
+  const previousRemainingDays = usesMinuteFifo
+    ? previousRemainingMinutes / policy.scheduledMinutesPerDay
+    : Number(fifoBalance.current_remaining_days || 0);
   const expiredDays =
     Number(fifoBalance.expired_days || 0) +
     carryOverLimitExpiredDays;
@@ -88,10 +108,16 @@ function buildYearEndCarryOverCandidate_(emp, fiscalYear, context, finalizedMap)
     fiscal_year: Number(fiscalYear),
     fiscal_year_end_date: formatDateValue(fiscalYearEndDate),
     previous_remaining_days: previousRemainingDays,
+    previous_remaining_minutes: usesMinuteFifo ? previousRemainingMinutes : "",
     carry_over_candidate_days: carryOverCandidateDays,
+    carry_over_candidate_minutes: usesMinuteFifo ? carryOverCandidateMinutes : "",
+    carry_over_remainder_minutes: carryOverRemainderMinutes,
     expired_days: expiredDays,
     new_grant_days: newGrantDays,
     estimated_after_grant_days: estimatedAfterGrantDays,
+    estimated_after_grant_minutes: usesMinuteFifo
+      ? carryOverCandidateMinutes + newGrantDays * policy.scheduledMinutesPerDay
+      : "",
     opening_balance_days_total: Number(fifoBalance.opening_balance_days_total || 0),
     expiry_unconfirmed_days_total: Number(
       fifoBalance.expiry_unconfirmed_opening_balance_days_total || 0
@@ -187,6 +213,11 @@ function buildCompanyLeaveYearRolloverCandidate_(emp, fiscalYear, context, final
     candidate.estimated_after_grant_days =
       Number(candidate.carry_over_candidate_days || 0) +
       Number(companyBasisGrantInfo.grant_days || 0);
+    if (candidate.carry_over_candidate_minutes !== "") {
+      candidate.estimated_after_grant_minutes =
+        Number(candidate.carry_over_candidate_minutes || 0) +
+        Number(companyBasisGrantInfo.grant_days || 0) * 420;
+    }
     candidate.company_basis_grant_number =
       companyBasisGrantInfo.company_basis_grant_number;
     candidate.company_basis_equivalent_months =
@@ -218,7 +249,10 @@ function buildCompanyLeaveYearRolloverCandidate_(emp, fiscalYear, context, final
     fiscal_year: dates.previous_fiscal_year,
     fiscal_year_end_date: candidate ? candidate.fiscal_year_end_date : "",
     previous_remaining_days: candidate ? Number(candidate.previous_remaining_days || 0) : "",
+    previous_remaining_minutes: candidate ? candidate.previous_remaining_minutes : "",
     carry_over_candidate_days: candidate ? Number(candidate.carry_over_candidate_days || 0) : "",
+    carry_over_candidate_minutes: candidate ? candidate.carry_over_candidate_minutes : "",
+    carry_over_remainder_minutes: candidate ? Number(candidate.carry_over_remainder_minutes || 0) : "",
     expired_days: candidate ? Number(candidate.expired_days || 0) : "",
     new_grant_days: candidate ? Number(candidate.new_grant_days || 0) : "",
     estimated_after_grant_days: candidate ? Number(candidate.estimated_after_grant_days || 0) : "",
@@ -346,7 +380,7 @@ function executeCompanyLeaveYearRollover(companyCode, fiscalYear, options) {
     logCompanyLeaveYearRolloverDryRun_(dryRun);
     validateCompanyLeaveYearRolloverExecution_(dryRun, config);
 
-    const sheet = getSheet("paid_leave_grants");
+    const sheet = ensurePaidLeaveMinutesInfrastructure_();
     const headerInfo = requireHeaders(sheet, [
       "grant_id",
       "employee_id",
@@ -396,6 +430,10 @@ function executeCompanyLeaveYearRollover(companyCode, fiscalYear, options) {
       rowObj.grant_date = grantDate;
       rowObj.grant_days = Number(row.new_grant_days || 0);
       rowObj.carry_over_days = Number(row.carry_over_candidate_days || 0);
+      // MAIN の端数時間だけを追加列へ保持する。既存の carry_over_days は整数日として維持する。
+      if ("carry_over_minutes" in headerInfo.map) {
+        rowObj.carry_over_minutes = Number(row.carry_over_remainder_minutes || 0);
+      }
       rowObj.valid_from = grantDate;
       rowObj.valid_to = validTo;
       rowObj.grant_type = "yearly";
