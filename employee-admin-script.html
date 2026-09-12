@@ -13,8 +13,60 @@ function getDisplayName(emp) {
    初期表示
 ========================= */
 window.addEventListener("DOMContentLoaded", () => {
+  initializeWorkTimeSelects();
   loadEmployees();
 });
+
+/* =========================
+   社員別勤務時間入力
+========================= */
+function initializeWorkTimeSelects() {
+  document.querySelectorAll("select[data-work-time-select]").forEach(select => {
+    const currentValue = String(select.value || "");
+    select.innerHTML = "";
+
+    const standardOption = document.createElement("option");
+    standardOption.value = "";
+    standardOption.textContent = "会社標準を使用";
+    select.appendChild(standardOption);
+
+    // 勤務パターンを07:00〜16:00へ限定せず、1日の全時刻を30分単位で選べるようにする。
+    for (let minute = 0; minute < 24 * 60; minute += 30) {
+      const option = document.createElement("option");
+      option.value = minuteToTimeInput(minute);
+      option.textContent = option.value;
+      select.appendChild(option);
+    }
+
+    select.value = currentValue;
+  });
+}
+
+function getWorkSchedulePairError(startValue, endValue) {
+  const hasStart = !!String(startValue || "").trim();
+  const hasEnd = !!String(endValue || "").trim();
+  if (hasStart !== hasEnd) return "勤務開始時刻と勤務終了時刻は両方設定してください。";
+
+  const startMinute = timeInputToMinute(startValue);
+  const endMinute = timeInputToMinute(endValue);
+  if (startMinute !== "" && Number(endMinute) <= Number(startMinute)) {
+    return "勤務終了時刻は勤務開始時刻より後にしてください。";
+  }
+  return "";
+}
+
+function handleWorkScheduleTimeChange(startId, endId, statusId) {
+  const start = document.getElementById(startId);
+  const end = document.getElementById(endId);
+  const error = getWorkSchedulePairError(start && start.value, end && end.value);
+  [start, end].forEach(element => {
+    if (element && typeof element.setCustomValidity === "function") element.setCustomValidity(error);
+  });
+  if (!error) return;
+
+  if (statusId === "editEmployeeStatus") showEditStatus(error, "error");
+  else showStatus(error, "error");
+}
 
 /* =========================
    社員取得
@@ -365,6 +417,8 @@ function openEditEmployeeModal(emp) {
   setValue("editHireDate", toInputDate(emp.hire_date));
   setValue("editLeaveDate", toInputDate(emp.leave_date));
   setValue("editWorkDaysPerWeek", emp.work_days_per_week);
+  setValue("editWorkStartTime", minuteToTimeInput(emp.work_start_minute));
+  setValue("editWorkEndTime", minuteToTimeInput(emp.work_end_minute));
   setValue("editFiscalStartMonth", emp.fiscal_start_month || "4");
   setValue("editLeaveManagementTarget", emp.leave_management_target === true ? "TRUE" : "FALSE");
   setValue("editIsDriver", emp.is_driver === true ? "TRUE" : "FALSE");
@@ -412,6 +466,8 @@ function submitEditEmployee() {
     hire_date: getValue("editHireDate"),
     leave_date: getValue("editLeaveDate"),
     work_days_per_week: getValue("editWorkDaysPerWeek"),
+    work_start_minute: timeInputToMinute(getValue("editWorkStartTime")),
+    work_end_minute: timeInputToMinute(getValue("editWorkEndTime")),
     fiscal_start_month: getValue("editFiscalStartMonth"),
     leave_management_target: getValue("editLeaveManagementTarget"),
     is_driver: getValue("editIsDriver"),
@@ -564,6 +620,8 @@ function submitEmployee() {
     hire_date: getValue("hireDate"),
     leave_date: getValue("leaveDate"),
     work_days_per_week: getValue("workDaysPerWeek"),
+    work_start_minute: timeInputToMinute(getValue("workStartTime")),
+    work_end_minute: timeInputToMinute(getValue("workEndTime")),
     fiscal_start_month: getValue("fiscalStartMonth"),
     leave_management_target: getValue("leaveManagementTarget"),
     is_driver: getValue("isDriver"),
@@ -611,6 +669,22 @@ function submitEmployee() {
 /* =========================
    バリデーション
 ========================= */
+function timeInputToMinute(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const match = text.match(/^([01][0-9]|2[0-3]):([0-5][0-9])$/);
+  if (!match) return "";
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function minuteToTimeInput(value) {
+  if (value === "" || value === null || value === undefined) return "";
+  const minute = Number(value);
+  if (!Number.isInteger(minute) || minute < 0 || minute >= 24 * 60) return "";
+  return String(Math.floor(minute / 60)).padStart(2, "0") + ":" +
+    String(minute % 60).padStart(2, "0");
+}
+
 function validateEmployeePayload(payload) {
   if (!payload.name) return "氏名を入力してください。";
   if (!payload.name_kana) return "ふりがなを入力してください。";
@@ -625,6 +699,12 @@ function validateEmployeePayload(payload) {
   if (payload.employment_status === "active" && payload.leave_date) {
     return "在職中の場合は退職日を空欄にしてください。";
   }
+
+  const workScheduleError = getWorkSchedulePairError(
+    payload.work_start_minute === "" ? "" : minuteToTimeInput(payload.work_start_minute),
+    payload.work_end_minute === "" ? "" : minuteToTimeInput(payload.work_end_minute)
+  );
+  if (workScheduleError) return workScheduleError;
 
   return "";
 }
@@ -808,6 +888,8 @@ function clearForm() {
   setValue("hireDate", "");
   setValue("leaveDate", "");
   setValue("workDaysPerWeek", "");
+  setValue("workStartTime", "");
+  setValue("workEndTime", "");
   setValue("fiscalStartMonth", "4");
   setValue("leaveManagementTarget", "TRUE");
   setValue("isDriver", "FALSE");

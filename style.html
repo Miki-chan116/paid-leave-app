@@ -350,15 +350,35 @@ body {
 
 .selected-employee-balance-card {
   display: grid;
-  grid-template-columns: 76px 130px minmax(190px, 1fr);
+  grid-template-columns: 205px 110px minmax(170px, 1fr);
   grid-template-rows: auto auto;
   align-items: center;
   gap: 4px 10px;
 }
 
-.selected-employee-balance-card .mini-info-line {
+.selected-employee-balance-card .mini-balance-summary {
   grid-column: 1;
   grid-row: 1 / span 2;
+}
+
+.mini-balance-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.mini-balance-summary .mini-info-label,
+.mini-balance-summary .mini-info-value {
+  white-space: nowrap;
+}
+
+.mini-balance-summary small {
+  flex-basis: 100%;
+  color: var(--text-sub);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .selected-employee-balance-card .mini-five-wrap {
@@ -968,7 +988,7 @@ body {
 
 .history-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 0.8fr 0.6fr 0.8fr auto;
+  grid-template-columns: minmax(118px, 1.15fr) minmax(210px, 1.45fr) minmax(88px, 0.65fr) minmax(92px, 0.75fr) auto;
   align-items: center;
   gap: 10px;
 
@@ -987,6 +1007,31 @@ body {
 .history-days {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.history-date,
+.history-days {
+  white-space: nowrap;
+}
+
+.history-status {
+  justify-self: stretch;
+}
+
+.history-time-leave {
+  display: grid;
+  gap: 3px;
+}
+
+.history-type-title {
+  font-weight: 700;
+  color: inherit;
+}
+
+.history-type-detail {
+  color: var(--text-sub);
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .history-row.editing {
@@ -2118,7 +2163,7 @@ body.personal-page-mode #requestScreen {
   }
 
   .selected-employee-balance-card {
-    grid-template-columns: 70px 122px minmax(170px, 1fr);
+    grid-template-columns: 205px 110px minmax(150px, 1fr);
   }
 
   .time-leave-modal-overlay {

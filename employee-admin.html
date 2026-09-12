@@ -227,6 +227,21 @@
                   <div class="field-help">有給付与日数の判断に使います。通常は5です。</div>
                 </div>
 
+                <div class="field full-width">
+                  <div class="field-help">通常は入力不要です。未設定の場合は会社標準の勤務時間（08:00〜17:00）が適用されます。標準と異なる勤務時間の社員のみ設定してください。</div>
+                  <div class="field-help">※勤務開始・終了はセットで設定してください。</div>
+                </div>
+
+                <div class="field">
+                  <label for="workStartTime">勤務開始時刻</label>
+                  <select id="workStartTime" data-work-time-select onchange="handleWorkScheduleTimeChange('workStartTime', 'workEndTime', 'employeeAdminStatus')"></select>
+                </div>
+
+                <div class="field">
+                  <label for="workEndTime">勤務終了時刻</label>
+                  <select id="workEndTime" data-work-time-select onchange="handleWorkScheduleTimeChange('workStartTime', 'workEndTime', 'employeeAdminStatus')"></select>
+                </div>
+
                 <div class="field">
                   <label for="fiscalStartMonth">有給の年度開始月</label>
 
@@ -467,6 +482,21 @@
                 step="0.5"
               >
               <div class="field-help">有給付与日数の判断に使います。通常は5です。</div>
+            </div>
+
+            <div class="field full-width">
+              <div class="field-help">通常は入力不要です。未設定の場合は会社標準の勤務時間（08:00〜17:00）が適用されます。標準と異なる勤務時間の社員のみ設定してください。</div>
+              <div class="field-help">※勤務開始・終了はセットで設定してください。</div>
+            </div>
+
+            <div class="field">
+              <label for="editWorkStartTime">勤務開始時刻</label>
+              <select id="editWorkStartTime" data-work-time-select onchange="handleWorkScheduleTimeChange('editWorkStartTime', 'editWorkEndTime', 'editEmployeeStatus')"></select>
+            </div>
+
+            <div class="field">
+              <label for="editWorkEndTime">勤務終了時刻</label>
+              <select id="editWorkEndTime" data-work-time-select onchange="handleWorkScheduleTimeChange('editWorkStartTime', 'editWorkEndTime', 'editEmployeeStatus')"></select>
             </div>
 
             <div class="field">

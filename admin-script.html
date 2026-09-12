@@ -100,6 +100,44 @@ function formatDays(value) {
   return `${num}日`;
 }
 
+function formatAdminTimeLeaveMinutes_(minutes) {
+  const value = Number(minutes || 0);
+  const hours = Math.floor(value / 60);
+  const remainder = value % 60;
+  return remainder ? `${hours}時間${remainder}分` : `${hours}時間`;
+}
+
+// searchRequests が返す表示専用の情報を、管理画面カード用の文言へ整える。
+function getAdminRequestDisplay_(req) {
+  const request = req || {};
+  const presentation = request.time_leave_presentation;
+  const requestedMinutes = Number(presentation && presentation.requested_minutes);
+  const startTime = String(presentation && presentation.start_time || "");
+  const endTime = String(presentation && presentation.end_time || "");
+  const hasTimeLeave = !!presentation && Number.isInteger(requestedMinutes) && requestedMinutes > 0 &&
+    /^\d{2}:\d{2}$/.test(startTime) && /^\d{2}:\d{2}$/.test(endTime);
+
+  if (!hasTimeLeave) {
+    return {
+      has_time_leave: false,
+      request_type: getRequestTypeLabel(request.half_day, request.days)
+    };
+  }
+
+  const halfDay = String(request.half_day || "").trim().toLowerCase();
+  const isCombined = presentation.is_combined === true;
+  return {
+    has_time_leave: true,
+    is_combined: isCombined,
+    request_type: isCombined ? "半休＋時間年休" : "時間年休",
+    half_day_label: halfDay === "am" ? "AM半休" : "PM半休",
+    time_leave_label: `${startTime}〜${endTime}（${formatAdminTimeLeaveMinutes_(requestedMinutes)}）`,
+    paid_leave_usage_label: isCombined
+      ? formatAdminTimeLeaveMinutes_(presentation.total_paid_leave_minutes)
+      : ""
+  };
+}
+
 function renderEmptyState(title, subText) {
   return `
     <div class="state-message empty-state">
@@ -370,7 +408,7 @@ function renderCards(data) {
     const reasonText = req.reason_detail
       ? `${req.reason || "記載なし"} / ${req.reason_detail}`
       : (req.reason || "記載なし");
-    const requestType = getRequestTypeLabel(req.half_day, req.days);
+    const requestDisplay = getAdminRequestDisplay_(req);
 
     card.innerHTML = `
       <div class="compact-main-row">
@@ -396,13 +434,19 @@ function renderCards(data) {
               <span class="compact-name">${escapeHtml(req.employee_name)}</span>
               <span class="compact-id">${escapeHtml(req.employee_id || "")}</span>
             </div>
-            <span class="status-badge ${escapeHtml(req.status)}">${escapeHtml(getStatusLabel(req.status))}</span>
+            <div class="compact-statuses">
+              ${requestDisplay.has_time_leave ? `<span class="time-leave-badge">時間年休あり</span>` : ""}
+              <span class="status-badge ${escapeHtml(req.status)}">${escapeHtml(getStatusLabel(req.status))}</span>
+            </div>
           </div>
 
           <div class="compact-meta">
             <span class="mini-chip important-chip">取得希望日 <strong>${escapeHtml(req.date_label || "")}</strong></span>
-            <span class="mini-chip">日数 <strong>${escapeHtml(formatDays(req.days))}</strong></span>
-            <span class="mini-chip">申請種別 <strong>${escapeHtml(requestType)}</strong></span>
+            ${!requestDisplay.has_time_leave ? `<span class="mini-chip">日数 <strong>${escapeHtml(formatDays(req.days))}</strong></span>` : ""}
+            <span class="mini-chip">申請種別 <strong>${escapeHtml(requestDisplay.request_type)}</strong></span>
+            ${requestDisplay.is_combined ? `<span class="mini-chip">半休区分 <strong>${escapeHtml(requestDisplay.half_day_label)}</strong></span>` : ""}
+            ${requestDisplay.has_time_leave ? `<span class="mini-chip important-chip">時間年休 <strong>${escapeHtml(requestDisplay.time_leave_label)}</strong></span>` : ""}
+            ${requestDisplay.is_combined ? `<span class="mini-chip paid-leave-usage-chip">有給使用 <strong>${escapeHtml(requestDisplay.paid_leave_usage_label)}</strong></span>` : ""}
             <span class="mini-chip">残日数 <strong>${escapeHtml(formatDays(req.current_remaining_days))}</strong></span>
           </div>
 
@@ -447,12 +491,30 @@ function approveRequestAction(requestId) {
     .withSuccessHandler(() => {
       alert("承認しました");
       reloadCurrentView({ refreshSummary: true });
-})
+    })
     .withFailureHandler(err => {
       console.error("承認エラー:", err);
-      showError("requestView", "承認処理でエラーが発生しました");
+      showApprovalRequestError_(err);
     })
     .approveRequest(requestId, currentAdminUser);
+}
+
+function showApprovalRequestError_(error) {
+  const container = document.getElementById("requestView");
+  if (!container) return;
+  const rawMessage = error && typeof error.message === "string"
+    ? error.message.trim()
+    : "";
+  // GASのstack等は利用者向け画面へ出さず、原因本文だけを安全な長さで表示する。
+  const message = rawMessage
+    ? rawMessage.slice(0, 500)
+    : "サーバーから詳細なエラー情報を取得できませんでした。";
+  container.innerHTML = `
+    <div class="state-message error-state">
+      <div class="state-title">承認処理に失敗しました</div>
+      <div class="state-sub">${escapeHtml(message)}</div>
+    </div>
+  `;
 }
 
 function rejectRequestAction(requestId) {
