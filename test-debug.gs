@@ -948,6 +948,15 @@ function testFifoTimeLeaveParentSourcePriorityFoundation() {
     start_date: "2026-09-14", end_date: "2026-09-14", days: 1, half_day: "",
     status: STATUS.APPROVED, type: "paid_leave", source: "supabase"
   };
+  const normalSpreadsheetApprovedParent = Object.assign({}, normalSupabaseParent, {
+    status: STATUS.APPROVED, source: "spreadsheet"
+  });
+  const normalSupabasePendingParent = Object.assign({}, normalSupabaseParent, {
+    status: STATUS.PENDING, source: "supabase"
+  });
+  const normalSpreadsheetPendingParent = Object.assign({}, normalSupabaseParent, {
+    status: STATUS.PENDING, source: "spreadsheet"
+  });
   const halfDaySupabaseParent = Object.assign({}, normalSupabaseParent, {
     request_id: "R-HALF", days: 0.5, half_day: "pm"
   });
@@ -985,6 +994,21 @@ function testFifoTimeLeaveParentSourcePriorityFoundation() {
   const normalBalance = calculateFifoBalanceMinutesFromContext_(
     employeeId, asOfDate, contextFor(normalRows)
   );
+  const normalSpreadsheetPriorityRows = buildFifoLeaveRequestRowsByEmployee_(
+    [normalSupabasePendingParent], [normalSpreadsheetApprovedParent]
+  )[employeeId];
+  const normalSpreadsheetPriorityBalance = calculateFifoBalanceMinutesFromContext_(
+    employeeId, asOfDate, contextFor(normalSpreadsheetPriorityRows)
+  );
+  const normalSpreadsheetPendingRows = buildFifoLeaveRequestRowsByEmployee_(
+    [normalSupabaseParent], [normalSpreadsheetPendingParent]
+  )[employeeId];
+  const normalSpreadsheetPendingBalance = calculateFifoBalanceMinutesFromContext_(
+    employeeId, asOfDate, contextFor(normalSpreadsheetPendingRows)
+  );
+  const normalSpreadsheetOnlyBalance = calculateFifoBalanceMinutesFromContext_(
+    employeeId, asOfDate, contextFor([normalSpreadsheetApprovedParent])
+  );
   const halfDayRows = buildFifoLeaveRequestRowsByEmployee_([halfDaySupabaseParent], [])[employeeId];
   const halfDayBalance = calculateFifoBalanceMinutesFromContext_(
     employeeId, asOfDate, contextFor(halfDayRows)
@@ -1005,9 +1029,15 @@ function testFifoTimeLeaveParentSourcePriorityFoundation() {
     ["同一IDの単独時間年休はSpreadsheet版を優先", timeSupabaseReadRows[0].request_kind, "time_hourly"],
     ["単独時間年休のFIFO使用量は120分", sumUsed(timeSupabaseReadBalance), 120],
     ["単独時間年休の残高は6600分", timeSupabaseReadBalance.current_remaining_minutes, 6600],
-    ["通常1日有給はSupabase版を維持", normalRows[0].source, "supabase"],
-    ["通常1日有給のFIFO使用量は420分", sumUsed(normalBalance), 420],
-    ["通常1日有給の残高は6300分", normalBalance.current_remaining_minutes, 6300],
+    ["通常1日有給はSpreadsheet不在時にSupabaseをfallbackとして使う", normalRows[0].source, "supabase"],
+    ["Supabase fallbackの通常1日有給FIFO使用量は420分", sumUsed(normalBalance), 420],
+    ["Supabase fallbackの通常1日有給残高は6300分", normalBalance.current_remaining_minutes, 6300],
+    ["同一IDの通常1日有給もSpreadsheet版を優先", normalSpreadsheetPriorityRows[0].source, "spreadsheet"],
+    ["Spreadsheet approvedはSupabase pendingより優先して420分消費", sumUsed(normalSpreadsheetPriorityBalance), 420],
+    ["Spreadsheet approvedの通常1日有給残高は6300分", normalSpreadsheetPriorityBalance.current_remaining_minutes, 6300],
+    ["Spreadsheet pendingはSupabase approvedより優先", normalSpreadsheetPendingRows[0].status, STATUS.PENDING],
+    ["Spreadsheet pendingを優先した通常1日有給はapproved使用に含めない", sumUsed(normalSpreadsheetPendingBalance), 0],
+    ["SpreadsheetありのSupabase readとSpreadsheet only readで通常1日有給残高は一致", normalSpreadsheetPriorityBalance.current_remaining_minutes, normalSpreadsheetOnlyBalance.current_remaining_minutes],
     ["通常半休はSupabase版を維持", halfDayRows[0].source, "supabase"],
     ["通常半休のFIFO使用量は210分", sumUsed(halfDayBalance), 210],
     ["通常半休の残高は6510分", halfDayBalance.current_remaining_minutes, 6510],
@@ -1019,6 +1049,86 @@ function testFifoTimeLeaveParentSourcePriorityFoundation() {
   const results = cases.map(item => ({ name: item[0], actual: item[1], expected: item[2], ok: JSON.stringify(item[1]) === JSON.stringify(item[2]) }));
   const failed = results.filter(item => !item.ok);
   if (failed.length) throw new Error("FIFO時間有給親ソース優先順位テスト失敗: " + JSON.stringify(failed));
+  return { ok: true, case_count: results.length, results: results };
+}
+
+/* =========================
+   申請者画面用: 未来日の承認済み申請を含む残高
+========================= */
+function testEmployeeRequestFutureApprovedFifoBalanceFoundation() {
+  const employeeId = "FIFO-FUTURE-001";
+  const asOfDate = parseLocalDate("2026-09-12");
+  const grant = {
+    grant_id: "G-FUTURE-16", grant_date: parseLocalDate("2026-04-01"),
+    valid_from_date: parseLocalDate("2026-04-01"), valid_to_date: parseLocalDate("2028-03-31"),
+    grant_days: 16, carry_over_days: 0, carry_over_minutes: 0, is_finalized: true
+  };
+  const parent = (requestId, fields) => Object.assign({
+    request_id: requestId, employee_id: employeeId, type: "paid_leave",
+    start_date: "2026-09-14", end_date: "2026-09-14", days: 1, half_day: "",
+    status: STATUS.APPROVED
+  }, fields || {});
+  const normalApproved = parent("R-FUTURE-FULL");
+  const halfApproved = parent("R-FUTURE-HALF", { days: 0.5, half_day: "pm" });
+  const multiApproved = parent("R-FUTURE-MULTI", { end_date: "2026-09-15", days: 2 });
+  const timeApproved = parent("R-FUTURE-TIME", { days: 0, request_kind: "time_hourly" });
+  const combinedApproved = parent("R-FUTURE-COMBINED", {
+    days: 0.5, half_day: "pm", request_kind: "half_day_time_hourly"
+  });
+  const canceledFuture = parent("R-FUTURE-CANCELED", { status: STATUS.CANCELED });
+  const rejectedFuture = parent("R-FUTURE-REJECTED", { status: STATUS.REJECTED });
+  const pendingFuture = parent("R-FUTURE-PENDING", { status: STATUS.PENDING });
+  const contextFor = (request, segments) => ({
+    grants_by_employee: { [employeeId]: [grant] },
+    requests_by_employee: { [employeeId]: [request] },
+    time_leave_segments_by_request: segments || {},
+    company_code_by_employee: { [employeeId]: "MAIN" },
+    calendar_map: {}
+  });
+  const futureMode = (request, segments) => calculateFifoBalanceMinutesFromContext_(
+    employeeId, asOfDate, contextFor(request, segments), { includeFutureApproved: true }
+  );
+  const defaultMode = (request, segments) => calculateFifoBalanceMinutesFromContext_(
+    employeeId, asOfDate, contextFor(request, segments)
+  );
+  const timeSegments = {
+    "R-FUTURE-TIME": [{ request_id: "R-FUTURE-TIME", leave_date: "2026-09-14", requested_minutes: 120 }]
+  };
+  const combinedSegments = {
+    "R-FUTURE-COMBINED": [{ request_id: "R-FUTURE-COMBINED", leave_date: "2026-09-14", requested_minutes: 120 }]
+  };
+  const normalDefault = defaultMode(normalApproved);
+  const normalFuture = futureMode(normalApproved);
+  const halfFuture = futureMode(halfApproved);
+  const multiFuture = futureMode(multiApproved);
+  const timeDefault = defaultMode(timeApproved, timeSegments);
+  const timeFuture = futureMode(timeApproved, timeSegments);
+  const combinedDefault = defaultMode(combinedApproved, combinedSegments);
+  const combinedFuture = futureMode(combinedApproved, combinedSegments);
+  const canceledFutureBalance = futureMode(canceledFuture);
+  const rejectedFutureBalance = futureMode(rejectedFuture);
+  const pendingConfirmedBalance = futureMode(pendingFuture);
+  const pendingReservedMinutes = getAllPendingPaidLeaveReservationMinutes_(
+    employeeId, contextFor(pendingFuture)
+  );
+  const cases = [
+    ["既定FIFOは未来の通常1日approvedを除外", normalDefault.current_remaining_minutes, 6720],
+    ["申請者画面モードは未来の通常1日approvedを420分消費", normalFuture.current_remaining_minutes, 6300],
+    ["申請者画面モードは未来の半休approvedを210分消費", halfFuture.current_remaining_minutes, 6510],
+    ["申請者画面モードは未来の複数日2日approvedを840分消費", multiFuture.current_remaining_minutes, 5880],
+    ["既定FIFOは未来の単独時間年休approvedを除外", timeDefault.current_remaining_minutes, 6720],
+    ["申請者画面モードは未来の単独時間年休approvedを120分消費", timeFuture.current_remaining_minutes, 6600],
+    ["既定FIFOは未来のcombined approvedを全量除外", combinedDefault.current_remaining_minutes, 6720],
+    ["申請者画面モードは未来のcombined approvedを330分消費", combinedFuture.current_remaining_minutes, 6390],
+    ["cancelled未来申請は消費しない", canceledFutureBalance.current_remaining_minutes, 6720],
+    ["rejected未来申請は消費しない", rejectedFutureBalance.current_remaining_minutes, 6720],
+    ["pending未来申請はconfirmedを消費しない", pendingConfirmedBalance.current_remaining_minutes, 6720],
+    ["pending未来申請は420分を予約する", pendingReservedMinutes, 420],
+    ["pending未来申請後の申請可能残は6300分", pendingConfirmedBalance.current_remaining_minutes - pendingReservedMinutes, 6300]
+  ];
+  const results = cases.map(item => ({ name: item[0], actual: item[1], expected: item[2], ok: item[1] === item[2] }));
+  const failed = results.filter(item => !item.ok);
+  if (failed.length) throw new Error("申請者画面の未来approved FIFOテスト失敗: " + JSON.stringify(failed));
   return { ok: true, case_count: results.length, results: results };
 }
 

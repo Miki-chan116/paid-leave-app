@@ -1444,7 +1444,8 @@ function getCurrentMinuteFifoBalanceMapForEmployeeIds_(employeeIds) {
   ids.forEach(employeeId => {
     if (!isMainTimeLeaveEmployeeForFifo_(employeeId, context)) return;
     result[employeeId] = calculateFifoBalanceMinutesFromContext_(
-      employeeId, asOfDate, context
+      employeeId, asOfDate, context,
+      { includeFutureApproved: true }
     );
   });
   return result;
@@ -1726,9 +1727,10 @@ function calculateCarryOverMinutes_(remainingMinutes, scheduledMinutesPerDay) {
   };
 }
 
-function getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, context, policy) {
+function getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, context, policy, options) {
   const requests = context.requests_by_employee[employeeId] || [];
   const segmentsByRequest = context.time_leave_segments_by_request || {};
+  const includeFutureApproved = !!(options && options.includeFutureApproved === true);
   const result = [];
 
   requests.forEach(rowObj => {
@@ -1743,10 +1745,12 @@ function getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, co
         if (halfDay !== "am" && halfDay !== "pm") {
           throw new Error("複合申請の半休区分が不正です: " + requestId);
         }
+        const useDate = parseLocalDate(rowObj.start_date);
+        if (!includeFutureApproved && useDate > asOfDate) return;
         result.push({
           request_id: requestId,
           time_leave_id: "",
-          use_date: parseLocalDate(rowObj.start_date),
+          use_date: useDate,
           leave_kind: "half_day",
           consumed_minutes: policy.scheduledMinutesPerDay / 2,
           unallocated_minutes: 0
@@ -1754,7 +1758,7 @@ function getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, co
       }
       (segmentsByRequest[requestId] || []).forEach(segment => {
         const useDate = parseLocalDate(segment.leave_date);
-        if (useDate > asOfDate) return;
+        if (!includeFutureApproved && useDate > asOfDate) return;
         const consumedMinutes = Number(segment.requested_minutes || 0);
         if (!Number.isInteger(consumedMinutes) || consumedMinutes <= 0) {
           throw new Error("時間有給明細の取得分が不正です: " + requestId);
@@ -1777,7 +1781,7 @@ function getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, co
     );
     dailyRows.forEach(item => {
       const useDate = parseLocalDate(item.date);
-      if (useDate > asOfDate) return;
+      if (!includeFutureApproved && useDate > asOfDate) return;
       const isHalfDay = !!norm(rowObj.half_day);
       result.push({
         request_id: requestId,
@@ -1799,7 +1803,9 @@ function getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, co
   });
 }
 
-function calculateFifoBalanceMinutesFromContext_(employeeId, asOfDate, context) {
+// options.includeFutureApproved は申請者画面の申請可能残専用。
+// 既定では指定日時点までの承認済み利用だけを消費として扱う。
+function calculateFifoBalanceMinutesFromContext_(employeeId, asOfDate, context, options) {
   const policy = getCompanyLeavePolicy("MAIN");
   const grants = (context.grants_by_employee[employeeId] || [])
     .filter(grant => grant.is_finalized && grant.valid_from_date <= asOfDate)
@@ -1828,7 +1834,7 @@ function calculateFifoBalanceMinutesFromContext_(employeeId, asOfDate, context) 
     .sort((a, b) => a.grant_date.getTime() !== b.grant_date.getTime()
       ? a.grant_date - b.grant_date
       : String(a.grant_id).localeCompare(String(b.grant_id)));
-  const usedRows = getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, context, policy);
+  const usedRows = getFifoApprovedLeaveUseRowsMinutesFromContext_(employeeId, asOfDate, context, policy, options);
   const allocations = [];
 
   usedRows.forEach(useRow => {
@@ -2336,29 +2342,28 @@ function getSpreadsheetPaidLeaveGrantRowsForFifoCompare_() {
 
 function getLeaveRequestRowsByEmployeeForFifoCompare_() {
   if (shouldUseSupabaseReads_()) {
-    // 通常有給は既存どおりSupabaseを優先する。一方、時間有給親は子明細と同じ
-    // Spreadsheet正本を優先し、同一IDの旧Supabase親（request_kindなし）で
-    // combined/time_hourlyを通常有給として解釈しないようにする。
+    // FIFO残高は承認状態を正しく反映する必要があるため、同一request_idでは
+    // Spreadsheet親を正本とする。承認処理のstatus更新先もSpreadsheetであり、
+    // SupabaseはSpreadsheetに存在しない過去・補助データだけのfallbackとする。
     const sheet = getSheet("leave_requests");
     const headerInfo = requireHeaders(sheet, [
       "request_id", "employee_id", "start_date", "end_date", "days", "half_day", "status"
     ]);
-    const spreadsheetTimeLeaveParents = sheet.getDataRange().getValues().slice(1)
-      .map(row => rowToObject(row, headerInfo.headers))
-      .filter(rowObj => isTimeLeaveSegmentRequestRow_(rowObj));
+    const spreadsheetParents = sheet.getDataRange().getValues().slice(1)
+      .map(row => rowToObject(row, headerInfo.headers));
 
     return buildFifoLeaveRequestRowsByEmployee_(
       getLeaveRequestsFromSupabase_(),
-      spreadsheetTimeLeaveParents
+      spreadsheetParents
     );
   }
 
   return getSpreadsheetLeaveRequestRowsByEmployeeForFifoCompare_();
 }
 
-// Supabase親を基礎にしつつ、Spreadsheetで識別できる時間有給親だけは同一request_idで置換する。
-// 子明細もSpreadsheetを正としているため、親子の読取元を揃えるためのFIFO専用処理。
-function buildFifoLeaveRequestRowsByEmployee_(supabaseRows, spreadsheetTimeLeaveParents) {
+// Supabase親を基礎にしつつ、Spreadsheetに同一request_idがある全親申請で置換する。
+// FIFOの承認状態と時間有給子明細の正本をSpreadsheetに揃えるための専用処理。
+function buildFifoLeaveRequestRowsByEmployee_(supabaseRows, spreadsheetParents) {
   const rowsByRequestId = {};
   const rowsWithoutRequestId = [];
 
@@ -2368,9 +2373,9 @@ function buildFifoLeaveRequestRowsByEmployee_(supabaseRows, spreadsheetTimeLeave
     else rowsWithoutRequestId.push(rowObj);
   });
 
-  (spreadsheetTimeLeaveParents || []).forEach(rowObj => {
+  (spreadsheetParents || []).forEach(rowObj => {
     const requestId = String(rowObj && rowObj.request_id || "").trim();
-    if (!requestId || !isTimeLeaveSegmentRequestRow_(rowObj)) return;
+    if (!requestId) return;
     rowsByRequestId[requestId] = rowObj;
   });
 
