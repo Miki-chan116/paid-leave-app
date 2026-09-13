@@ -350,15 +350,16 @@ body {
 
 .selected-employee-balance-card {
   display: grid;
-  grid-template-columns: 205px 110px minmax(170px, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-columns: minmax(250px, 1.15fr) minmax(185px, 0.85fr);
   align-items: center;
-  gap: 4px 10px;
+  gap: 8px 12px;
 }
 
-.selected-employee-balance-card .mini-balance-summary {
-  grid-column: 1;
-  grid-row: 1 / span 2;
+.mini-day-leave-usage {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .mini-balance-summary {
@@ -379,16 +380,6 @@ body {
   color: var(--text-sub);
   font-size: 11px;
   white-space: nowrap;
-}
-
-.selected-employee-balance-card .mini-five-wrap {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.selected-employee-balance-card .mini-five-message {
-  grid-column: 2;
-  grid-row: 2;
 }
 
 .mini-info-line,
@@ -429,13 +420,17 @@ body {
   color: var(--accent-orange);
 }
 
+.mini-five-message {
+  white-space: nowrap;
+}
+
 .mini-time-leave-usage {
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: baseline;
   gap: 2px 7px;
-  grid-column: 3;
-  grid-row: 1 / span 2;
+  grid-column: 2;
+  grid-row: 1;
   padding-left: 12px;
   border-left: 1px solid #dcecf1;
 }
@@ -546,6 +541,12 @@ body {
   font-size: 14px;
   letter-spacing: -0.35px;
   white-space: nowrap;
+}
+
+.type-btn.time-leave-type-btn {
+  background: #f4fbff;
+  border-color: #9ecfe0;
+  color: #165c76;
 }
 
 .type-btn.active {
@@ -2195,7 +2196,7 @@ body.personal-page-mode #requestScreen {
   }
 
   .selected-employee-balance-card {
-    grid-template-columns: 205px 110px minmax(150px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(170px, 0.8fr);
   }
 
   .time-leave-modal-overlay {

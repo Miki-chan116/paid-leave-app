@@ -78,29 +78,25 @@
             </div>
 
             <div class="selected-employee-balance-card">
-
-              <div class="mini-balance-summary">
-                <span class="mini-info-label">申請可能残</span>
-                <strong id="selectedRemainingDays"
-                        class="mini-info-value">0日</strong>
-                <small id="selectedBalanceDetail">確定残：0日｜申請中：なし</small>
-              </div>
-
-              <div class="mini-five-wrap">
-                <span class="mini-info-label">5日</span>
-
-                <div class="mini-five-bar">
-                  <div id="fiveDayBarFill"
-                       class="mini-five-bar-fill"></div>
+              <div class="mini-day-leave-usage">
+                <div class="mini-balance-summary">
+                  <span class="mini-info-label">申請可能残</span>
+                  <strong id="selectedRemainingDays"
+                          class="mini-info-value">0日</strong>
+                  <small id="selectedBalanceDetail">確定残：0日｜申請中：なし</small>
                 </div>
 
-                <span id="fiveDayCount"
-                      class="mini-five-count">0/5</span>
-              </div>
-
-              <div id="fiveDayMessage"
-                   class="mini-five-message">
-                あと5日
+                <div class="mini-five-wrap">
+                  <span class="mini-info-label">年5日取得</span>
+                  <div class="mini-five-bar">
+                    <div id="fiveDayBarFill"
+                         class="mini-five-bar-fill"></div>
+                  </div>
+                  <span id="fiveDayCount"
+                        class="mini-five-count">0/5</span>
+                  <span id="fiveDayMessage"
+                        class="mini-five-message">あと5日</span>
+                </div>
               </div>
 
               <div id="timeLeaveUsage" class="mini-time-leave-usage" style="display:none;">
@@ -149,11 +145,11 @@
 
               <div class="request-type-grid tablet-type-grid">
                 <button class="type-btn" id="typeOneDay" type="button" onclick="selectRequestType('one_day')">1日</button>
-                <button class="type-btn" id="typeHalfAm" type="button" onclick="selectRequestType('half_am')">半日 AM</button>
-                <button class="type-btn" id="typeHalfPm" type="button" onclick="selectRequestType('half_pm')">半日 PM</button>
                 <button class="type-btn" id="typeMultiDay" type="button" onclick="selectRequestType('multi_day')">複数日</button>
-                <button class="type-btn" id="typeTimeLeave" type="button" onclick="selectRequestType('time_hourly')">時間年休</button>
-                <button class="type-btn" id="typeCombinedTimeLeave" type="button" onclick="selectRequestType('half_day_time_hourly')">半休＋時間休</button>
+                <button class="type-btn" id="typeHalfAm" type="button" onclick="selectRequestType('half_am')">AM半休</button>
+                <button class="type-btn" id="typeHalfPm" type="button" onclick="selectRequestType('half_pm')">PM半休</button>
+                <button class="type-btn time-leave-type-btn" id="typeTimeLeave" type="button" onclick="selectRequestType('time_hourly')"><span aria-hidden="true">🕐</span> 時間年休</button>
+                <button class="type-btn time-leave-type-btn" id="typeCombinedTimeLeave" type="button" onclick="selectRequestType('half_day_time_hourly')"><span aria-hidden="true">🕐</span> 半休＋時間年休</button>
               </div>
             </div>
 
@@ -191,8 +187,8 @@
               <div class="request-section-title">3. 理由</div>
 
               <div class="field">
-                <label for="reasonType">申請理由</label>
                 <select id="reasonType"
+                        aria-label="申請理由"
                         onchange="handleReasonTypeChange()"></select>
               </div>
 
