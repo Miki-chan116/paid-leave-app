@@ -1,6 +1,30 @@
 <script>
 const ADMIN_LOGIN_KEY = "paid_leave_admin_login";
 
+function getAdminSessionToken_() {
+  const stored = sessionStorage.getItem(ADMIN_LOGIN_KEY);
+  if (!stored) return "";
+  try { return String((JSON.parse(stored) || {}).token || ""); } catch (err) { return ""; }
+}
+
+function clearAdminSession_() {
+  sessionStorage.removeItem(ADMIN_LOGIN_KEY);
+  if (typeof currentAdminUser !== "undefined") currentAdminUser = null;
+}
+
+function handleAdminApiFailure_(err) {
+  console.error("管理者APIエラー:", err);
+  const message = String(err && err.message || "");
+  if (/^ADMIN_SESSION_(REQUIRED|EXPIRED|INVALID)$/.test(message)) {
+    clearAdminSession_();
+    showLoginScreen();
+    setLoginMessage_("セッションの有効期限が切れました。もう一度ログインしてください。");
+    loadAdminUsersForLogin();
+    return true;
+  }
+  return false;
+}
+
 function escapeHtml(str) {
   return String(str == null ? "" : str)
     .replace(/&/g, "&amp;")

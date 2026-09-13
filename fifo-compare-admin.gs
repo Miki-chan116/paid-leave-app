@@ -3,7 +3,12 @@
    debug.gs から動作を変えずに移動
 ========================= */
 
-function compareFifoBalanceWithBuildBalance(employeeId, fiscalYear, asOfDateValue) {
+function compareFifoBalanceWithBuildBalance(adminSessionToken, employeeId, fiscalYear, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
+  return compareFifoBalanceWithBuildBalance_(employeeId, fiscalYear, asOfDateValue);
+}
+
+function compareFifoBalanceWithBuildBalance_(employeeId, fiscalYear, asOfDateValue) {
   const targetEmployeeId = String(employeeId || "").trim();
   if (!targetEmployeeId) throw new Error("employeeId がありません");
 
@@ -37,7 +42,8 @@ function compareFifoBalanceWithBuildBalance(employeeId, fiscalYear, asOfDateValu
   };
 }
 
-function compareFifoBalanceForAllEmployees(fiscalYear, asOfDateValue) {
+function compareFifoBalanceForAllEmployees(adminSessionToken, fiscalYear, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
   const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
   const rows = getFifoBalanceComparisonRows_(fiscalYear, asOfDate);
 
@@ -51,7 +57,12 @@ function compareFifoBalanceForAllEmployees(fiscalYear, asOfDateValue) {
   return rows;
 }
 
-function compareFifoBalanceDifferencesOnly(fiscalYear, asOfDateValue) {
+function compareFifoBalanceDifferencesOnly(adminSessionToken, fiscalYear, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
+  return compareFifoBalanceDifferencesOnly_(fiscalYear, asOfDateValue);
+}
+
+function compareFifoBalanceDifferencesOnly_(fiscalYear, asOfDateValue) {
   const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
   const rows = getFifoBalanceComparisonRows_(fiscalYear, asOfDate)
     .filter(row => row.has_difference === true);
@@ -66,7 +77,8 @@ function compareFifoBalanceDifferencesOnly(fiscalYear, asOfDateValue) {
   return rows;
 }
 
-function compareFifoBalanceDifferencesForAdmin(fiscalYear, asOfDateValue, employeeId, limit, offset) {
+function compareFifoBalanceDifferencesForAdmin(fiscalYear, asOfDateValue, employeeId, limit, offset, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
   const targetEmployeeId = String(employeeId || "").trim();
   const page = normalizePagingOptions_({
@@ -110,7 +122,7 @@ function getFifoBalanceComparisonRows_(fiscalYear, asOfDate, options) {
   const limit = Number(options.limit || 0);
   const offset = Math.max(0, Number(options.offset || 0));
   const context = createFifoBalanceComparisonContext_(asOfDate);
-  const employees = getEmployeesForAdmin()
+  const employees = getEmployeesForAdmin_()
     .filter(emp => isFifoBalanceCompareTargetEmployee_(emp))
     .filter(emp => {
       if (!targetEmployeeId) return true;
@@ -146,7 +158,7 @@ function buildFifoBalanceComparisonRow_(emp, fiscalYear, asOfDate, context) {
   const employeeId = String(emp.employee_id || "").trim();
   const comparison = context
     ? compareFifoBalanceWithBuildBalanceFromContext_(emp, fiscalYear, asOfDate, context)
-    : compareFifoBalanceWithBuildBalance(
+    : compareFifoBalanceWithBuildBalance_(
     employeeId,
     fiscalYear,
     asOfDate

@@ -5,25 +5,25 @@
 
 function testDebugFifoUseRows() {
   Logger.log(JSON.stringify(
-    debugFifoApprovedLeaveUseRows("EMP0046", 2026, "2026-05-23"),
+    debugFifoApprovedLeaveUseRows_("EMP0046", 2026, "2026-05-23"),
     null,
     2
   ));
 
   Logger.log(JSON.stringify(
-    debugFifoApprovedLeaveUseRows("EMP0049", 2026, "2026-05-23"),
+    debugFifoApprovedLeaveUseRows_("EMP0049", 2026, "2026-05-23"),
     null,
     2
   ));
 }
 
 function testCompareFifoDiffOnly() {
-  const result = compareFifoBalanceDifferencesOnly(2026, "2026-05-23");
+  const result = compareFifoBalanceDifferencesOnly_(2026, "2026-05-23");
   Logger.log(JSON.stringify(result, null, 2));
 }
 
 function testDebugYearEndFinalizedBalance() {
-  const result = debugYearEndFinalizedBalance("TEST-FIFO-001", 2026);
+  const result = debugYearEndFinalizedBalance_("TEST-FIFO-001", 2026);
 
   Logger.log(JSON.stringify(result, null, 2));
 }
@@ -1629,11 +1629,11 @@ function testPartnerOpeningBalanceFiscalStartRepairSafety() {
     try { fn(); return ""; } catch (error) { return String(error.message || error); }
   };
   const directError = throwsCompletedError(() =>
-    repairPartnerOpeningBalanceFiscalStart({ dry_run: false })
+    repairPartnerOpeningBalanceFiscalStart_({ dry_run: false })
   );
-  const executeError = throwsCompletedError(() => executeRepairPartnerOpeningBalanceFiscalStart());
-  const source = repairPartnerOpeningBalanceFiscalStart.toString() +
-    executeRepairPartnerOpeningBalanceFiscalStart.toString();
+  const executeError = throwsCompletedError(() => executeRepairPartnerOpeningBalanceFiscalStart_());
+  const source = repairPartnerOpeningBalanceFiscalStart_.toString() +
+    executeRepairPartnerOpeningBalanceFiscalStart_.toString();
   const cases = [
     ["対象はG0056/G0057のみ", PARTNER_OPENING_BALANCE_FISCAL_START_REPAIR_TARGETS_.map(row => row.grant_id), ["G0056", "G0057"]],
     ["G0058は対象外", PARTNER_OPENING_BALANCE_FISCAL_START_REPAIR_TARGETS_.some(row => row.grant_id === "G0058"), false],
@@ -1641,7 +1641,7 @@ function testPartnerOpeningBalanceFiscalStartRepairSafety() {
     ["execute入口も完了済みエラー", executeError, PARTNER_OPENING_BALANCE_FISCAL_START_REPAIR_COMPLETED_ERROR_],
     ["本実行経路にLockServiceがない", source.indexOf("LockService") === -1, true],
     ["本実行経路に書込み関数がない", source.indexOf("setValue") === -1 && source.indexOf("setValues") === -1, true],
-    ["dry-runは読み取り専用分岐を維持", repairPartnerOpeningBalanceFiscalStart.toString().indexOf("readPartnerOpeningBalanceFiscalStartRepairState_") !== -1, true],
+    ["dry-runは読み取り専用分岐を維持", repairPartnerOpeningBalanceFiscalStart_.toString().indexOf("readPartnerOpeningBalanceFiscalStartRepairState_") !== -1, true],
     ["dry-runラッパーを維持", typeof debugRepairPartnerOpeningBalanceFiscalStart, "function"],
     ["FIFO繰越診断を維持", typeof debugPartnerOpeningBalanceCarryOverSimulation, "function"],
     ["年度開始FIFO診断を維持", typeof debugPartnerOpeningBalanceFiscalStartSimulation, "function"],
@@ -1891,14 +1891,14 @@ function testPartnerP0004CarryOverStructureSimulation() {
 ========================= */
 function testPartnerOpeningBalanceP0004RepairSafety() {
   const throws = fn => { try { fn(); return false; } catch (error) { return true; } };
-  const source = repairPartnerOpeningBalanceFiscalStartP0004.toString();
+  const source = repairPartnerOpeningBalanceFiscalStartP0004_.toString();
   const cases = [
     ["対象grant_idはG0058", PARTNER_OPENING_BALANCE_P0004_REPAIR_TARGET_.grant_id, "G0058"],
     ["対象employee_idはEMP0062", PARTNER_OPENING_BALANCE_P0004_REPAIR_TARGET_.employee_id, "EMP0062"],
     ["dry-runが既定", source.indexOf("opts.dry_run !== false") !== -1, true],
-    ["本実行を必ず拒否", throws(() => repairPartnerOpeningBalanceFiscalStartP0004({ dry_run: false })), true],
-    ["確認文字列があっても拒否", throws(() => repairPartnerOpeningBalanceFiscalStartP0004({ dry_run: false, confirmation_text: "ANY" })), true],
-    ["完了済みエラーを返す", (() => { try { repairPartnerOpeningBalanceFiscalStartP0004({ dry_run: false }); } catch (error) { return String(error.message).indexOf("P0004(G0058)") !== -1; } return false; })(), true],
+    ["本実行を必ず拒否", throws(() => repairPartnerOpeningBalanceFiscalStartP0004_({ dry_run: false })), true],
+    ["確認文字列があっても拒否", throws(() => repairPartnerOpeningBalanceFiscalStartP0004_({ dry_run: false, confirmation_text: "ANY" })), true],
+    ["完了済みエラーを返す", (() => { try { repairPartnerOpeningBalanceFiscalStartP0004_({ dry_run: false }); } catch (error) { return String(error.message).indexOf("P0004(G0058)") !== -1; } return false; })(), true],
     ["LockServiceを削除", source.indexOf("LockService") === -1, true],
     ["シート更新を削除", source.indexOf("setValue") === -1 && source.indexOf("setValues") === -1, true],
     ["usage_log書込みを削除", source.indexOf("appendUsageLog") === -1, true],
@@ -2020,7 +2020,7 @@ function testPaidLeaveGrantScheduleAfterP0004Repair() {
     schedule,
     fifoBalance
   );
-  const source = debugPaidLeaveGrantScheduleApiAfterP0004Repair.toString();
+  const source = debugPaidLeaveGrantScheduleApiAfterP0004Repair_.toString();
   const cases = [
     ["補正後FIFOを処理", diagnostic.p0004.current_remaining_days, 9.5],
     ["grant_days=0/carry_over_days=2相当の期限切れなし", diagnostic.p0004.expired_days, 0],

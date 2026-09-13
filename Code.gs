@@ -103,11 +103,10 @@ function initializeEmployeeTimeLeaveWorkScheduleStructure_() {
   };
 }
 
-// Apps Scriptエディタから手動実行するための公開入口。
-function initializeEmployeeTimeLeaveWorkScheduleStructure() {
-  const result = initializeEmployeeTimeLeaveWorkScheduleStructure_();
-  console.log(JSON.stringify(result, null, 2));
-  return result;
+// 管理Web App用。構造変更は必ず管理者セッションを要求する。
+function initializeEmployeeTimeLeaveWorkScheduleStructureFromAdmin(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
+  return initializeEmployeeTimeLeaveWorkScheduleStructure_();
 }
 
 function getOptionalEmployeeWorkMinute_(value, label) {
@@ -686,7 +685,8 @@ function updateLeaveRequestStatusValidation() {
 /* =========================
    leave_requests ヘッダー診断
 ========================= */
-function debugLeaveRequestHeaders() {
+function debugLeaveRequestHeaders(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const sheet = getSheet("leave_requests");
   const headerInfo = getHeaderMap(sheet);
 
@@ -2181,7 +2181,7 @@ function buildPagedResponse_(rows, options) {
 function createFifoBalanceComparisonContext_(asOfDate, options) {
   const opts = options || {};
   const companyCodeByEmployee = {};
-  getEmployeesForAdmin().forEach(employee => {
+  getEmployeesForAdmin_().forEach(employee => {
     const employeeId = String(employee.employee_id || "").trim();
     if (employeeId) companyCodeByEmployee[employeeId] = String(employee.company_code || "").trim().toUpperCase();
   });
@@ -2258,7 +2258,7 @@ function getPaidLeaveGrantRowsByEmployeeForFifoCompare_() {
     // MAINの分FIFOには、Supabase未適用のcarry_over_minutesと新年度付与を含める必要がある。
     // そのためMAINのロットだけSpreadsheet正本で置換し、PARTNERの既存Supabase readは維持する。
     const mainEmployeeIds = {};
-    getEmployeesForAdmin().forEach(employee => {
+    getEmployeesForAdmin_().forEach(employee => {
       if (String(employee.company_code || "").trim().toUpperCase() !== "MAIN") return;
       mainEmployeeIds[String(employee.employee_id || "").trim()] = true;
     });
@@ -2915,14 +2915,6 @@ function initializeTimeLeaveProductionStructure_() {
     paid_leave_grants_headers: getHeaderMap(grantSheet).headers,
     leave_retirement_records_headers: getHeaderMap(retirementSheet).headers
   };
-}
-
-// Apps Scriptエディタの関数一覧から、本番Spreadsheet構造の初期化を明示実行する入口。
-// 実処理は内部関数へ完全委譲し、この関数自身はSpreadsheet操作を持たない。
-function initializeTimeLeaveProductionStructure() {
-  const result = initializeTimeLeaveProductionStructure_();
-  console.log(JSON.stringify(result, null, 2));
-  return result;
 }
 
 function formatMinuteAsTime_(minute) {
@@ -4686,11 +4678,12 @@ function getFiscalStartMonthByEmployeeId(employeeId, employeeMap) {
    管理画面用：初期表示
    前月＋当月のみ
 ========================= */
-function getRequestsByStatus(status) {
+function getRequestsByStatus(status, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   if (norm(status) === STATUS.PENDING) {
     const pendingRange = getAdminPendingFocusRange();
 
-    return searchRequests({
+    return searchRequests_({
       status: status,
       start_date: formatDateValue(pendingRange.start)
     });
@@ -4698,7 +4691,7 @@ function getRequestsByStatus(status) {
 
   const range = getAdminRecentRange();
 
-  return searchRequests({
+  return searchRequests_({
     status: status,
     start_date: formatDateValue(range.start),
     end_date: formatDateValue(range.end)
@@ -4708,7 +4701,8 @@ function getRequestsByStatus(status) {
 /* =========================
    管理画面用：承認待ち軽量一覧
 ========================= */
-function getPendingRequestsForAdminLight() {
+function getPendingRequestsForAdminLight(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const range = getAdminPendingFocusRange();
   if (shouldUseSupabaseReads_()) {
     const employeeMap = {};
@@ -5011,7 +5005,12 @@ function getTimeLeaveSegmentPresentationByRequestIds_(requestIds) {
 /* =========================
    管理画面用：申請検索
 ========================= */
-function searchRequests(filters) {
+function searchRequests(filters, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
+  return searchRequests_(filters);
+}
+
+function searchRequests_(filters) {
   filters = filters || {};
   const timeLeaveSegments = getTimeLeaveSegmentPresentationByRequest_();
 
@@ -5582,7 +5581,8 @@ function validateMainApprovalBalancesForRequests_(requestIds) {
   return result;
 }
 
-function approveRequestsBatch(requestIds, adminUser) {
+function approveRequestsBatch(requestIds, adminSessionToken) {
+  const adminUser = requireAdminSession_(adminSessionToken);
   if (!Array.isArray(requestIds) || requestIds.length === 0) {
     throw new Error("承認対象が選択されていません");
   }
@@ -5686,7 +5686,8 @@ function approveRequestsBatchLegacy_(requestIds, adminUser) {
   };
 }
 
-function approveRequest(requestId, adminUser) {
+function approveRequest(requestId, adminSessionToken) {
+  const adminUser = requireAdminSession_(adminSessionToken);
   if (!requestId) {
     throw new Error("requestId がありません");
   }
@@ -5766,7 +5767,8 @@ function approveRequest(requestId, adminUser) {
 /* =========================
    管理画面用：承認後取消
 ========================= */
-function cancelApprovedRequestByAdmin(requestId, reason, adminUser) {
+function cancelApprovedRequestByAdmin(requestId, reason, adminSessionToken) {
+  const adminUser = requireAdminSession_(adminSessionToken);
   const targetRequestId = String(requestId || "").trim();
 
   if (!targetRequestId) {
@@ -5847,7 +5849,8 @@ function cancelApprovedRequestByAdmin(requestId, reason, adminUser) {
 /* =========================
    否認
 ========================= */
-function rejectRequest(requestId, reason, adminUser) {
+function rejectRequest(requestId, reason, adminSessionToken) {
+  const adminUser = requireAdminSession_(adminSessionToken);
   if (!requestId) {
     throw new Error("requestId がありません");
   }
@@ -5907,10 +5910,11 @@ function rejectRequest(requestId, reason, adminUser) {
    ログ取得
    初期表示は前月＋当月のみ
 ========================= */
-function getUsageLogs() {
+function getUsageLogs(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const range = getAdminRecentRange();
 
-  return searchUsageLogs({
+  return searchUsageLogs_({
     start_date: formatDateValue(range.start),
     end_date: formatDateValue(range.end)
   });
@@ -5919,7 +5923,12 @@ function getUsageLogs() {
 /* =========================
    ログ検索
 ========================= */
-function searchUsageLogs(filters) {
+function searchUsageLogs(filters, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
+  return searchUsageLogs_(filters);
+}
+
+function searchUsageLogs_(filters) {
   filters = filters || {};
 
   if (shouldUseSupabaseReads_()) {
@@ -6076,7 +6085,8 @@ function searchUsageLogs(filters) {
 /* =========================
    月間取得一覧出力
 ========================= */
-function exportMonthlyPaidLeaveReport(targetYear, targetMonth, companyCode) {
+function exportMonthlyPaidLeaveReport(targetYear, targetMonth, companyCode, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   if (!targetYear || !targetMonth) {
     const today = new Date();
     targetYear = today.getFullYear();
@@ -6090,7 +6100,7 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth, companyCode) {
     target_year: targetYear,
     target_month: targetMonth,
     company_code: code
-  });
+  }, adminSessionToken);
 
   const outputSheet = getOutputSheet(
     getOutputSheetName("monthly", code)
@@ -6127,7 +6137,8 @@ function exportMonthlyPaidLeaveReport(targetYear, targetMonth, companyCode) {
    月間取得一覧プレビュー
    画面表示・CSV用
 ========================= */
-function getMonthlyPaidLeaveReportPreview(filters) {
+function getMonthlyPaidLeaveReportPreview(filters, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   filters = filters || {};
 
   const targetYear = Number(filters.target_year || new Date().getFullYear());
@@ -6149,7 +6160,7 @@ function getMonthlyPaidLeaveReportPreview(filters) {
   ]);
 
   const leaveData = leaveSheet.getDataRange().getValues();
-  const employees = getEmployeesForAdmin();
+  const employees = getEmployeesForAdmin_();
   const employeeMap = {};
   const calendarMap = getCompanyCalendarMap();
 
@@ -6246,7 +6257,8 @@ function getMonthlyPaidLeaveReportPreview(filters) {
 /* =========================
    年間取得一覧出力
 ========================= */
-function exportYearlyPaidLeaveReport(fiscalYear, companyCode) {
+function exportYearlyPaidLeaveReport(fiscalYear, companyCode, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const code = String(companyCode || "MAIN").trim().toUpperCase();
 
   if (!fiscalYear) {
@@ -6598,14 +6610,6 @@ function validateRequestDatesOnly(startDate, endDate, halfDay, halfType) {
 }
 
 /* =========================
-   社員マスター整備
-   互換用：表示順整理のみ実行
-========================= */
-function maintainEmployeeMaster() {
-  return maintainEmployeeDisplayOrderOnly_();
-}
-
-/* =========================
    社員表示順整理
    ID系列の列は更新しない
 ========================= */
@@ -6670,7 +6674,8 @@ function maintainEmployeeDisplayOrderOnly_() {
 
 ========================= */
 
-function runMaintainEmployeeMasterFromAdmin() {
+function runMaintainEmployeeMasterFromAdmin(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
 
   const result = maintainEmployeeDisplayOrderOnly_();
 
@@ -6819,7 +6824,8 @@ function getEmploymentStatusOrder_(status) {
 /* =========================
    社員追加
 ========================= */
-function addEmployeeFromAdmin(data) {
+function addEmployeeFromAdmin(data, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   if (!data || typeof data !== "object") {
     throw new Error("社員データがありません");
   }
@@ -6954,7 +6960,12 @@ function getEmployeeTimeLeaveWorkScheduleMapFromSpreadsheet_() {
   return result;
 }
 
-function getEmployeesForAdmin() {
+function getEmployeesForAdmin(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
+  return getEmployeesForAdmin_();
+}
+
+function getEmployeesForAdmin_() {
   if (shouldUseSupabaseReads_()) {
     const timeLeaveWorkSchedules = getEmployeeTimeLeaveWorkScheduleMapFromSpreadsheet_();
     return getEmployeesFromSupabase_()
@@ -7120,7 +7131,8 @@ function normalizeEmployeeLogValue(value, type) {
 /* =========================
    社員情報更新
 ========================= */
-function updateEmployeeFromAdmin(data) {
+function updateEmployeeFromAdmin(data, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   if (!data || typeof data !== "object") {
     throw new Error("社員データがありません");
   }
@@ -7236,7 +7248,8 @@ function updateEmployeeFromAdmin(data) {
 /* =========================
    退職処理
 ========================= */
-function retireEmployeeFromAdmin(employeeId, leaveDate) {
+function retireEmployeeFromAdmin(employeeId, leaveDate, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   if (!employeeId) {
     throw new Error("employeeId がありません");
   }
@@ -7356,7 +7369,8 @@ function getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth) {
   };
 }
 
-function getCompanyCalendarRowsForAdmin(fiscalYear, fiscalStartMonth) {
+function getCompanyCalendarRowsForAdmin(fiscalYear, fiscalStartMonth, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const period = getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth);
   if (shouldUseSupabaseReads_()) {
     const rowMap = {};
@@ -7428,7 +7442,8 @@ function getCompanyCalendarRowsForAdmin(fiscalYear, fiscalStartMonth) {
   };
 }
 
-function generateCompanyCalendarFiscalYear(fiscalYear, fiscalStartMonth) {
+function generateCompanyCalendarFiscalYear(fiscalYear, fiscalStartMonth, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const period = getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth);
   const sheet = ensureCompanyCalendarNotesColumn_();
   const headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
@@ -7476,7 +7491,8 @@ function generateCompanyCalendarFiscalYear(fiscalYear, fiscalStartMonth) {
   };
 }
 
-function updateCompanyCalendarRowsForAdmin(rows) {
+function updateCompanyCalendarRowsForAdmin(rows, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   if (!Array.isArray(rows)) {
     throw new Error("更新データが不正です");
   }
@@ -7604,14 +7620,15 @@ function getYearlyPaidLeaveReportCsvData(fiscalYear, companyCode) {
   };
 }
 
-function getYearlyPaidLeaveReportPreview(filters) {
+function getYearlyPaidLeaveReportPreview(filters, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   filters = filters || {};
 
   const fiscalYear = Number(filters.fiscal_year || getFiscalYearFromDate(new Date()));
   const companyCodeFilter = String(filters.company_code || "").trim().toUpperCase();
   const companyNameFilter = String(filters.company_name || "").trim();
 
-  const employees = getEmployeesForAdmin().filter(emp => {
+  const employees = getEmployeesForAdmin_().filter(emp => {
     if (String(emp.employment_status || "").trim().toLowerCase() !== "active") return false;
     if (emp.leave_management_target !== true) return false;
 
@@ -7706,9 +7723,49 @@ function getAdminUsersForLogin() {
 }
 
 /* =========================
-   管理者ログイン：PIN確認
+   管理者セッション
 ========================= */
-function verifyAdminLogin(adminId, pin) {
+const ADMIN_SESSION_TTL_SECONDS_ = 4 * 60 * 60;
+const ADMIN_LOGIN_MAX_FAILURES_ = 5;
+const ADMIN_LOGIN_LOCK_SECONDS_ = 15 * 60;
+
+function getAdminSessionCache_() {
+  return CacheService.getScriptCache();
+}
+
+function hashAdminSessionToken_(token) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(token || ""));
+  return bytes.map(byte => (byte + 256).toString(16).slice(-2)).join("");
+}
+
+function getAdminSessionCacheKey_(token) {
+  return "admin_session:" + hashAdminSessionToken_(token);
+}
+
+function getAdminLoginFailureCacheKey_(adminId) {
+  return "admin_login_failure:" + hashAdminSessionToken_(String(adminId || "").trim());
+}
+
+function getAdminLoginLockCacheKey_(adminId) {
+  return "admin_login_lock:" + hashAdminSessionToken_(String(adminId || "").trim());
+}
+
+function createAdminSession_(adminRecord) {
+  const adminId = String(adminRecord && adminRecord.admin_id || "").trim();
+  const adminName = String(adminRecord && adminRecord.admin_name || "").trim();
+  if (!adminId || !adminName) throw new Error("管理者セッションを作成できません");
+
+  const token = Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid();
+  const expiresAt = new Date(Date.now() + ADMIN_SESSION_TTL_SECONDS_ * 1000);
+  getAdminSessionCache_().put(
+    getAdminSessionCacheKey_(token),
+    JSON.stringify({ admin_id: adminId, admin_name: adminName, expires_at: expiresAt.toISOString() }),
+    ADMIN_SESSION_TTL_SECONDS_
+  );
+  return { token: token, admin: { admin_id: adminId, admin_name: adminName }, expires_at: expiresAt.toISOString() };
+}
+
+function getAdminLoginRecordById_(adminId) {
   const sheet = getSheet("admin_users");
 
   const headerInfo = requireHeaders(sheet, [
@@ -7721,46 +7778,80 @@ function verifyAdminLogin(adminId, pin) {
   const data = sheet.getDataRange().getValues();
 
   const targetAdminId = String(adminId || "").trim();
-  const targetPin = String(pin || "").trim();
-
-  if (!targetAdminId) {
-    throw new Error("管理者を選択してください");
-  }
-
-  if (!targetPin) {
-    throw new Error("PINを入力してください");
-  }
-
-  const matched = data.slice(1)
+  return data.slice(1)
     .map(row => rowToObject(row, headerInfo.headers))
     .find(rowObj => {
-      return (
-        String(rowObj.admin_id || "").trim() === targetAdminId &&
-        String(rowObj.is_active || "").trim().toUpperCase() === "TRUE"
-      );
+      return String(rowObj.admin_id || "").trim() === targetAdminId;
     });
+}
 
-  if (!matched) {
-    throw new Error("管理者が見つかりません");
+function requireAdminSession_(token) {
+  const value = String(token || "").trim();
+  if (!value) throw new Error("ADMIN_SESSION_REQUIRED");
+  const raw = getAdminSessionCache_().get(getAdminSessionCacheKey_(value));
+  if (!raw) throw new Error("ADMIN_SESSION_EXPIRED");
+  let session;
+  try { session = JSON.parse(raw); } catch (err) { throw new Error("ADMIN_SESSION_INVALID"); }
+  if (!session || !session.expires_at || new Date(session.expires_at).getTime() <= Date.now()) {
+    getAdminSessionCache_().remove(getAdminSessionCacheKey_(value));
+    throw new Error("ADMIN_SESSION_EXPIRED");
+  }
+  const admin = getAdminLoginRecordById_(session.admin_id);
+  if (!admin || String(admin.is_active || "").trim().toUpperCase() !== "TRUE") {
+    throw new Error("ADMIN_SESSION_INVALID");
+  }
+  return { admin_id: String(admin.admin_id || "").trim(), admin_name: String(admin.admin_name || "").trim() };
+}
+
+function deleteAdminSession_(token) {
+  const value = String(token || "").trim();
+  if (value) getAdminSessionCache_().remove(getAdminSessionCacheKey_(value));
+  return { ok: true };
+}
+
+// google.script.runから呼べるlogout専用入口。失効済み・不正tokenでも冪等に成功する。
+function logoutAdminSession(adminSessionToken) {
+  deleteAdminSession_(adminSessionToken);
+  return { ok: true };
+}
+
+function recordAdminLoginFailure_(adminId) {
+  const cache = getAdminSessionCache_();
+  const key = getAdminLoginFailureCacheKey_(adminId);
+  const failures = Number(cache.get(key) || 0) + 1;
+  if (failures >= ADMIN_LOGIN_MAX_FAILURES_) {
+    cache.put(getAdminLoginLockCacheKey_(adminId), "1", ADMIN_LOGIN_LOCK_SECONDS_);
+    cache.remove(key);
+  } else {
+    cache.put(key, String(failures), ADMIN_LOGIN_LOCK_SECONDS_);
+  }
+}
+
+function verifyAdminLogin(adminId, pin) {
+  const targetAdminId = String(adminId || "").trim();
+  const targetPin = String(pin || "").trim();
+  const genericError = "管理者IDまたはPINを確認してください。";
+  if (!targetAdminId || !targetPin || getAdminSessionCache_().get(getAdminLoginLockCacheKey_(targetAdminId))) {
+    throw new Error(genericError);
   }
 
-  if (String(matched.pin || "").trim() !== targetPin) {
-    throw new Error("PINが違います");
-  }
+  const matched = getAdminLoginRecordById_(targetAdminId);
 
-  return {
-    ok: true,
-    admin_id: String(matched.admin_id || "").trim(),
-    admin_name: String(matched.admin_name || "").trim()
-  };
+  if (!matched || String(matched.is_active || "").trim().toUpperCase() !== "TRUE" || String(matched.pin || "").trim() !== targetPin) {
+    recordAdminLoginFailure_(targetAdminId);
+    throw new Error(genericError);
+  }
+  getAdminSessionCache_().remove(getAdminLoginFailureCacheKey_(targetAdminId));
+  return Object.assign({ success: true }, createAdminSession_(matched));
 }
 
 /* =========================
    6か月到達者：初回有給付与候補取得
 ========================= */
-function getSixMonthGrantCandidates(options) {
+function getSixMonthGrantCandidates(options, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const today = parseLocalDate(new Date());
-  const employees = getEmployeesForAdmin();
+  const employees = getEmployeesForAdmin_();
   const grantRows = getInitialPaidLeaveGrantHistoryRows_();
   const opts = options || null;
 
@@ -7820,11 +7911,12 @@ function getSixMonthGrantCandidates(options) {
 /* =========================
    6か月到達者：1名付与
 ========================= */
-function grantSixMonthPaidLeave(employeeId, adminUser, options) {
+function grantSixMonthPaidLeave(employeeId, adminSessionToken, options) {
+  const adminUser = requireAdminSession_(adminSessionToken);
   if (!employeeId) throw new Error("employeeId がありません");
 
   return runInitialPaidLeaveGrantWithLock_(function() {
-    const employees = getEmployeesForAdmin();
+    const employees = getEmployeesForAdmin_();
     const emp = employees.find(e => String(e.employee_id) === String(employeeId));
     validateInitialPaidLeaveGrantEmployee_(emp, employeeId);
 
@@ -7885,11 +7977,12 @@ function grantSixMonthPaidLeave(employeeId, adminUser, options) {
 /* =========================
    6か月到達者：処理済みにする
 ========================= */
-function markSixMonthGrantCandidateProcessed(employeeId, reason, adminUser) {
+function markSixMonthGrantCandidateProcessed(employeeId, reason, adminSessionToken) {
+  const adminUser = requireAdminSession_(adminSessionToken);
   if (!employeeId) throw new Error("employeeId がありません");
 
   return runInitialPaidLeaveGrantWithLock_(function() {
-    const employees = getEmployeesForAdmin();
+    const employees = getEmployeesForAdmin_();
     const emp = employees.find(e => String(e.employee_id) === String(employeeId));
     validateInitialPaidLeaveGrantEmployee_(emp, employeeId);
 
@@ -7949,10 +8042,11 @@ function markSixMonthGrantCandidateProcessed(employeeId, reason, adminUser) {
 /* =========================
    6か月到達者：選択一括付与
 ========================= */
-function grantSelectedSixMonthPaidLeave(employeeIds, adminUser) {
+function grantSelectedSixMonthPaidLeave(employeeIds, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   return grantSelectedPaidLeave_(
     employeeIds,
-    adminUser,
+    adminSessionToken,
     grantSixMonthPaidLeave
   );
 }
@@ -8747,7 +8841,8 @@ function addDaysLocal_(dateValue, days) {
   return date;
 }
 
-function getAdminDashboardSummary() {
+function getAdminDashboardSummary(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const range = getAdminRecentRange();
   const pendingRange = getAdminPendingFocusRange();
 
@@ -8793,7 +8888,8 @@ function getAdminDashboardSummary() {
   return result;
 }
 
-function getPaidLeaveDashboardData(filters) {
+function getPaidLeaveDashboardData(filters, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const opts = filters || {};
   const fiscalYear = Number(opts.fiscal_year || getFiscalYearFromDate(new Date()));
   const companyCodeFilter = String(opts.company_code || "").trim().toUpperCase();
@@ -8802,7 +8898,7 @@ function getPaidLeaveDashboardData(filters) {
   const expiredOnly = opts.expired_only === true;
   const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate(new Date());
 
-  const employees = getEmployeesForAdmin()
+  const employees = getEmployeesForAdmin_()
     .filter(emp => isFifoBalanceCompareTargetEmployee_(emp))
     .filter(emp => {
       const empCompanyCode = String(emp.company_code || "").trim().toUpperCase();
@@ -8911,13 +9007,14 @@ function getPaidLeaveDashboardData(filters) {
 /* =========================
    管理者向け付与予定・要確認（完全読み取り専用）
 ========================= */
-function getPaidLeaveGrantScheduleForAdmin(params) {
+function getPaidLeaveGrantScheduleForAdmin(params, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const opts = params || {};
   const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate(new Date());
   const daysAhead = Math.max(0, Math.min(Number(opts.days_ahead || 30), 366));
   const includeProcessedDays = Math.max(0, Math.min(Number(opts.include_processed_days || 31), 366));
   const companyCodeFilter = String(opts.company_code || "ALL").trim().toUpperCase();
-  const employees = getEmployeesForAdmin();
+  const employees = getEmployeesForAdmin_();
   const grantRows = getInitialPaidLeaveGrantHistoryRows_();
   const fifoContext = createFifoBalanceComparisonContext_(asOfDate, { read_only: true });
   const horizon = addDaysLocal_(asOfDate, daysAhead);
@@ -8958,7 +9055,12 @@ function getPaidLeaveGrantScheduleForAdmin(params) {
  * P0004補正後の付与予定APIを、シート等へ書き込まずに確認するための診断。
  * 氏名・notes本文はログおよび戻り値に含めない。
  */
-function debugPaidLeaveGrantScheduleApiAfterP0004Repair() {
+function debugPaidLeaveGrantScheduleApiAfterP0004Repair(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
+  return debugPaidLeaveGrantScheduleApiAfterP0004Repair_();
+}
+
+function debugPaidLeaveGrantScheduleApiAfterP0004Repair_() {
   const asOfDate = parseLocalDate("2026-07-25");
   const options = {
     as_of_date: formatInitialGrantDateKey_(asOfDate),
@@ -8967,7 +9069,7 @@ function debugPaidLeaveGrantScheduleApiAfterP0004Repair() {
   Logger.log("[PAID_LEAVE_GRANT_SCHEDULE_API] API実行開始");
 
   try {
-    const employees = getEmployeesForAdmin();
+    const employees = getEmployeesForAdmin_();
     const grantRows = getInitialPaidLeaveGrantHistoryRows_();
     const p0004Employee = employees.find(emp =>
       String(emp.employee_id || "").trim() === "EMP0062" &&
@@ -9200,7 +9302,7 @@ function getPaidLeaveBalanceSnapshotForAttendance(employeeIds, asOfDate) {
   let setupError = "";
 
   try {
-    employeesForAdmin = getEmployeesForAdmin();
+    employeesForAdmin = getEmployeesForAdmin_();
     context = createFifoBalanceComparisonContext_(targetDate);
   } catch (error) {
     setupError = error && error.message ? error.message : String(error || "");
@@ -9378,14 +9480,15 @@ function buildAttendancePaidLeaveExpiryLots_(fifoBalance, asOfDate) {
 }
 
 
-function getPaidLeaveDashboardEmployeeDetail(employeeId, filters) {
+function getPaidLeaveDashboardEmployeeDetail(employeeId, filters, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const targetEmployeeId = String(employeeId || "").trim();
   if (!targetEmployeeId) throw new Error("社員IDがありません。");
 
   const opts = filters || {};
   const fiscalYear = Number(opts.fiscal_year || getFiscalYearFromDate(new Date()));
   const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate(new Date());
-  const emp = getEmployeesForAdmin().find(row =>
+  const emp = getEmployeesForAdmin_().find(row =>
     String(row.employee_id || "").trim() === targetEmployeeId
   );
 
@@ -9570,9 +9673,10 @@ function buildPaidLeaveDashboardExpiryInfo_(fifoBalance, asOfDate) {
 /* =========================
    年次付与候補取得
 ========================= */
-function getYearlyGrantCandidates(options) {
+function getYearlyGrantCandidates(options, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const today = new Date();
-  const employees = getEmployeesForAdmin();
+  const employees = getEmployeesForAdmin_();
   const opts = options || null;
 
   const rows = employees
@@ -9626,10 +9730,11 @@ function getYearlyGrantCandidates(options) {
 /* =========================
    年次付与実行
 ========================= */
-function grantYearlyPaidLeave(employeeId, adminUser, options) {
+function grantYearlyPaidLeave(employeeId, adminSessionToken, options) {
+  const adminUser = requireAdminSession_(adminSessionToken);
   if (!employeeId) throw new Error("employeeId がありません");
 
-  const employees = getEmployeesForAdmin();
+  const employees = getEmployeesForAdmin_();
   const emp = employees.find(e => String(e.employee_id) === String(employeeId));
 
   if (!emp) throw new Error("対象社員が見つかりません");
@@ -9709,15 +9814,16 @@ function grantYearlyPaidLeave(employeeId, adminUser, options) {
 /* =========================
    年次付与：選択一括付与
 ========================= */
-function grantSelectedYearlyPaidLeave(employeeIds, adminUser) {
+function grantSelectedYearlyPaidLeave(employeeIds, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   return grantSelectedPaidLeave_(
     employeeIds,
-    adminUser,
+    adminSessionToken,
     grantYearlyPaidLeave
   );
 }
 
-function grantSelectedPaidLeave_(employeeIds, adminUser, grantFn) {
+function grantSelectedPaidLeave_(employeeIds, adminSessionToken, grantFn) {
   const items = (employeeIds || [])
     .map(parseSelectedGrantItem_)
     .filter(item => item.employee_id);
@@ -9734,7 +9840,7 @@ function grantSelectedPaidLeave_(employeeIds, adminUser, grantFn) {
     const employeeId = item.employee_id;
 
     try {
-      const res = grantFn(employeeId, adminUser, item.options);
+      const res = grantFn(employeeId, adminSessionToken, item.options);
       result.success_count++;
       result.results.push({
         employee_id: employeeId,
@@ -9910,7 +10016,8 @@ function hasYearlyGrantForFiscalYear_(
 /* =========================
    Supabase移行前DB監査（読み取り専用）
 ========================= */
-function auditLeaveDbForSupabaseMigration() {
+function auditLeaveDbForSupabaseMigration(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const sheetConfigs = [
     {
       name: "employees",

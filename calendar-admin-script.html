@@ -30,18 +30,19 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 function initAdminLogin() {
-  const saved = localStorage.getItem(ADMIN_LOGIN_KEY);
+  const saved = sessionStorage.getItem(ADMIN_LOGIN_KEY);
 
   if (saved) {
     try {
-      currentAdminUser = JSON.parse(saved);
+      const session = JSON.parse(saved);
+      currentAdminUser = session && session.admin;
 
-      if (currentAdminUser && currentAdminUser.admin_id) {
+      if (currentAdminUser && currentAdminUser.admin_id && getAdminSessionToken_()) {
         showAdminApp();
         return;
       }
     } catch (e) {
-      localStorage.removeItem(ADMIN_LOGIN_KEY);
+      sessionStorage.removeItem(ADMIN_LOGIN_KEY);
     }
   }
 
@@ -175,6 +176,7 @@ function loadFifoTrialDifferences(keepPage) {
     .withSuccessHandler(renderFifoTrialDifferences)
     .withFailureHandler(err => {
       console.error("FIFO試算エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       if (results) {
         const message = err && err.message
           ? err.message
@@ -187,7 +189,8 @@ function loadFifoTrialDifferences(keepPage) {
       asOfDate,
       employeeId,
       PAGE_SIZE,
-      pageOffsets.fifo
+      pageOffsets.fifo,
+      getAdminSessionToken_()
     );
 }
 
@@ -324,9 +327,10 @@ function loadFifoEmployeeCandidates() {
     })
     .withFailureHandler(err => {
       console.error("FIFO社員候補取得エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       fifoEmployeeCandidates = [];
     })
-    .getEmployeesForAdmin();
+    .getEmployeesForAdmin(getAdminSessionToken_());
 }
 
 function handleFifoEmployeeSearchInput() {
@@ -489,6 +493,7 @@ function loadExpiryLots(keepPage) {
     .withSuccessHandler(renderExpiryLots)
     .withFailureHandler(err => {
       console.error("期限切れ確認エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       const message = err && err.message
         ? err.message
         : "期限切れ確認でエラーが発生しました。";
@@ -505,7 +510,7 @@ function loadExpiryLots(keepPage) {
       validity_unconfirmed_only: validityUnconfirmedOnly,
       offset: pageOffsets.expiry,
       limit: PAGE_SIZE
-    });
+    }, getAdminSessionToken_());
 }
 
 function renderExpiryLots(response) {
@@ -643,6 +648,7 @@ function runCompanyLeaveYearRolloverDryRun() {
     })
     .withFailureHandler(err => {
       console.error("会社別 年度切替事前確認エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       const message = err && err.message
         ? err.message
         : "切替内容の確認中にエラーが発生しました。";
@@ -652,7 +658,7 @@ function runCompanyLeaveYearRolloverDryRun() {
       if (button) button.disabled = false;
       updateCompanyRolloverExecuteButtonState();
     })
-    .dryRunCompanyLeaveYearRollover(companyCode, fiscalYear);
+    .dryRunCompanyLeaveYearRollover(companyCode, fiscalYear, getAdminSessionToken_());
 }
 
 function resetCompanyLeaveYearRolloverDryRun(options) {
@@ -942,6 +948,7 @@ function executeCompanyLeaveYearRolloverFromAdmin() {
     .withFailureHandler(err => {
       setCompanyRolloverExecutingState_(false);
       console.error("会社別 年度切替確定エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       const message = err && err.message
         ? err.message
         : "年度切替の確定中にエラーが発生しました。";
@@ -953,7 +960,7 @@ function executeCompanyLeaveYearRolloverFromAdmin() {
     .executeCompanyLeaveYearRollover(companyCode, fiscalYear, {
       backup_confirmed: !!(backupChecked && backupChecked.checked),
       confirm_text: String(confirmText && confirmText.value || "").trim()
-    });
+    }, getAdminSessionToken_());
 }
 
 function setCompanyRolloverExecutingState_(executing) {
@@ -995,6 +1002,7 @@ function loadYearEndCarryOverCandidates(keepPage) {
     .withSuccessHandler(renderYearEndCarryOverCandidates)
     .withFailureHandler(err => {
       console.error("年跨ぎ・繰越候補取得エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       const message = err && err.message
         ? err.message
         : "来年度へ残す予定の日数の確認でエラーが発生しました。";
@@ -1005,7 +1013,7 @@ function loadYearEndCarryOverCandidates(keepPage) {
     .getYearEndCarryOverCandidates(Number(fiscalYear), {
       offset: pageOffsets.yearEnd,
       limit: PAGE_SIZE
-    });
+    }, getAdminSessionToken_());
 }
 
 function renderYearEndCarryOverCandidates(response) {
@@ -1364,13 +1372,14 @@ function loadCompanyCalendarAdminRows() {
     })
     .withFailureHandler(err => {
       console.error("会社カレンダー取得エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       setCompanyCalendarSaveButtonVisible(false);
       showError(
         "companyCalendarTable",
         err && err.message ? err.message : "会社カレンダーの取得でエラーが発生しました。"
       );
     })
-    .getCompanyCalendarRowsForAdmin(params.fiscalYear, params.fiscalStartMonth);
+    .getCompanyCalendarRowsForAdmin(params.fiscalYear, params.fiscalStartMonth, getAdminSessionToken_());
 }
 
 function generateCompanyCalendarForAdmin() {
@@ -1404,12 +1413,13 @@ function generateCompanyCalendarForAdmin() {
     })
     .withFailureHandler(err => {
       console.error("会社カレンダー生成エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       showCompanyCalendarMessage(
         err && err.message ? err.message : "会社カレンダーの生成でエラーが発生しました。",
         "error"
       );
     })
-    .generateCompanyCalendarFiscalYear(params.fiscalYear, params.fiscalStartMonth);
+    .generateCompanyCalendarFiscalYear(params.fiscalYear, params.fiscalStartMonth, getAdminSessionToken_());
 }
 
 function renderCompanyCalendarAdminRows(data) {
@@ -1504,11 +1514,12 @@ function saveCompanyCalendarAdminRows() {
     })
     .withFailureHandler(err => {
       console.error("会社カレンダー保存エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       showCompanyCalendarMessage(
         err && err.message ? err.message : "会社カレンダーの保存でエラーが発生しました。",
         "error"
       );
     })
-    .updateCompanyCalendarRowsForAdmin(rows);
+    .updateCompanyCalendarRowsForAdmin(rows, getAdminSessionToken_());
 }
 </script>

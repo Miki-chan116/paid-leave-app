@@ -3,7 +3,8 @@
    Code.gs から動作を変えずに移動
 ========================= */
 
-function getYearEndCarryOverCandidates(fiscalYear, options) {
+function getYearEndCarryOverCandidates(fiscalYear, options, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const targetFiscalYear = Number(fiscalYear || getFiscalYearFromDate(new Date()));
   const opts = options || {};
   const page = normalizePagingOptions_(opts);
@@ -14,7 +15,7 @@ function getYearEndCarryOverCandidates(fiscalYear, options) {
   const context = createFifoBalanceComparisonContext_(new Date());
   const finalizedMap = getYearlyGrantFinalizedMap_(targetFiscalYear + 1);
 
-  const employees = getEmployeesForAdmin()
+  const employees = getEmployeesForAdmin_()
     .filter(emp => {
       const status = String(emp.employment_status || "").trim().toLowerCase();
       const isActive = status === "active" || status === "在職";
@@ -271,7 +272,7 @@ function buildCompanyLeaveYearRolloverCandidate_(emp, fiscalYear, context, final
 function getCompanyLeaveYearRolloverCandidates_(companyCode, fiscalYear) {
   const config = getLeaveRolloverCompanyConfig_(companyCode);
   const dates = getLeaveRolloverFiscalYearDates_(config, fiscalYear);
-  const employees = getEmployeesForAdmin();
+  const employees = getEmployeesForAdmin_();
   const context = createFifoBalanceComparisonContext_(
     parseLocalDate(dates.previous_fiscal_year_end_date)
   );
@@ -341,17 +342,22 @@ function getCompanyLeaveYearRolloverCandidates_(companyCode, fiscalYear) {
   };
 }
 
-function dryRunCompanyLeaveYearRollover(companyCode, fiscalYear) {
+function dryRunCompanyLeaveYearRollover(companyCode, fiscalYear, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const result = getCompanyLeaveYearRolloverCandidates_(companyCode, fiscalYear);
   logCompanyLeaveYearRolloverDryRun_(result);
   return result;
 }
 
 function dryRunMainLeaveYearRollover2026() {
-  return dryRunCompanyLeaveYearRollover("MAIN", 2026);
+  // Apps Script editor用の明示的な手動診断。Web App UIからは呼び出さない。
+  const result = getCompanyLeaveYearRolloverCandidates_("MAIN", 2026);
+  logCompanyLeaveYearRolloverDryRun_(result);
+  return result;
 }
 
-function executeCompanyLeaveYearRollover(companyCode, fiscalYear, options) {
+function executeCompanyLeaveYearRollover(companyCode, fiscalYear, options, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const config = getLeaveRolloverCompanyConfig_(companyCode);
   const dates = getLeaveRolloverFiscalYearDates_(config, fiscalYear);
   const lock = LockService.getScriptLock();

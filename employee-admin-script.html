@@ -91,9 +91,10 @@ function loadEmployees() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      if (handleAdminApiFailure_(err)) return;
       showStatus("社員取得エラー\n" + (err.message || err), "error");
     })
-    .getEmployeesForAdmin();
+    .getEmployeesForAdmin(getAdminSessionToken_());
 }
 
 /* =========================
@@ -272,10 +273,11 @@ function openRetirementLeaveRecordModal(emp) {
       syncRetirementAdjustmentFields();
     })
     .withFailureHandler(err => {
+      if (handleAdminApiFailure_(err)) return;
       document.getElementById("retirementLeaveRecordLoading").style.display = "none";
       setRetirementLeaveRecordStatus("退職日時点の残高を取得できませんでした。\n" + (err.message || err), "error");
     })
-    .getRetirementLeaveBalancePreview(retirementRecordEmployeeId);
+    .getRetirementLeaveBalancePreview(retirementRecordEmployeeId, getAdminSessionToken_());
 }
 
 function closeRetirementLeaveRecordModal() {
@@ -358,6 +360,7 @@ function submitRetirementLeaveRecord() {
       loadEmployees();
     })
     .withFailureHandler(err => {
+      if (handleAdminApiFailure_(err)) return;
       document.getElementById("createRetirementLeaveRecordBtn").disabled = false;
       setRetirementLeaveRecordStatus("保存できませんでした。\n" + (err.message || err), "error");
     })
@@ -367,7 +370,7 @@ function submitRetirementLeaveRecord() {
       adjustment_days: adjustment,
       reason: reason,
       notes: getValue("retirementAdjustmentNotes")
-    });
+    }, getAdminSessionToken_());
 }
 
 function setRetirementLeaveRecordStatus(message, type) {
@@ -495,9 +498,10 @@ function submitEditEmployee() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      if (handleAdminApiFailure_(err)) return;
       showEditStatus("更新でエラーが発生しました。\n" + (err.message || err), "error");
     })
-    .updateEmployeeFromAdmin(payload);
+    .updateEmployeeFromAdmin(payload, getAdminSessionToken_());
 }
 
 /* =========================
@@ -558,9 +562,10 @@ function submitRetire() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      if (handleAdminApiFailure_(err)) return;
       showRetireStatus("退職処理でエラーが発生しました。\n" + (err.message || err), "error");
     })
-    .retireEmployeeFromAdmin(retiringEmployeeId, leaveDate);
+    .retireEmployeeFromAdmin(retiringEmployeeId, leaveDate, getAdminSessionToken_());
 }
 
 /* =========================
@@ -576,9 +581,10 @@ function runMaintain() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      if (handleAdminApiFailure_(err)) return;
       showStatus("社員マスター整備でエラーが発生しました。\n" + (err.message || err), "error");
     })
-    .runMaintainEmployeeMasterFromAdmin();
+    .runMaintainEmployeeMasterFromAdmin(getAdminSessionToken_());
 }
 
 /* =========================
@@ -656,6 +662,7 @@ function submitEmployee() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      if (handleAdminApiFailure_(err)) return;
       showStatus("追加でエラーが発生しました。\n" + (err.message || err), "error");
 
       if (btn) {
@@ -663,7 +670,7 @@ function submitEmployee() {
         btn.textContent = "社員を追加する";
       }
     })
-    .addEmployeeFromAdmin(payload);
+    .addEmployeeFromAdmin(payload, getAdminSessionToken_());
 }
 
 /* =========================

@@ -165,18 +165,19 @@ const adminAuthConfig = {
 };
 
 function initAdminLogin() {
-  const saved = localStorage.getItem(ADMIN_LOGIN_KEY);
+  const saved = sessionStorage.getItem(ADMIN_LOGIN_KEY);
 
   if (saved) {
     try {
-      currentAdminUser = JSON.parse(saved);
+      const session = JSON.parse(saved);
+      currentAdminUser = session && session.admin;
 
-      if (currentAdminUser && currentAdminUser.admin_id) {
+      if (currentAdminUser && currentAdminUser.admin_id && getAdminSessionToken_()) {
         showAdminApp();
         return;
       }
     } catch (e) {
-      localStorage.removeItem(ADMIN_LOGIN_KEY);
+      sessionStorage.removeItem(ADMIN_LOGIN_KEY);
     }
   }
 
@@ -228,6 +229,7 @@ function loadDashboardSummary() {
     })
     .withFailureHandler(err => {
       console.error("dashboard summary error:", err);
+      if (handleAdminApiFailure_(err)) return;
 
       ["pendingCount", "approvedCount", "rejectedCount"]
         .forEach(id => {
@@ -240,7 +242,7 @@ function loadDashboardSummary() {
 
         });
     })
-    .getAdminDashboardSummary();
+    .getAdminDashboardSummary(getAdminSessionToken_());
 }
 
 function scheduleDashboardSummaryRefresh(delayMs) {
@@ -285,13 +287,14 @@ function loadRequests(status) {
     })
     .withFailureHandler(err => {
       console.error("GASエラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       showError("requestView", "申請データ取得でエラーが発生しました");
     });
 
   if (status === "pending") {
-    runner.getPendingRequestsForAdminLight();
+    runner.getPendingRequestsForAdminLight(getAdminSessionToken_());
   } else {
-    runner.getRequestsByStatus(status);
+    runner.getRequestsByStatus(status, getAdminSessionToken_());
   }
 }
 
@@ -329,6 +332,7 @@ function searchRequestList(options) {
     })
     .withFailureHandler(err => {
       console.error("検索エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       showError("requestView", "検索でエラーが発生しました");
     })
     .searchRequests({
@@ -336,7 +340,7 @@ function searchRequestList(options) {
       status: status,
       start_date: start,
       end_date: end
-    });
+    }, getAdminSessionToken_());
 }
 
 function resetSearch() {
@@ -494,9 +498,10 @@ function approveRequestAction(requestId) {
     })
     .withFailureHandler(err => {
       console.error("承認エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       showApprovalRequestError_(err);
     })
-    .approveRequest(requestId, currentAdminUser);
+    .approveRequest(requestId, getAdminSessionToken_());
 }
 
 function showApprovalRequestError_(error) {
@@ -532,9 +537,10 @@ function rejectRequestAction(requestId) {
     })
     .withFailureHandler(err => {
       console.error("否認エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       showError("requestView", "否認処理でエラーが発生しました");
     })
-    .rejectRequest(requestId, reason, currentAdminUser);
+    .rejectRequest(requestId, reason, getAdminSessionToken_());
 }
 
 function cancelApprovedRequestAction(requestId) {
@@ -555,10 +561,11 @@ function cancelApprovedRequestAction(requestId) {
     })
     .withFailureHandler(err => {
       console.error("承認後取消エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       const message = err && err.message ? err.message : "承認後取消でエラーが発生しました";
       showError("requestView", message);
     })
-    .cancelApprovedRequestByAdmin(requestId, reason, currentAdminUser);
+    .cancelApprovedRequestByAdmin(requestId, reason, getAdminSessionToken_());
 }
 
 /* ログ */
@@ -583,9 +590,10 @@ function loadLogs() {
     .withSuccessHandler(renderLogs)
     .withFailureHandler(err => {
       console.error("ログ取得エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       showError("logView", "ログ取得でエラーが発生しました");
     })
-    .getUsageLogs();
+    .getUsageLogs(getAdminSessionToken_());
 }
 
 function renderLogs(data) {
@@ -690,10 +698,12 @@ function previewMonthlyReport() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      if (handleAdminApiFailure_(err)) return;
       showExportMessage("月間一覧の取得でエラーが発生しました。\n" + (err.message || err), "error");
     })
     .getMonthlyPaidLeaveReportPreview(
-      buildMonthlyPreviewFilters(year, month, company)
+      buildMonthlyPreviewFilters(year, month, company),
+      getAdminSessionToken_()
     );
 }
 
@@ -789,10 +799,12 @@ function previewYearlyReport() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      if (handleAdminApiFailure_(err)) return;
       showExportMessage("年間一覧の取得でエラーが発生しました。\n" + (err.message || err), "error");
     })
     .getYearlyPaidLeaveReportPreview(
-      buildYearlyPreviewFilters(fiscalYear, company)
+      buildYearlyPreviewFilters(fiscalYear, company),
+      getAdminSessionToken_()
     );
 }
 
@@ -933,12 +945,13 @@ function loadSixMonthGrantCandidates(keepPage) {
     .withSuccessHandler(renderSixMonthGrantCandidates)
     .withFailureHandler(err => {
       console.error("初回付与候補取得エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       area.innerHTML = `<div class="message error">初回付与対象者のプレビューでエラーが発生しました。</div>`;
     })
     .getSixMonthGrantCandidates({
       offset: pageOffsets.sixMonth,
       limit: PAGE_SIZE
-    });
+    }, getAdminSessionToken_());
 }
 
 function renderSixMonthGrantCandidates(response) {
@@ -1108,6 +1121,7 @@ function grantSixMonthPaidLeaveAction(employeeId, name, grantDays, grantOptions)
     })
     .withFailureHandler(err => {
       console.error("6か月付与エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       const message = err && err.message
         ? err.message
         : "6か月付与でエラーが発生しました。";
@@ -1116,7 +1130,7 @@ function grantSixMonthPaidLeaveAction(employeeId, name, grantDays, grantOptions)
         area.innerHTML = `<div class="message error">${escapeHtml(message)}</div>`;
       }
     })
-    .grantSixMonthPaidLeave(employeeId, currentAdminUser, grantOptions || {});
+    .grantSixMonthPaidLeave(employeeId, getAdminSessionToken_(), grantOptions || {});
 }
 
 function markSixMonthGrantProcessedAction(employeeId, name) {
@@ -1141,6 +1155,7 @@ function markSixMonthGrantProcessedAction(employeeId, name) {
     })
     .withFailureHandler(err => {
       console.error("6か月付与チェック処理済みエラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       const message = err && err.message
         ? err.message
         : "6か月付与チェックの処理済み登録でエラーが発生しました。";
@@ -1152,7 +1167,7 @@ function markSixMonthGrantProcessedAction(employeeId, name) {
     .markSixMonthGrantCandidateProcessed(
       employeeId,
       "手動入力済みのため6ヶ月付与チェックを処理済みにした",
-      currentAdminUser
+      getAdminSessionToken_()
     );
 }
 
@@ -1455,6 +1470,7 @@ function grantSelectedCandidatesAction(type) {
     })
     .withFailureHandler(err => {
       console.error("一括付与エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       const message = err && err.message
         ? err.message
         : "一括付与でエラーが発生しました。";
@@ -1464,9 +1480,9 @@ function grantSelectedCandidatesAction(type) {
     });
 
   if (type === "sixMonth") {
-    runner.grantSelectedSixMonthPaidLeave(items, currentAdminUser);
+    runner.grantSelectedSixMonthPaidLeave(items, getAdminSessionToken_());
   } else {
-    runner.grantSelectedYearlyPaidLeave(items, currentAdminUser);
+    runner.grantSelectedYearlyPaidLeave(items, getAdminSessionToken_());
   }
 }
 
@@ -1521,6 +1537,7 @@ function loadYearlyGrantCandidates(keepPage) {
     .withSuccessHandler(renderYearlyGrantCandidates)
     .withFailureHandler(err => {
       console.error("年次付与候補取得エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       container.innerHTML = `
         <div class="message error">
           年次付与対象者の取得でエラーが発生しました。
@@ -1530,7 +1547,7 @@ function loadYearlyGrantCandidates(keepPage) {
     .getYearlyGrantCandidates({
       offset: pageOffsets.yearly,
       limit: PAGE_SIZE
-    });
+    }, getAdminSessionToken_());
 }
 
 /* =========================
@@ -1687,6 +1704,7 @@ function grantYearlyPaidLeaveAction(employeeId, name, grantDays, grantOptions) {
     })
     .withFailureHandler(err => {
       console.error("年次付与エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
 
       const message =
         err && err.message
@@ -1701,7 +1719,7 @@ function grantYearlyPaidLeaveAction(employeeId, name, grantDays, grantOptions) {
         `;
       }
     })
-    .grantYearlyPaidLeave(employeeId, currentAdminUser, grantOptions || {});
+    .grantYearlyPaidLeave(employeeId, getAdminSessionToken_(), grantOptions || {});
 }
 
 function closeYearlyGrantList() {
@@ -1816,6 +1834,7 @@ function approveSelectedRequests() {
     })
     .withFailureHandler(err => {
       console.error("一括承認エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
 
       showError(
         "requestView",
@@ -1824,7 +1843,7 @@ function approveSelectedRequests() {
     })
     .approveRequestsBatch(
       ids,
-      currentAdminUser
+      getAdminSessionToken_()
     );
 }
 

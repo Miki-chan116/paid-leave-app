@@ -3,10 +3,11 @@
    debug.gs から動作を変えずに移動
 ========================= */
 
-function debugPartnerLeaveGrantDays2026_EMP0062() {
+function debugPartnerLeaveGrantDays2026_EMP0062(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const employeeId = "EMP0062";
   const fiscalYearStartDate = parseLocalDate("2026-06-01");
-  const emp = getEmployeesForAdmin().find(row =>
+  const emp = getEmployeesForAdmin_().find(row =>
     String(row.employee_id || "").trim() === employeeId
   );
 
@@ -105,7 +106,8 @@ function debugPartnerLeaveGrantDays2026_EMP0062() {
   return result;
 }
 
-function debugMainLeaveGrantMethodDiff2026() {
+function debugMainLeaveGrantMethodDiff2026(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const previousFiscalYear = 2025;
   const nextFiscalYear = 2026;
   const fiscalStartMonth = 4;
@@ -114,7 +116,7 @@ function debugMainLeaveGrantMethodDiff2026() {
   const context = createFifoBalanceComparisonContext_(previousFiscalYearEndDate);
   const finalizedMap = getYearlyGrantFinalizedMap_(nextFiscalYear);
 
-  const rows = getEmployeesForAdmin()
+  const rows = getEmployeesForAdmin_()
     .filter(emp => {
       const status = String(emp.employment_status || "").trim().toLowerCase();
       return (
@@ -272,4 +274,3 @@ function getPartnerLeaveGrantDaysZeroReason_(hireDate, monthsWorked, yearlyGrant
     "か月で、11日付与の条件である18か月以上を満たしていません"
   );
 }
-

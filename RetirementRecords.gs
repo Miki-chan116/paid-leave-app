@@ -183,7 +183,8 @@ function createSpreadsheetFifoBalanceContext_(asOfDate) {
   };
 }
 
-function getRetirementLeaveBalancePreview(employeeId) {
+function getRetirementLeaveBalancePreview(employeeId, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const employee = assertRetiredEmployeeForRetirementRecord_(employeeId);
   const leaveDate = parseLocalDate(employee.leave_date);
   const context = createSpreadsheetFifoBalanceContext_(leaveDate);
@@ -361,7 +362,8 @@ function serializeBoundedRetirementEvidence_(items) {
   return JSON.stringify({ truncated: false, total_count: source.length, items: kept });
 }
 
-function createRetirementLeaveRecordForRetiredEmployee(payload) {
+function createRetirementLeaveRecordForRetiredEmployee(payload, adminSessionToken) {
+  const adminUser = requireAdminSession_(adminSessionToken);
   const data = payload || {};
   const employeeId = String(data.employee_id || "").trim();
   if (!employeeId) throw new Error("employee_id がありません");
@@ -416,8 +418,8 @@ function createRetirementLeaveRecordForRetiredEmployee(payload) {
     rowObj.fifo_grant_details_json = evidence.grant_details_json;
     rowObj.fifo_allocations_json = evidence.allocations_json;
     rowObj.calculated_at = now;
-    rowObj.operator_id = "admin";
-    rowObj.operator_name = "管理者";
+    rowObj.operator_id = adminUser.admin_id;
+    rowObj.operator_name = adminUser.admin_name;
     rowObj.record_status = "completed";
     rowObj.revision = 1;
     rowObj.supersedes_record_id = "";

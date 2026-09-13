@@ -118,15 +118,18 @@ function loginAdmin() {
   }
 
   google.script.run
-    .withSuccessHandler(user => {
-      currentAdminUser = config.normalizeLoginUser
-        ? normalizeAdminUserForStorage_(user)
-        : user;
-
-      localStorage.setItem(
-        ADMIN_LOGIN_KEY,
-        JSON.stringify(normalizeAdminUserForStorage_(user))
-      );
+    .withSuccessHandler(result => {
+      const user = result && result.admin;
+      if (!result || !result.success || !result.token || !user) {
+        setLoginMessage_(config.loginFailureMessage);
+        return;
+      }
+      currentAdminUser = config.normalizeLoginUser ? normalizeAdminUserForStorage_(user) : user;
+      sessionStorage.setItem(ADMIN_LOGIN_KEY, JSON.stringify({
+        token: result.token,
+        admin: normalizeAdminUserForStorage_(user),
+        expires_at: result.expires_at
+      }));
 
       showAdminApp();
     })
@@ -139,9 +142,9 @@ function loginAdmin() {
 
 function logoutAdmin() {
   const config = getAdminAuthConfig_();
-
-  localStorage.removeItem(ADMIN_LOGIN_KEY);
-  currentAdminUser = null;
+  const token = getAdminSessionToken_();
+  if (token) google.script.run.withFailureHandler(err => console.error("ログアウトエラー:", err)).logoutAdminSession(token);
+  clearAdminSession_();
 
   if (config.clearPinOnLogout) {
     const pin = document.getElementById("adminPinInput");

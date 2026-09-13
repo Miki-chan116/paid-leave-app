@@ -63,18 +63,19 @@ function formatDays(value) {
    簡易ログイン
 ========================= */
 function initAdminLogin() {
-  const saved = localStorage.getItem(ADMIN_LOGIN_KEY);
+  const saved = sessionStorage.getItem(ADMIN_LOGIN_KEY);
 
   if (saved) {
     try {
-      currentAdminUser = JSON.parse(saved);
+      const session = JSON.parse(saved);
+      currentAdminUser = session && session.admin;
 
-      if (currentAdminUser && currentAdminUser.admin_id) {
+      if (currentAdminUser && currentAdminUser.admin_id && getAdminSessionToken_()) {
         showAdminApp();
         return;
       }
     } catch (e) {
-      localStorage.removeItem(ADMIN_LOGIN_KEY);
+      sessionStorage.removeItem(ADMIN_LOGIN_KEY);
     }
   }
 
@@ -196,6 +197,7 @@ function loadPaidLeaveGrantSchedule(forceRefresh) {
       })
       .withFailureHandler(err => {
         console.warn("[GRANT_SCHEDULE_UI] API failure", err);
+        if (handleAdminApiFailure_(err)) return;
         try {
           handlePaidLeaveGrantScheduleLoadError_(err, table);
         } finally {
@@ -203,7 +205,7 @@ function loadPaidLeaveGrantSchedule(forceRefresh) {
           console.info("[GRANT_SCHEDULE_UI] API failure finally");
         }
       })
-      .getPaidLeaveGrantScheduleForAdmin(getPaidLeaveGrantScheduleFilters());
+      .getPaidLeaveGrantScheduleForAdmin(getPaidLeaveGrantScheduleFilters(), getAdminSessionToken_());
   } catch (error) {
     console.warn("[GRANT_SCHEDULE_UI] API call setup failure", error);
     try {
@@ -454,12 +456,13 @@ function loadPaidLeaveDashboard() {
     })
     .withFailureHandler(err => {
       console.error("有給管理ダッシュボード取得エラー:", err);
+      if (handleAdminApiFailure_(err)) return;
       table.innerHTML = `<tr><td colspan="7">データ取得でエラーが発生しました。</td></tr>`;
       if (message) {
         message.innerHTML = `<div class="message error">${escapeHtml(err && err.message ? err.message : "有給管理ダッシュボードを取得できませんでした。")}</div>`;
       }
     })
-    .getPaidLeaveDashboardData(getPaidLeaveDashboardFilters());
+    .getPaidLeaveDashboardData(getPaidLeaveDashboardFilters(), getAdminSessionToken_());
 }
 
 function renderPaidLeaveDashboard(data) {
@@ -562,11 +565,12 @@ function openPaidLeaveDashboardEmployeeDetail(employeeId) {
       renderPaidLeaveDashboardEmployeeDetail(detail);
     })
     .withFailureHandler(err => {
+      if (handleAdminApiFailure_(err)) return;
       if (message) {
         message.innerHTML = `<div class="message error">${escapeHtml(err && err.message ? err.message : "社員の有給詳細を取得できませんでした。")}</div>`;
       }
     })
-    .getPaidLeaveDashboardEmployeeDetail(targetEmployeeId, getPaidLeaveDashboardFilters());
+    .getPaidLeaveDashboardEmployeeDetail(targetEmployeeId, getPaidLeaveDashboardFilters(), getAdminSessionToken_());
 }
 
 function closePaidLeaveDashboardEmployeeDetail() {

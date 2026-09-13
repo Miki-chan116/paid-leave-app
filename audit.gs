@@ -3,7 +3,8 @@
    debug.gs から動作を変えずに移動
 ========================= */
 
-function auditCarryOverGrantRowsForFifoMigration() {
+function auditCarryOverGrantRowsForFifoMigration(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "grant_id",
@@ -101,4 +102,3 @@ function auditCarryOverGrantRowsForFifoMigration() {
   Logger.log(JSON.stringify(result, null, 2));
   return result;
 }
-

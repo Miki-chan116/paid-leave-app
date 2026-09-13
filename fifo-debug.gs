@@ -7,10 +7,11 @@
  * 指定社員のFIFOロットを、基準日時点の状態で全件返す読み取り専用デバッグ関数。
  * Apps Script エディタから debugFifoLots() として実行すると P0002 を確認できる。
  */
-function debugFifoLots(employeeId, asOfDateValue) {
+function debugFifoLots(adminSessionToken, employeeId, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
   const inputEmployeeId = String(employeeId || "P0002").trim();
   const normalizedInput = normalizePaidLeaveDebugEmployeeId_(inputEmployeeId);
-  const matchedEmployee = getEmployeesForAdmin().find(emp =>
+  const matchedEmployee = getEmployeesForAdmin_().find(emp =>
     normalizePaidLeaveDebugEmployeeId_(emp.employee_id) === normalizedInput ||
     normalizePaidLeaveDebugEmployeeId_(emp.display_employee_id) === normalizedInput
   );
@@ -103,13 +104,14 @@ function getFifoDebugGrantReason_(lot, source) {
  * 画面表示とFIFO診断の入力データを、個人情報を最小限にして比較する。
  * employee_id と display_employee_id の取り違えも検出する。
  */
-function debugPaidLeaveDataSources(employeeId, asOfDateValue) {
+function debugPaidLeaveDataSources(adminSessionToken, employeeId, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
   const inputEmployeeId = String(employeeId || "P0002").trim();
   const asOfDate = asOfDateValue
     ? parseLocalDate(asOfDateValue)
     : parseLocalDate(new Date());
   const normalizedInput = normalizePaidLeaveDebugEmployeeId_(inputEmployeeId);
-  const employees = getEmployeesForAdmin();
+  const employees = getEmployeesForAdmin_();
   const matches = employees.filter(emp =>
     normalizePaidLeaveDebugEmployeeId_(emp.employee_id) === normalizedInput ||
     normalizePaidLeaveDebugEmployeeId_(emp.display_employee_id) === normalizedInput
@@ -149,7 +151,7 @@ function buildPaidLeaveDataSourceDebugForEmployee_(employeeId, asOfDate, fiscalY
     asOfDate,
     context
   );
-  const employee = getEmployeesForAdmin().find(row => String(row.employee_id || "").trim() === employeeId) || {};
+  const employee = getEmployeesForAdmin_().find(row => String(row.employee_id || "").trim() === employeeId) || {};
   const fiscalStartMonth = Number(employee.fiscal_start_month || 4);
   const legacyBalance = calculateLegacyBalanceFromFifoContext_(
     employeeId,
@@ -256,12 +258,13 @@ function normalizePaidLeaveDebugEmployeeId_(value) {
  * PARTNER の初期導入残高を、書込みなしで監査・補正案試算する。
  * 例: debugPartnerOpeningBalanceAudit("2026-07-25")
  */
-function debugPartnerOpeningBalanceAudit(asOfDateValue) {
+function debugPartnerOpeningBalanceAudit(adminSessionToken, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
   const asOfDate = asOfDateValue
     ? parseLocalDate(asOfDateValue)
     : parseLocalDate(new Date());
   const fiscalYear = getFiscalYearFromDate(asOfDate);
-  const employees = getEmployeesForAdmin();
+  const employees = getEmployeesForAdmin_();
   const employeeById = {};
   employees.forEach(employee => {
     employeeById[String(employee.employee_id || "").trim()] = employee;
@@ -484,12 +487,13 @@ const PARTNER_OPENING_BALANCE_P0004_REPAIR_AFTER_ = {
 /**
  * 旧補正関数。前提解釈の変更により本実行を永久禁止し、読取り試算だけを返す。
  */
-function repairPartnerOpeningBalanceDoubleCount(options) {
+function repairPartnerOpeningBalanceDoubleCount(adminSessionToken, options) {
+  requireAdminSession_(adminSessionToken);
   const opts = options || {};
   if (opts.dry_run === false) {
     throw new Error("この補正は前提解釈の変更により禁止されています。confirmation_text の値にかかわらず書込みは実行しません。");
   }
-  return debugPartnerOpeningBalanceCarryOverSimulation(opts.as_of_date);
+  return debugPartnerOpeningBalanceCarryOverSimulation(adminSessionToken, opts.as_of_date);
 }
 
 function assertPartnerOpeningBalanceRepairConfirmation_(dryRun, confirmationText) {
@@ -502,7 +506,12 @@ function assertPartnerOpeningBalanceRepairConfirmation_(dryRun, confirmationText
  * 完了済み補正の互換入口。dry-runだけを読み取り専用で残す。
  * dry_run:false は確認文字列にかかわらず、必ず拒否する。
  */
-function repairPartnerOpeningBalanceFiscalStart(options) {
+function repairPartnerOpeningBalanceFiscalStart(adminSessionToken, options) {
+  requireAdminSession_(adminSessionToken);
+  return repairPartnerOpeningBalanceFiscalStart_(options);
+}
+
+function repairPartnerOpeningBalanceFiscalStart_(options) {
   const opts = options || {};
   const dryRun = opts.dry_run !== false;
   if (!dryRun) {
@@ -517,7 +526,12 @@ function repairPartnerOpeningBalanceFiscalStart(options) {
 }
 
 /** 完了済みP0004補正の互換入口。dry-run診断だけを読み取り専用で残す。 */
-function repairPartnerOpeningBalanceFiscalStartP0004(options) {
+function repairPartnerOpeningBalanceFiscalStartP0004(adminSessionToken, options) {
+  requireAdminSession_(adminSessionToken);
+  return repairPartnerOpeningBalanceFiscalStartP0004_(options);
+}
+
+function repairPartnerOpeningBalanceFiscalStartP0004_(options) {
   const opts = options || {};
   const dryRun = opts.dry_run !== false;
   const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate("2026-07-25");
@@ -538,7 +552,7 @@ function readPartnerOpeningBalanceP0004RepairState_(phase) {
     rowsByGrantId[String(row.grant_id || "").trim()] = Object.assign({}, row, { row_number: index + 2 });
   });
   const employeeMap = {};
-  getEmployeesForAdmin().forEach(employee => { employeeMap[String(employee.employee_id || "").trim()] = employee; });
+  getEmployeesForAdmin_().forEach(employee => { employeeMap[String(employee.employee_id || "").trim()] = employee; });
   const state = {
     target_row: rowsByGrantId.G0058 || null,
     g0061_row: rowsByGrantId.G0061 || null,
@@ -549,14 +563,15 @@ function readPartnerOpeningBalanceP0004RepairState_(phase) {
 }
 
 /** P0004補正の事前条件を可視化する読み取り専用診断。 */
-function debugPartnerOpeningBalanceFiscalStartRepairPreconditionsP0004() {
+function debugPartnerOpeningBalanceFiscalStartRepairPreconditionsP0004(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "grant_id", "employee_id", "grant_days", "carry_over_days", "valid_from", "valid_to",
     "grant_type", "year", "notes"
   ]);
   const employeeMap = {};
-  getEmployeesForAdmin().forEach(employee => {
+  getEmployeesForAdmin_().forEach(employee => {
     employeeMap[normalizePartnerOpeningBalanceFiscalStartText_(employee.employee_id)] = employee;
   });
   const matchingRows = sheet.getDataRange().getValues().slice(1)
@@ -637,10 +652,11 @@ function buildPartnerOpeningBalanceP0004RepairDryRun_(state, asOfDate) {
 }
 
 /** Apps Script関数一覧から実行するP0004補正のdry-runラッパー。 */
-function debugRepairPartnerOpeningBalanceFiscalStartP0004() {
+function debugRepairPartnerOpeningBalanceFiscalStartP0004(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   let stage = "dry-run開始";
   try {
-    const result = repairPartnerOpeningBalanceFiscalStartP0004({ dry_run: true });
+    const result = repairPartnerOpeningBalanceFiscalStartP0004(adminSessionToken, { dry_run: true });
     stage = "dry-run結果のログ出力";
     logPartnerOpeningBalanceP0004RepairDryRun_(result);
     return result;
@@ -651,7 +667,12 @@ function debugRepairPartnerOpeningBalanceFiscalStartP0004() {
 }
 
 /** 完了済み補正の旧本実行入口。互換性のため残すが、永久に拒否する。 */
-function executeRepairPartnerOpeningBalanceFiscalStartP0004() {
+function executeRepairPartnerOpeningBalanceFiscalStartP0004(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
+  return executeRepairPartnerOpeningBalanceFiscalStartP0004_();
+}
+
+function executeRepairPartnerOpeningBalanceFiscalStartP0004_() {
   throw new Error(PARTNER_OPENING_BALANCE_P0004_REPAIR_COMPLETED_ERROR_);
 }
 
@@ -695,7 +716,7 @@ function readPartnerOpeningBalanceFiscalStartRepairState_(phase) {
   ]);
   const data = sheet.getDataRange().getValues();
   const employeeMap = {};
-  getEmployeesForAdmin().forEach(employee => {
+  getEmployeesForAdmin_().forEach(employee => {
     employeeMap[String(employee.employee_id || "").trim()] = employee;
   });
   const targetByGrantId = {};
@@ -720,14 +741,15 @@ function readPartnerOpeningBalanceFiscalStartRepairState_(phase) {
  * 本補正の事前条件だけを診断する読み取り専用関数。
  * notes本文は返さず、初期導入残高マーカーの有無だけを返す。
  */
-function debugPartnerOpeningBalanceFiscalStartRepairPreconditions() {
+function debugPartnerOpeningBalanceFiscalStartRepairPreconditions(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const sheet = getSheet("paid_leave_grants");
   const headerInfo = requireHeaders(sheet, [
     "grant_id", "employee_id", "grant_days", "carry_over_days", "valid_from", "valid_to",
     "grant_type", "year", "notes"
   ]);
   const employeeMap = {};
-  getEmployeesForAdmin().forEach(employee => {
+  getEmployeesForAdmin_().forEach(employee => {
     employeeMap[normalizePartnerOpeningBalanceFiscalStartText_(employee.employee_id)] = employee;
   });
   const rowsByGrantId = {};
@@ -996,10 +1018,11 @@ function buildPartnerOpeningBalanceFiscalStartRepairDryRun_(state, asOfDate) {
  * Apps Script関数一覧から実行する、年度開始補正のdry-run専用ラッパー。
  * 補正本体の戻り値を変えず、ログ整形だけを追加する。
  */
-function debugRepairPartnerOpeningBalanceFiscalStart() {
+function debugRepairPartnerOpeningBalanceFiscalStart(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   let stage = "dry-run開始";
   try {
-    const result = repairPartnerOpeningBalanceFiscalStart({ dry_run: true });
+    const result = repairPartnerOpeningBalanceFiscalStart(adminSessionToken, { dry_run: true });
     stage = "dry-run結果のログ出力";
     logPartnerOpeningBalanceFiscalStartRepairDryRunResult_(result);
     return result;
@@ -1012,10 +1035,15 @@ function debugRepairPartnerOpeningBalanceFiscalStart() {
 /**
  * 完了済み補正の旧本実行入口。常に再実行禁止エラーを返す。
  */
-function executeRepairPartnerOpeningBalanceFiscalStart() {
+function executeRepairPartnerOpeningBalanceFiscalStart(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
+  return executeRepairPartnerOpeningBalanceFiscalStart_();
+}
+
+function executeRepairPartnerOpeningBalanceFiscalStart_() {
   const stage = "完了済み補正の再実行禁止確認";
   try {
-    return repairPartnerOpeningBalanceFiscalStart({ dry_run: false });
+    return repairPartnerOpeningBalanceFiscalStart_({ dry_run: false });
   } catch (error) {
     logPartnerOpeningBalanceFiscalStartRepairWrapperFailure_(error, stage);
     throw error;
@@ -1084,7 +1112,7 @@ function readPartnerOpeningBalanceRepairState_() {
   ]);
   const data = sheet.getDataRange().getValues();
   const employeeMap = {};
-  getEmployeesForAdmin().forEach(employee => {
+  getEmployeesForAdmin_().forEach(employee => {
     employeeMap[String(employee.employee_id || "").trim()] = employee;
   });
   const targetByGrantId = {};
@@ -1131,7 +1159,8 @@ function validatePartnerOpeningBalanceRepairRows_(rows, employeeMap) {
   return true;
 }
 
-function debugPartnerOpeningBalanceCarryOverSimulation(asOfDateValue) {
+function debugPartnerOpeningBalanceCarryOverSimulation(adminSessionToken, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
   const result = buildPartnerOpeningBalanceCarryOverSimulation_(asOfDateValue);
   (result.targets || []).forEach(logPartnerCarryOverSimulationTarget_);
   return result;
@@ -1154,11 +1183,13 @@ function selectPartnerCarryOverSimulationTarget_(targets, displayEmployeeId) {
   return target;
 }
 
-function debugPartnerCarryOverSimulationP0002() {
+function debugPartnerCarryOverSimulationP0002(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   return debugPartnerOpeningBalanceCarryOverSimulationForEmployee_("P0002", "2026-07-25");
 }
 
-function debugPartnerCarryOverSimulationP0003() {
+function debugPartnerCarryOverSimulationP0003(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   return debugPartnerOpeningBalanceCarryOverSimulationForEmployee_("P0003", "2026-07-25");
 }
 
@@ -1166,10 +1197,11 @@ function debugPartnerCarryOverSimulationP0003() {
  * PARTNER P0004（EMP0062 / G0058）の初期導入残高を調査する読み取り専用診断。
  * 実データ、キャッシュ、FIFOロジックは変更しない。
  */
-function debugPartnerCarryOverSimulationP0004() {
+function debugPartnerCarryOverSimulationP0004(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const asOfDate = parseLocalDate("2026-07-25");
   const employeeId = "EMP0062";
-  const employee = getEmployeesForAdmin().find(row =>
+  const employee = getEmployeesForAdmin_().find(row =>
     String(row.employee_id || "").trim() === employeeId &&
     String(row.display_employee_id || "").trim() === "P0004"
   ) || {};
@@ -1486,10 +1518,11 @@ function logPartnerP0004FifoDiagnosis_(result) {
 /**
  * P0004のG0058/G0061を、年度開始繰越構造へ統一できるか確認する読み取り専用試算。
  */
-function debugPartnerCarryOverStructureSimulationP0004() {
+function debugPartnerCarryOverStructureSimulationP0004(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const asOfDate = parseLocalDate("2026-07-25");
   const employeeId = "EMP0062";
-  const employee = getEmployeesForAdmin().find(row => String(row.employee_id || "").trim() === employeeId) || {};
+  const employee = getEmployeesForAdmin_().find(row => String(row.employee_id || "").trim() === employeeId) || {};
   const context = createFifoBalanceComparisonContext_(asOfDate, { read_only: true });
   const result = buildPartnerP0004CarryOverStructureSimulation_(employee, context, asOfDate);
   logPartnerP0004CarryOverStructureSimulation_(result);
@@ -1600,9 +1633,10 @@ function buildPartnerP0004G0061CarryOverLotScenarioContext_(context) {
 /**
  * G0058をP0002/P0003と同じ年度開始繰越残高へ変換する案Dの最終・読み取り専用試算。
  */
-function debugPartnerFiscalStartCarryOverConversionP0004() {
+function debugPartnerFiscalStartCarryOverConversionP0004(adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const asOfDate = parseLocalDate("2026-07-25");
-  const employee = getEmployeesForAdmin().find(row => String(row.employee_id || "").trim() === "EMP0062") || {};
+  const employee = getEmployeesForAdmin_().find(row => String(row.employee_id || "").trim() === "EMP0062") || {};
   const context = createFifoBalanceComparisonContext_(asOfDate, { read_only: true });
   const result = buildPartnerP0004FiscalStartCarryOverConversion_(employee, context, asOfDate);
   logPartnerP0004FiscalStartCarryOverConversion_(result);
@@ -1900,7 +1934,8 @@ function logJsonInChunks_(label, value, maxChars) {
 /**
  * PARTNER初期導入残高を、2026年度開始の繰越ロットとして扱う読み取り専用試算。
  */
-function debugPartnerOpeningBalanceFiscalStartSimulation(asOfDateValue) {
+function debugPartnerOpeningBalanceFiscalStartSimulation(adminSessionToken, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
   const asOfDate = asOfDateValue ? parseLocalDate(asOfDateValue) : parseLocalDate(new Date());
   const base = buildPartnerOpeningBalanceCarryOverSimulation_(asOfDate);
   const state = readPartnerOpeningBalanceRepairState_();
@@ -2021,7 +2056,12 @@ function buildPartnerOpeningBalanceCarryOnlyScenarioContext_(employeeId, grantId
   };
 }
 
-function debugYearEndFinalizedBalance(employeeId, fiscalYear) {
+function debugYearEndFinalizedBalance(adminSessionToken, employeeId, fiscalYear) {
+  requireAdminSession_(adminSessionToken);
+  return debugYearEndFinalizedBalance_(employeeId, fiscalYear);
+}
+
+function debugYearEndFinalizedBalance_(employeeId, fiscalYear) {
   const targetEmployeeId = String(employeeId || "").trim();
   const targetFiscalYear = Number(fiscalYear || 0);
 
@@ -2166,7 +2206,8 @@ function getPaidLeaveGrantDebugRecordsForFiscalYear_(employeeId, fiscalYear, fis
     });
 }
 
-function debugFifoBalanceWithoutCarryOver(employeeId, asOfDateValue) {
+function debugFifoBalanceWithoutCarryOver(adminSessionToken, employeeId, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
   const targetEmployeeId = String(employeeId || "").trim();
   if (!targetEmployeeId) throw new Error("employeeId がありません");
 
@@ -2182,7 +2223,8 @@ function debugFifoBalanceWithoutCarryOver(employeeId, asOfDateValue) {
   return result;
 }
 
-function compareYearEndFinalizedBalanceModes(employeeId, fiscalYear) {
+function compareYearEndFinalizedBalanceModes(adminSessionToken, employeeId, fiscalYear) {
+  requireAdminSession_(adminSessionToken);
   const targetEmployeeId = String(employeeId || "").trim();
   const targetFiscalYear = Number(fiscalYear || 0);
 
@@ -2442,7 +2484,8 @@ function getYearEndFinalizedBalanceModeDifferenceReason_(info) {
   return "carry_over_days 以外にも、元付与残・有効期限・使用割当による差分がある可能性があります。";
 }
 
-function debugFifoBalanceWithOpeningBalance(employeeId, asOfDateValue) {
+function debugFifoBalanceWithOpeningBalance(adminSessionToken, employeeId, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
   const targetEmployeeId = String(employeeId || "").trim();
   if (!targetEmployeeId) throw new Error("employeeId がありません");
 
@@ -2456,7 +2499,8 @@ function debugFifoBalanceWithOpeningBalance(employeeId, asOfDateValue) {
   return result;
 }
 
-function compareFifoOpeningBalanceModes(employeeId, fiscalYear) {
+function compareFifoOpeningBalanceModes(adminSessionToken, employeeId, fiscalYear) {
+  requireAdminSession_(adminSessionToken);
   const targetEmployeeId = String(employeeId || "").trim();
   const targetFiscalYear = Number(fiscalYear || 0);
 
@@ -2528,7 +2572,12 @@ function compareFifoOpeningBalanceModes(employeeId, fiscalYear) {
   return result;
 }
 
-function debugFifoApprovedLeaveUseRows(employeeId, fiscalYear, asOfDateValue) {
+function debugFifoApprovedLeaveUseRows(adminSessionToken, employeeId, fiscalYear, asOfDateValue) {
+  requireAdminSession_(adminSessionToken);
+  return debugFifoApprovedLeaveUseRows_(employeeId, fiscalYear, asOfDateValue);
+}
+
+function debugFifoApprovedLeaveUseRows_(employeeId, fiscalYear, asOfDateValue) {
   const targetEmployeeId = String(employeeId || "").trim();
   if (!targetEmployeeId) throw new Error("employeeId がありません");
 

@@ -3,7 +3,8 @@
    debug.gs から動作を変えずに移動
 ========================= */
 
-function getPaidLeaveExpiryLotsForAdmin(options) {
+function getPaidLeaveExpiryLotsForAdmin(options, adminSessionToken) {
+  requireAdminSession_(adminSessionToken);
   const opts = options || {};
   const asOfDate = opts.as_of_date ? parseLocalDate(opts.as_of_date) : parseLocalDate(new Date());
   const keyword = norm(opts.employee_keyword || "");
@@ -15,7 +16,7 @@ function getPaidLeaveExpiryLotsForAdmin(options) {
   const context = createFifoBalanceComparisonContext_(asOfDate);
   const rows = [];
 
-  getEmployeesForAdmin()
+  getEmployeesForAdmin_()
     .filter(emp => isFifoBalanceCompareTargetEmployee_(emp))
     .filter(emp => {
       if (companyCode && String(emp.company_code || "").trim().toUpperCase() !== companyCode) {
