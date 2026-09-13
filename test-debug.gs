@@ -2147,3 +2147,124 @@ function testPaidLeaveGrantScheduleAfterP0004Repair() {
   if (failed.length) throw new Error("P0004補正後の付与予定APIテスト失敗: " + JSON.stringify(failed));
   return { ok: true, case_count: cases.length };
 }
+
+/* =========================
+   時間年休 pending 編集 Phase 2
+   Spreadsheet・LockService・書込みを使用しない純粋回帰テスト
+========================= */
+function testPendingTimeLeaveEditBackendFoundation() {
+  const policy = getCompanyLeavePolicy("MAIN");
+  const employeeId = "EDIT-EMP";
+  const requestId = "EDIT-SELF";
+  const baseParent = {
+    request_id: requestId, employee_id: employeeId, status: "pending",
+    request_kind: "time_hourly", half_day: "", company_code_snapshot: "MAIN"
+  };
+  const baseSegment = {
+    time_leave_id: "SEG-SELF", request_id: requestId, employee_id: employeeId,
+    company_code: "MAIN", leave_date: "2026-09-15", start_time: "09:00", end_time: "11:00",
+    start_minute: 540, end_minute: 660, requested_minutes: 120,
+    scheduled_minutes_per_day: 420, time_leave_unit_minutes: 60,
+    work_start_minute: 480, work_end_minute: 1020,
+    break_periods_json: JSON.stringify(policy.breakPeriods),
+    calculation_version: TIME_LEAVE_CALCULATION_VERSION_V2
+  };
+  const expectError = callback => {
+    try { callback(); return false; } catch (error) { return true; }
+  };
+  const context = requests => ({
+    requests_by_employee: { [employeeId]: requests },
+    time_leave_segments_by_request: { [requestId]: [baseSegment] },
+    calendar_map: {}
+  });
+  const ownReservationExcluded = getPendingPaidLeaveReservationMinutes_(
+    employeeId, "2026-09-15", context([baseParent]), requestId
+  );
+  const ownReservationIncluded = getPendingPaidLeaveReservationMinutes_(
+    employeeId, "2026-09-15", context([baseParent]), ""
+  );
+  const otherParent = Object.assign({}, baseParent, { request_id: "EDIT-OTHER" });
+  const otherSegment = Object.assign({}, baseSegment, { request_id: "EDIT-OTHER", time_leave_id: "SEG-OTHER" });
+  const otherPendingContext = {
+    requests_by_employee: { [employeeId]: [baseParent, otherParent] },
+    time_leave_segments_by_request: { [requestId]: [baseSegment], "EDIT-OTHER": [otherSegment] },
+    calendar_map: {}
+  };
+  const otherPendingReservation = getPendingPaidLeaveReservationMinutes_(
+    employeeId, "2026-09-15", otherPendingContext, requestId
+  );
+  const candidateRowsWithSelfExcluded = buildTimeLeaveCandidateRows_({
+    policy: policy, request_mode: "time_hourly", half_day: "", entries: [],
+    annual: { approvedMinutes: 0, pendingMinutes: 0 }, approved_remaining_minutes: 180,
+    pending_reserved_minutes: ownReservationExcluded, calculation_version: TIME_LEAVE_CALCULATION_VERSION_V2
+  });
+  const candidateRowsWithSelfIncluded = buildTimeLeaveCandidateRows_({
+    policy: policy, request_mode: "time_hourly", half_day: "", entries: [],
+    annual: { approvedMinutes: 0, pendingMinutes: 120 }, approved_remaining_minutes: 180,
+    pending_reserved_minutes: ownReservationIncluded, calculation_version: TIME_LEAVE_CALCULATION_VERSION_V2
+  });
+  const target = {
+    request_id: requestId, employee_id: employeeId, request_kind: "time_hourly",
+    parentRecord: { sheet: "parent", sheetRow: 2, headerInfo: { headers: ["request_id", "status"] }, rowObj: baseParent },
+    segmentRecord: { sheet: "segment", sheetRow: 2, headerInfo: { headers: ["time_leave_id", "request_id", "requested_minutes"] }, rowObj: baseSegment }
+  };
+  const nextRows = {
+    parent: Object.assign({}, baseParent, { status: "pending" }),
+    segment: Object.assign({}, baseSegment, { requested_minutes: 180 })
+  };
+  let parentState = objectToRow(baseParent, target.parentRecord.headerInfo.headers);
+  let segmentState = objectToRow(baseSegment, target.segmentRecord.headerInfo.headers);
+  const writes = [];
+  const failingWriter = (sheet, row, values, stage) => {
+    writes.push(stage);
+    if (stage === "parent") { parentState = values.slice(); return; }
+    if (stage === "segment") throw new Error("injected segment failure");
+    if (stage === "parent_rollback") { parentState = values.slice(); return; }
+    if (stage === "segment_rollback") { segmentState = values.slice(); }
+  };
+  const beforeParentState = parentState.slice();
+  const beforeSegmentState = segmentState.slice();
+  const cases = [
+    ["120→180分では自己pending予約を除外", [ownReservationExcluded, ownReservationIncluded], [0, 120]],
+    ["自己予約除外後の180分FIFOは通る", !expectError(() => validateTimeLeaveFifoReservation_(180, ownReservationExcluded, 180)), true],
+    ["自己予約を二重計上した180分FIFOは拒否", expectError(() => validateTimeLeaveFifoReservation_(180, ownReservationIncluded, 180)), true],
+    ["他pending予約があるFIFO不足は拒否", expectError(() => validateTimeLeaveFifoReservation_(180, otherPendingReservation, 180)), true],
+    ["編集candidateは自己予約除外時だけ180分候補を返す", [
+      candidateRowsWithSelfExcluded.some(row => row.requested_minutes === 180),
+      candidateRowsWithSelfIncluded.some(row => row.requested_minutes === 180)
+    ], [true, false]],
+    ["単独181分は180分上限で拒否", expectError(() => validateNewStandaloneTimeLeaveMaximum_({ requested_minutes: 181 })), true],
+    ["年間2100分超は拒否", expectError(() => validateAnnualTimeLeaveLimit(1980, 0, 180, 2100)), true],
+    ["他申請の同日時間帯競合は拒否", expectError(() => validateTimeLeaveEntriesAgainstCandidate_({
+      policy: policy, start_minute: 540, end_minute: 720, requested_minutes: 180
+    }, [{ kind: "time_hourly", minutes: 60, start_minute: 600, end_minute: 660 }])), true],
+    ["自己申請除外後の同日時間帯は通る", !expectError(() => validateTimeLeaveEntriesAgainstCandidate_({
+      policy: policy, start_minute: 540, end_minute: 720, requested_minutes: 180
+    }, [])), true],
+    ["combined AM→PM は候補modeとして許可", validatePendingTimeLeaveEditMode_(
+      { request_kind: "half_day_time_hourly" }, "half_day_time_hourly"
+    ), "half_day_time_hourly"],
+    ["combinedは210+childでFIFO検証", expectError(() => validateTimeLeaveFifoReservation_(269, 0, 210 + 60)), true],
+    ["pending以外は編集対象として拒否", expectError(() => validatePendingTimeLeaveEditTargetRows_(
+      Object.assign({}, baseParent, { status: "approved" }), [baseSegment], requestId, employeeId
+    )), true],
+    ["employee_id不一致は拒否", expectError(() => validatePendingTimeLeaveEditTargetRows_(
+      baseParent, [baseSegment], requestId, "OTHER"
+    )), true],
+    ["request_kind不一致は拒否", expectError(() => validatePendingTimeLeaveEditTargetRows_(
+      Object.assign({}, baseParent, { request_kind: "one_day" }), [baseSegment], requestId, employeeId
+    )), true],
+    ["子明細欠損は拒否", expectError(() => validatePendingTimeLeaveEditTargetRows_(baseParent, [], requestId, employeeId)), true],
+    ["子明細複数は拒否", expectError(() => validatePendingTimeLeaveEditTargetRows_(
+      baseParent, [baseSegment, Object.assign({}, baseSegment, { time_leave_id: "SEG-SECOND" })], requestId, employeeId
+    )), true]
+  ];
+  const rollbackRejected = expectError(() => updatePendingTimeLeaveParentAndSegmentWithRollback_(target, nextRows, failingWriter));
+  cases.push(
+    ["子更新失敗時は補償ロールバックを実行", [rollbackRejected, writes, parentState, segmentState],
+      [true, ["parent", "segment", "parent_rollback", "segment_rollback"], beforeParentState, beforeSegmentState]]
+  );
+  const failed = cases.filter(item => JSON.stringify(item[1]) !== JSON.stringify(item[2]));
+  if (failed.length) throw new Error("時間年休 pending 編集 Phase 2 テスト失敗: " + JSON.stringify(failed));
+  return { ok: true, case_count: cases.length, results: cases.map(item => item[0]) };
+}

@@ -12,6 +12,8 @@ let selectedEndDateKey = "";
 let loadedHistoryEmployeeId = "";
 let employeeLeaveHistoryRows = [];
 let editingRequestId = "";
+let editingRequestKind = "";
+let editingTimeLeaveOriginal = null;
 let timeLeaveSelection = null;
 let timeLeaveModalState = {
   mode: "",
@@ -403,7 +405,12 @@ function handleReasonTypeChange() {
 ========================= */
 function selectRequestType(type) {
   const isTimeLeaveType = type === "time_hourly" || type === "half_day_time_hourly";
-  if (isTimeLeaveType && isEditingRequest()) {
+  if (isEditingTimeLeaveRequest_() && type !== editingRequestKind) {
+    alert("時間年休の修正中は申請区分を変更できません。編集をキャンセルしてから別の申請を作成してください。");
+    return;
+  }
+  if (isTimeLeaveType && isEditingRequest() &&
+      type !== editingRequestKind) {
     alert("時間年休の修正は現在この画面ではできません。編集をやめてから新規申請してください。");
     return;
   }
@@ -447,6 +454,8 @@ function isEditingRequest() {
 
 function clearEditingRequestState() {
   editingRequestId = "";
+  editingRequestKind = "";
+  editingTimeLeaveOriginal = null;
   hideEditingRequestBanner();
   clearEditingHistoryRow();
   setRequestFormEditingMode(false);
@@ -514,6 +523,7 @@ function cancelEditingRequest() {
   // 編集状態だけを破棄する。保存・取消APIは呼ばず、pending申請は変更しない。
   clearEditingRequestState();
   resetRequestFormForNewRequest();
+  openHistorySection_();
 }
 
 function showEditingRequestBanner(item) {
@@ -641,7 +651,22 @@ function getTimeLeaveModalId_(mode) {
 }
 
 function getTimeLeaveCandidateCacheKey_(employeeId, leaveDate, mode, halfDay) {
-  return [String(employeeId || "").trim(), leaveDate || "", mode || "", halfDay || ""].join("|");
+  const pendingEditId = mode === editingRequestKind && isEditingTimeLeaveRequest_()
+    ? String(editingRequestId || "").trim()
+    : "";
+  return [String(employeeId || "").trim(), leaveDate || "", mode || "", halfDay || "", pendingEditId].join("|");
+}
+
+function isEditingTimeHourlyRequest_() {
+  return isEditingRequest() && editingRequestKind === "time_hourly";
+}
+
+function isEditingCombinedTimeLeaveRequest_() {
+  return isEditingRequest() && editingRequestKind === "half_day_time_hourly";
+}
+
+function isEditingTimeLeaveRequest_() {
+  return isEditingTimeHourlyRequest_() || isEditingCombinedTimeLeaveRequest_();
 }
 
 function clearTimeLeaveCandidateCache_() {
@@ -744,12 +769,22 @@ function fetchTimeLeaveCandidates_(mode) {
         timeLeaveModalState.error_message = getErrorMessage_(err);
         renderTimeLeaveModal_(mode);
       })
-      .getTimeLeaveCandidates({
+      [isEditingTimeLeaveRequest_()
+        ? "getTimeLeaveCandidatesForPendingEdit"
+        : "getTimeLeaveCandidates"](
+        ...(isEditingTimeLeaveRequest_()
+          ? [editingRequestId, selectedEmployee.employee_id, {
+              leave_date: state.leave_date,
+              request_mode: mode,
+              half_day: mode === "half_day_time_hourly" ? state.half_day : ""
+            }]
+          : [{
         employee_id: selectedEmployee.employee_id,
         leave_date: state.leave_date,
         request_mode: mode,
         half_day: mode === "half_day_time_hourly" ? state.half_day : ""
-      });
+            }])
+      );
   } catch (err) {
     if (!isCurrentTimeLeaveCandidateRequest_(mode, requestId)) return;
     timeLeaveModalState.candidates = null;
@@ -843,6 +878,21 @@ function setTimeLeaveModalStatus_(mode, message, kind) {
 function renderTimeLeaveModal_(mode) {
   const prefix = getTimeLeaveModalPrefix_(mode);
   const state = timeLeaveModalState;
+  const isEditing = isEditingTimeLeaveRequest_() && editingRequestKind === mode;
+  const title = document.getElementById(prefix + "ModalTitle");
+  const subtitle = document.getElementById(prefix + "ModalSubtitle");
+  const original = getEditingTimeLeaveOriginal_(mode);
+  const originalArea = document.getElementById(prefix + "ModalOriginal");
+  if (title) title.textContent = mode === "half_day_time_hourly"
+    ? (isEditing ? "半休＋時間年休を修正" : "半休＋時間年休を申請")
+    : (isEditing ? "時間年休を修正" : "時間年休を申請");
+  if (subtitle) subtitle.textContent = mode === "half_day_time_hourly"
+    ? (isEditing ? "変更後の半休区分と時間を選択してください。" : "半休区分と時間を選択してください。")
+    : (isEditing ? "変更後の開始時刻と取得時間を選択してください。" : "開始時刻と取得時間を選択してください。");
+  if (originalArea) {
+    originalArea.hidden = !original;
+    originalArea.textContent = original ? buildEditingTimeLeaveOriginalText_(original) : "";
+  }
   const dateLabel = document.getElementById(prefix + "ModalDateLabel");
   if (dateLabel) dateLabel.textContent = formatTimeLeaveDateLabel_(state.leave_date);
   if (mode === "half_day_time_hourly") {
@@ -877,7 +927,10 @@ function renderTimeLeaveModal_(mode) {
   }
   const candidateCount = (state.candidates && state.candidates.candidates || []).length;
   const confirmButton = document.getElementById(mode === "half_day_time_hourly" ? "combinedTimeLeaveConfirmButton" : "timeLeaveConfirmButton");
-  if (confirmButton) confirmButton.disabled = !!state.loading || !state.end_time;
+  if (confirmButton) {
+    confirmButton.disabled = !!state.loading || !state.end_time;
+    confirmButton.textContent = isEditing ? "この内容に変更" : "この内容で設定";
+  }
   if (state.loading) setTimeLeaveModalStatus_(mode, "取得可能な時間を確認しています...", "loading");
   else if (state.error_message) setTimeLeaveModalStatus_(mode, state.error_message, "error");
   else if (!state.leave_date) setTimeLeaveModalStatus_(mode, "カレンダーから取得日を選択してください。");
@@ -888,7 +941,24 @@ function renderTimeLeaveModal_(mode) {
   else if (state.end_time) setTimeLeaveModalStatus_(mode, "申請内容を確認して設定してください。", "ok");
 
   const summary = document.getElementById(prefix + "ModalSummary");
-  if (summary) summary.textContent = buildTimeLeaveSummaryText_(Object.assign({}, state, { mode: mode }), true);
+  if (summary) {
+    const text = buildTimeLeaveSummaryText_(Object.assign({}, state, { mode: mode }), true);
+    summary.textContent = isEditing ? text.replace(/^選択内容：/, "変更後：") : text;
+  }
+}
+
+function getEditingTimeLeaveOriginal_(mode) {
+  const original = editingTimeLeaveOriginal;
+  return original && isEditingTimeLeaveRequest_() && original.mode === mode ? original : null;
+}
+
+function buildEditingTimeLeaveOriginalText_(original) {
+  const date = formatTimeLeaveDateLabel_(original.leave_date);
+  const time = `${original.start_time}〜${original.end_time}（${formatLeaveHours_(original.requested_minutes)}）`;
+  const half = original.mode === "half_day_time_hourly"
+    ? `${original.half_day === "am" ? "AM半休" : "PM半休"} ＋ `
+    : "";
+  return `現在の申請：${date} / ${half}${time}`;
 }
 
 function formatTimeLeaveDateLabel_(dateKey) {
@@ -1258,6 +1328,7 @@ function submitRequest() {
       leave_date: timeLeaveSelection.leave_date,
       start_time: timeLeaveSelection.start_time,
       end_time: timeLeaveSelection.end_time,
+      requested_minutes: Number(timeLeaveSelection.requested_minutes),
       reason: reason,
       reason_detail: detail
     };
@@ -1308,6 +1379,7 @@ function submitRequest() {
         submitBtn.classList.add("submitted");
       }
 
+      const keepHistoryOpen = isEditing;
       clearEditingRequestState();
       clearTimeLeaveCandidateCache_();
       resetSelectedDates();
@@ -1330,12 +1402,12 @@ function submitRequest() {
 
           render();
           updateGroupTabs();
-          finishPostSubmitRefresh_(targetEmployeeId, submitBtn);
+          finishPostSubmitRefresh_(targetEmployeeId, submitBtn, { keepHistoryOpen: keepHistoryOpen });
         })
         .withFailureHandler(err => {
           // 申請保存は成功済み。残高は既存表示のままにして、画面遷移だけを完了する。
           console.error("getEmployeesForRequest post-submit refresh error:", err);
-          finishPostSubmitRefresh_(targetEmployeeId, submitBtn);
+          finishPostSubmitRefresh_(targetEmployeeId, submitBtn, { keepHistoryOpen: keepHistoryOpen });
         })
         .getEmployeesForRequest();
     })
@@ -1367,9 +1439,41 @@ function submitRequest() {
     });
 
   if (isTimeLeave) {
-    runner.submitTimeLeaveRequest(timeLeavePayload);
+    if (isEditing) {
+      if (!isEditingTimeHourlyRequest_()) {
+        if (statusBox) {
+          statusBox.className = "calendar-selected-status error";
+          statusBox.textContent = "時間年休の編集対象が不正です。履歴を更新してからもう一度お試しください。";
+        }
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "修正を保存";
+          submitBtn.classList.remove("submitting", "submitted");
+        }
+        return;
+      }
+      runner.updatePendingTimeLeaveRequest(targetRequestId, targetEmployeeId, timeLeavePayload);
+    } else {
+      runner.submitTimeLeaveRequest(timeLeavePayload);
+    }
   } else if (isCombinedTimeLeave) {
-    runner.submitCombinedHalfDayAndTimeLeaveRequest(timeLeavePayload);
+    if (isEditing) {
+      if (!isEditingCombinedTimeLeaveRequest_()) {
+        if (statusBox) {
+          statusBox.className = "calendar-selected-status error";
+          statusBox.textContent = "半休＋時間休の編集対象が不正です。履歴を更新してからもう一度お試しください。";
+        }
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "修正を保存";
+          submitBtn.classList.remove("submitting", "submitted");
+        }
+        return;
+      }
+      runner.updatePendingTimeLeaveRequest(targetRequestId, targetEmployeeId, timeLeavePayload);
+    } else {
+      runner.submitCombinedHalfDayAndTimeLeaveRequest(timeLeavePayload);
+    }
   } else if (isEditing) {
     runner.updatePendingLeaveRequestForEmployee(targetRequestId, targetEmployeeId, payload);
   } else {
@@ -1378,7 +1482,9 @@ function submitRequest() {
 }
 
 // 申請保存後の残高・時間年休集計・履歴の更新を完了してから、従来の完了画面へ遷移する。
-function finishPostSubmitRefresh_(employeeId, submitBtn) {
+function finishPostSubmitRefresh_(employeeId, submitBtn, options) {
+  const keepHistoryOpen = !!(options && options.keepHistoryOpen);
+  if (keepHistoryOpen) openHistorySection_();
   loadedHistoryEmployeeId = "";
   loadEmployeeLeaveHistory(employeeId);
 
@@ -1415,7 +1521,12 @@ function finishPostSubmitRefresh_(employeeId, submitBtn) {
       return;
     }
 
-    // 共用タブレット版は、残高再取得の完了後にだけ名前選択画面へ戻す。
+    if (keepHistoryOpen) {
+      openHistorySection_();
+      return;
+    }
+
+    // 共用タブレット版は、新規申請時だけ残高再取得の完了後に名前選択画面へ戻す。
     backToEmployeeList();
   }, 2500);
 }
@@ -1434,6 +1545,13 @@ function closeHistorySection() {
   if (btn) {
     btn.textContent = "申請履歴を見る";
   }
+}
+
+function openHistorySection_() {
+  const section = document.getElementById("historySection");
+  const btn = document.getElementById("historyToggleBtn");
+  if (section) section.classList.remove("history-collapsed");
+  if (btn) btn.textContent = "申請履歴を閉じる";
 }
 
 function toggleHistorySection() {
@@ -1587,11 +1705,39 @@ function startEditLeaveRequest(requestId) {
     return;
   }
 
+  const isTimeHourly = item.request_kind === "time_hourly";
+  const isCombinedTimeLeave = item.request_kind === "half_day_time_hourly";
+  const isEditableTimeLeave = isTimeHourly || isCombinedTimeLeave;
+  const timeHistory = item.time_leave_history;
+  if (isEditableTimeLeave && (!timeHistory || !item.start_date || item.start_date !== item.end_date ||
+      !timeHistory.start_time || !timeHistory.end_time ||
+      !Number.isInteger(Number(timeHistory.requested_minutes)) || Number(timeHistory.requested_minutes) <= 0)) {
+    alert("時間年休の編集に必要な申請情報を読み込めませんでした。履歴を更新してからもう一度お試しください。");
+    return;
+  }
+  if (isCombinedTimeLeave && item.half_day !== "am" && item.half_day !== "pm") {
+    alert("半休＋時間休の編集に必要な半休区分を読み込めませんでした。履歴を更新してからもう一度お試しください。");
+    return;
+  }
+
   editingRequestId = targetId;
+  editingRequestKind = isEditableTimeLeave ? item.request_kind : "";
+  editingTimeLeaveOriginal = isEditableTimeLeave ? {
+    mode: item.request_kind,
+    leave_date: item.start_date,
+    half_day: isCombinedTimeLeave ? item.half_day : "",
+    start_time: timeHistory.start_time,
+    end_time: timeHistory.end_time,
+    requested_minutes: Number(timeHistory.requested_minutes)
+  } : null;
   showEditingRequestBanner(item);
   setRequestFormEditingMode(true);
 
-  if (item.half_day === "am") {
+  if (isTimeHourly) {
+    selectRequestType("time_hourly");
+  } else if (isCombinedTimeLeave) {
+    selectRequestType("half_day_time_hourly");
+  } else if (item.half_day === "am") {
     selectRequestType("half_am");
   } else if (item.half_day === "pm") {
     selectRequestType("half_pm");
@@ -1622,6 +1768,21 @@ function startEditLeaveRequest(requestId) {
   updateHiddenDateInputs();
   updateCalendarStatus();
   renderRequestCalendar();
+
+  if (isEditableTimeLeave) {
+    // 履歴APIの機械可読な値をそのまま初期値に使う。表示文字列の解析は行わない。
+    timeLeaveSelection = {
+      mode: item.request_kind,
+      leave_date: item.start_date,
+      half_day: isCombinedTimeLeave ? item.half_day : "",
+      start_time: timeHistory.start_time,
+      end_time: timeHistory.end_time,
+      requested_minutes: Number(timeHistory.requested_minutes)
+    };
+    clearTimeLeaveCandidateCache_();
+    renderTimeLeaveSummary_();
+    openTimeLeaveModal_(item.request_kind, item.start_date);
+  }
 
   const submitBtn = document.getElementById("submitBtn");
   if (submitBtn) {
@@ -1664,6 +1825,7 @@ function cancelLeaveRequestFromHistory(requestId) {
   google.script.run
     .withSuccessHandler(() => {
       clearTimeLeaveCandidateCache_();
+      openHistorySection_();
       if (editingRequestId === targetId) {
         clearEditingRequestState();
         resetRequestFormForNewRequest();
