@@ -864,15 +864,35 @@ body {
   margin-top: 24px;
 }
 
-.submit-btn {
+.cancel-editing-btn {
+  display: block;
+  margin-top: 10px;
+  border: 1px solid #b7c6cc;
+  background: #ffffff;
+  color: #51656d;
+  cursor: pointer;
+}
+
+.cancel-editing-btn[hidden] {
+  display: none;
+}
+
+.cancel-editing-btn:hover {
+  background: #f4f8f9;
+}
+
+.submit-btn,
+.cancel-editing-btn {
   width: 100%;
   min-height: 76px;
-
-  border: none;
+  padding: 0 16px;
   border-radius: 16px;
-
   font-size: 30px;
   font-weight: bold;
+}
+
+.submit-btn {
+  border: none;
 
   background: var(--primary);
   color: #ffffff;
@@ -1277,7 +1297,8 @@ body.personal-page-mode #requestScreen {
     margin-top: 16px;
   }
 
-  #requestScreen .submit-btn {
+  #requestScreen .submit-btn,
+  #requestScreen .cancel-editing-btn {
     min-height: 64px;
     font-size: 26px;
   }
@@ -1423,7 +1444,8 @@ body.personal-page-mode #requestScreen {
     font-size: 17px;
   }
 
-  .submit-btn {
+  .submit-btn,
+  .cancel-editing-btn {
     min-height: 64px;
     font-size: 22px;
   }

@@ -460,6 +460,7 @@ function clearEditingRequestState() {
 function setRequestFormEditingMode(enabled) {
   const layout = document.querySelector(".tablet-request-layout");
   const submitBtn = document.getElementById("submitBtn");
+  const cancelEditingBtn = document.getElementById("cancelEditingBtn");
 
   if (layout) {
     layout.classList.toggle("editing", !!enabled);
@@ -467,6 +468,10 @@ function setRequestFormEditingMode(enabled) {
 
   if (submitBtn) {
     submitBtn.classList.toggle("editing", !!enabled);
+  }
+
+  if (cancelEditingBtn) {
+    cancelEditingBtn.hidden = !enabled;
   }
 }
 
@@ -506,6 +511,7 @@ function resetRequestFormForNewRequest() {
 }
 
 function cancelEditingRequest() {
+  // 編集状態だけを破棄する。保存・取消APIは呼ばず、pending申請は変更しない。
   clearEditingRequestState();
   resetRequestFormForNewRequest();
 }
@@ -1307,81 +1313,31 @@ function submitRequest() {
       resetSelectedDates();
       if (isTimeLeaveRelated) resetTimeLeaveFields_();
       renderRequestCalendar();
-      loadedHistoryEmployeeId = "";
-      loadEmployeeLeaveHistory(targetEmployeeId);
 
       google.script.run
         .withSuccessHandler(data => {
           employees = data || [];
-          const updated = employees.find(emp => emp.employee_id === selectedEmployee.employee_id);
+          const targetId = String(targetEmployeeId || "").trim();
+          const updated = employees.find(emp =>
+            String(emp && emp.employee_id || "").trim() === targetId
+          );
 
-          if (updated) {
+          if (updated && selectedEmployee &&
+              String(selectedEmployee.employee_id || "").trim() === targetId) {
             selectedEmployee = updated;
-            renderSelectedEmployeeBalance_(updated);
+            renderSelectedEmployeeBalance_(selectedEmployee);
           }
 
           render();
           updateGroupTabs();
+          finishPostSubmitRefresh_(targetEmployeeId, submitBtn);
+        })
+        .withFailureHandler(err => {
+          // 申請保存は成功済み。残高は既存表示のままにして、画面遷移だけを完了する。
+          console.error("getEmployeesForRequest post-submit refresh error:", err);
+          finishPostSubmitRefresh_(targetEmployeeId, submitBtn);
         })
         .getEmployeesForRequest();
-
-      setTimeout(() => {
-
-  if (submitBtn) {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "申請する";
-    submitBtn.classList.remove("submitted");
-  }
-
-  // 個人スマホページの場合
-  if (isPersonalPageMode()) {
-
-    currentRequestType = "";
-
-    // 区分ボタン解除
-    document.querySelectorAll(".type-btn").forEach(btn => {
-      btn.classList.remove("active");
-    });
-
-    // 複数日エリア閉じる
-    const multiDayArea = document.getElementById("multiDayArea");
-    if (multiDayArea) {
-      multiDayArea.style.display = "none";
-    }
-
-    // 日付リセット
-    resetSelectedDates();
-
-    // 理由リセット
-    const reasonType = document.getElementById("reasonType");
-    if (reasonType) {
-      reasonType.value = "";
-    }
-
-    // 詳細リセット
-    const reasonDetail = document.getElementById("reasonDetail");
-    if (reasonDetail) {
-      reasonDetail.value = "";
-    }
-
-    // 詳細欄閉じる
-    const reasonDetailWrap = document.getElementById("reasonDetailWrap");
-    if (reasonDetailWrap) {
-      reasonDetailWrap.style.display = "none";
-    }
-
-    updateHiddenDateInputs();
-    updateCalendarStatus();
-    renderRequestCalendar();
-
-  } else {
-
-    // 共用タブレット版
-    backToEmployeeList();
-
-  }
-
-}, 2500);
     })
     .withFailureHandler(err => {
       console.error(isTimeLeaveRelated ? "time leave submit error:" : (isEditing ? "updatePendingLeaveRequestForEmployee error:" : "submitLeaveRequest error:"), err);
@@ -1419,6 +1375,49 @@ function submitRequest() {
   } else {
     runner.submitLeaveRequest(payload);
   }
+}
+
+// 申請保存後の残高・時間年休集計・履歴の更新を完了してから、従来の完了画面へ遷移する。
+function finishPostSubmitRefresh_(employeeId, submitBtn) {
+  loadedHistoryEmployeeId = "";
+  loadEmployeeLeaveHistory(employeeId);
+
+  setTimeout(() => {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "申請する";
+      submitBtn.classList.remove("submitted");
+    }
+
+    if (isPersonalPageMode()) {
+      currentRequestType = "";
+      document.querySelectorAll(".type-btn").forEach(btn => {
+        btn.classList.remove("active");
+      });
+
+      const multiDayArea = document.getElementById("multiDayArea");
+      if (multiDayArea) multiDayArea.style.display = "none";
+
+      resetSelectedDates();
+
+      const reasonType = document.getElementById("reasonType");
+      if (reasonType) reasonType.value = "";
+
+      const reasonDetail = document.getElementById("reasonDetail");
+      if (reasonDetail) reasonDetail.value = "";
+
+      const reasonDetailWrap = document.getElementById("reasonDetailWrap");
+      if (reasonDetailWrap) reasonDetailWrap.style.display = "none";
+
+      updateHiddenDateInputs();
+      updateCalendarStatus();
+      renderRequestCalendar();
+      return;
+    }
+
+    // 共用タブレット版は、残高再取得の完了後にだけ名前選択画面へ戻す。
+    backToEmployeeList();
+  }, 2500);
 }
 
 /* =========================

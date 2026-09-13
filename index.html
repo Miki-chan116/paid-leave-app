@@ -140,7 +140,7 @@
               <button type="button"
                       class="editing-cancel-btn"
                       onclick="cancelEditingRequest()">
-                編集をやめる
+                編集をキャンセル
               </button>
             </div>
 
@@ -213,6 +213,13 @@
                       type="button"
                       onclick="submitRequest()">
                 申請する
+              </button>
+              <button id="cancelEditingBtn"
+                      class="cancel-editing-btn"
+                      type="button"
+                      onclick="cancelEditingRequest()"
+                      hidden>
+                編集をキャンセル
               </button>
             </div>
 
