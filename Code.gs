@@ -4456,8 +4456,12 @@ function approveRequestsBatchWithFifoValidation_(requestIds, adminUser) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    validateMainApprovalBalancesForRequests_(requestIds);
-    const timeRequestIds = requestIds.filter(requestId => isTimeLeaveRequestById_(requestId));
+    const targets = getPendingApprovalTargets_(requestIds);
+    const targetRequestIds = targets.map(target => target.request_id);
+    validateApprovalTargetsByCompany_(targets);
+    const timeRequestIds = targets
+      .filter(target => target.is_time_leave)
+      .map(target => target.request_id);
     // 状態を書き換える前に全時間有給を検証する。相互のpending申請も検証対象に残る。
     timeRequestIds.forEach(requestId => validatePendingTimeLeaveRequestForApproval_(requestId));
 
@@ -4470,7 +4474,7 @@ function approveRequestsBatchWithFifoValidation_(requestIds, adminUser) {
     if (lastRow <= 1) throw new Error("申請データがありません");
 
     const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-    const targetIdSet = new Set(requestIds.map(id => String(id)));
+    const targetIdSet = new Set(targetRequestIds);
     const now = new Date();
     const operatorId = adminUser && adminUser.admin_id ? String(adminUser.admin_id).trim() : "admin";
     const operatorName = adminUser && adminUser.admin_name ? String(adminUser.admin_name).trim() : "管理者";
@@ -4488,7 +4492,7 @@ function approveRequestsBatchWithFifoValidation_(requestIds, adminUser) {
     if (updatedCount === 0) throw new Error("承認対象の申請が見つかりません");
     sheet.getRange(2, 1, updatedRows.length, lastCol).setValues(updatedRows);
 
-    requestIds.forEach(requestId => {
+    targetRequestIds.forEach(requestId => {
       const requestRecord = getLeaveRequestRecordById_(requestId);
       const isCombined = !!(requestRecord && isCombinedHalfDayTimeLeaveRequestRow_(requestRecord.rowObj));
       appendUsageLog({
@@ -5721,12 +5725,10 @@ function validateMainApprovalBalancesForRequests_(requestIds) {
       targets.push(rowObj);
     });
   });
-  if (targets.length !== [...targetIds].filter(id => {
-    return Object.keys(context.requests_by_employee || {}).some(employeeId =>
-      (context.requests_by_employee[employeeId] || []).some(row => String(row.request_id || "").trim() === id)
-    );
-  }).length) {
-    throw new Error("承認対象の申請が見つかりません");
+  // この関数へ渡すのは、呼出側で存在・pending・MAINを確認済みの申請だけにする。
+  // 全会社共通の申請存在確認をMAIN専用のFIFO検証に混在させない。
+  if (targets.length !== targetIds.size) {
+    throw new Error("MAIN用承認検証対象が取得できません");
   }
   targets.sort((a, b) => {
     const aDate = getApprovalRequestEndDate_(a, context);
@@ -5750,6 +5752,60 @@ function validateMainApprovalBalancesForRequests_(requestIds) {
     result.push({ request_id: String(rowObj.request_id || ""), required_minutes: requiredMinutes });
   });
   return result;
+}
+
+// 承認更新の前提となる、Spreadsheet正本の申請・社員情報を確定する。
+// 会社別検証へ進む前にここで存在とpending状態を共通で確認する。
+function getPendingApprovalTarget_(requestId) {
+  const targetRequestId = String(requestId || "").trim();
+  if (!targetRequestId) throw new Error("requestId がありません");
+
+  const requestRecord = getLeaveRequestRecordById_(targetRequestId);
+  if (!requestRecord) throw new Error("対象の申請が見つかりません");
+
+  const request = requestRecord.rowObj;
+  if (norm(request.status) !== STATUS.PENDING) {
+    throw new Error("承認待ちの申請だけ承認できます: " + targetRequestId);
+  }
+
+  const employeeId = String(request.employee_id || "").trim();
+  const employee = getTimeLeaveEmployeeFromSpreadsheet_(employeeId);
+  if (!employee) throw new Error("申請者が見つかりません: " + employeeId);
+
+  const companyCode = String(employee.company_code || "").trim().toUpperCase();
+  if (companyCode !== "MAIN" && companyCode !== "PARTNER") {
+    throw new Error("申請者の会社コードが不正です: " + employeeId);
+  }
+
+  return {
+    request_id: targetRequestId,
+    requestRecord: requestRecord,
+    request: request,
+    employee_id: employeeId,
+    company_code: companyCode,
+    is_time_leave: isTimeLeaveSegmentRequestRow_(request)
+  };
+}
+
+function getPendingApprovalTargets_(requestIds) {
+  const ids = (requestIds || []).map(id => String(id || "").trim()).filter(Boolean);
+  if (!ids.length) throw new Error("承認対象が選択されていません");
+  if (new Set(ids).size !== ids.length) throw new Error("承認対象の申請IDが重複しています");
+  return ids.map(getPendingApprovalTarget_);
+}
+
+function getMainApprovalRequestIds_(targets) {
+  return (targets || [])
+    .filter(target => target.company_code === "MAIN")
+    .map(target => target.request_id);
+}
+
+// MAINだけに分単位FIFO検証を適用する。PARTNERは既存の日数ベース承認更新へ進む。
+function validateApprovalTargetsByCompany_(targets) {
+  const mainRequestIds = getMainApprovalRequestIds_(targets);
+  if (mainRequestIds.length > 0) {
+    validateMainApprovalBalancesForRequests_(mainRequestIds);
+  }
 }
 
 function approveRequestsBatch(requestIds, adminSessionToken) {
@@ -5859,18 +5915,17 @@ function approveRequestsBatchLegacy_(requestIds, adminUser) {
 
 function approveRequest(requestId, adminSessionToken) {
   const adminUser = requireAdminSession_(adminSessionToken);
-  if (!requestId) {
-    throw new Error("requestId がありません");
-  }
+  const target = getPendingApprovalTarget_(requestId);
 
-  if (isTimeLeaveRequestById_(requestId)) {
-    return approveTimeLeaveRequest_(requestId, adminUser);
+  if (target.is_time_leave) {
+    return approveTimeLeaveRequest_(target.request_id, adminUser);
   }
 
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    validateMainApprovalBalancesForRequests_([requestId]);
+    const lockedTarget = getPendingApprovalTarget_(target.request_id);
+    validateApprovalTargetsByCompany_([lockedTarget]);
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
@@ -5892,7 +5947,7 @@ function approveRequest(requestId, adminSessionToken) {
 
   const rowIndex = data.findIndex((row, index) => {
     if (index === 0) return false;
-    return String(row[headerInfo.map.request_id]) === String(requestId);
+    return String(row[headerInfo.map.request_id] || "").trim() === lockedTarget.request_id;
   });
 
   if (rowIndex === -1) {
@@ -5920,7 +5975,7 @@ function approveRequest(requestId, adminSessionToken) {
   updateSheetRowFast_(sheet, sheetRow, rowValues);
 
   appendUsageLog({
-    request_id: requestId,
+    request_id: lockedTarget.request_id,
     action_type: "approve",
     operator_id: operatorId,
     operator_name: operatorName,
@@ -6609,6 +6664,8 @@ function getEmployeesForRequest() {
         name: String(rowObj.name || "").trim(),
         name_kana: String(rowObj.name_kana || "").trim(),
         employment_type: String(rowObj.employment_type || "").trim(),
+        company_code: String(rowObj.company_code || "").trim().toUpperCase(),
+        time_leave_enabled: String(rowObj.company_code || "").trim().toUpperCase() === "MAIN",
 
         fiscal_year: fiscalYear,
         fiscal_start_month: fiscalStartMonth,
@@ -6637,6 +6694,7 @@ function getEmployeesForRequest() {
     "name",
     "name_kana",
     "employment_type",
+    "company_code",
     "employment_status",
     "leave_management_target",
     "fiscal_start_month",
@@ -6737,6 +6795,8 @@ function getEmployeesForRequest() {
       name: String(rowObj.name || "").trim(),
       name_kana: String(rowObj.name_kana || "").trim(),
       employment_type: String(rowObj.employment_type || "").trim(),
+      company_code: String(rowObj.company_code || "").trim().toUpperCase(),
+      time_leave_enabled: String(rowObj.company_code || "").trim().toUpperCase() === "MAIN",
 
       fiscal_year: fiscalYear,
       fiscal_start_month: fiscalStartMonth,

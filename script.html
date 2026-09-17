@@ -281,6 +281,36 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
+function isTimeLeaveEnabledForEmployee_(employee) {
+  return !!(employee && employee.time_leave_enabled === true);
+}
+
+function updateTimeLeaveUiForSelectedEmployee_(employee) {
+  const enabled = isTimeLeaveEnabledForEmployee_(employee);
+
+  ["typeTimeLeave", "typeCombinedTimeLeave"].forEach(id => {
+    const button = document.getElementById(id);
+    if (button) button.hidden = !enabled;
+  });
+
+  const usage = document.getElementById("timeLeaveUsage");
+  if (usage) {
+    usage.hidden = !enabled;
+    if (!enabled) usage.style.display = "none";
+  }
+
+  const summary = document.getElementById("timeLeaveSummaryArea");
+  if (summary) {
+    summary.hidden = !enabled;
+    if (!enabled) summary.style.display = "none";
+  }
+
+  if (!enabled) {
+    closeTimeLeaveModal("time_hourly");
+    closeTimeLeaveModal("half_day_time_hourly");
+  }
+}
+
 /* =========================
    社員選択
 ========================= */
@@ -301,6 +331,7 @@ function selectEmployee(emp) {
     multiDayArea.style.display = "none";
   }
   resetTimeLeaveFields_();
+  updateTimeLeaveUiForSelectedEmployee_(emp);
 
   resetSelectedDates();
 
@@ -405,6 +436,10 @@ function handleReasonTypeChange() {
 ========================= */
 function selectRequestType(type) {
   const isTimeLeaveType = type === "time_hourly" || type === "half_day_time_hourly";
+  if (isTimeLeaveType && !isTimeLeaveEnabledForEmployee_(selectedEmployee)) {
+    alert("この会社では時間有給を利用できません");
+    return;
+  }
   if (isEditingTimeLeaveRequest_() && type !== editingRequestKind) {
     alert("時間年休の修正中は申請区分を変更できません。編集をキャンセルしてから別の申請を作成してください。");
     return;
@@ -682,6 +717,10 @@ function openTimeLeaveModal_(mode, dateKey) {
     alert("社員を選択してください");
     return;
   }
+  if (!isTimeLeaveEnabledForEmployee_(selectedEmployee)) {
+    alert("この会社では時間有給を利用できません");
+    return;
+  }
   const selection = timeLeaveSelection && timeLeaveSelection.mode === mode ? timeLeaveSelection : null;
   timeLeaveModalState = {
     mode: mode,
@@ -850,6 +889,7 @@ function loadEmployeeTimeLeaveSummary_(employeeId) {
   wrap.style.display = "none";
   const targetId = String(employeeId || "").trim();
   if (!targetId) return;
+  if (!isTimeLeaveEnabledForEmployee_(selectedEmployee)) return;
 
   google.script.run
     .withSuccessHandler(result => {

@@ -905,6 +905,15 @@ function testTimeLeaveApprovalBalanceFoundation() {
     ["一括承認は2日残の3全日申請を全件通過させない", batchRejected, true],
     ["pending全日を先に承認するとpending時間休は拒否", validatePendingCompetition("F", "T"), true],
     ["pending時間休を先に承認するとpending全日は拒否", validatePendingCompetition("T", "F"), true],
+    ["会社別承認検証はMAINだけをFIFO対象にする", getMainApprovalRequestIds_([
+      { request_id: "M-ONE", company_code: "MAIN" },
+      { request_id: "P-ONE", company_code: "PARTNER" },
+      { request_id: "M-HALF", company_code: "MAIN" }
+    ]), ["M-ONE", "M-HALF"]],
+    ["PARTNERだけの承認はFIFO検証対象なし", getMainApprovalRequestIds_([
+      { request_id: "P-ONE", company_code: "PARTNER" },
+      { request_id: "P-MULTI", company_code: "PARTNER" }
+    ]), []],
     ["旧繰越1.5日は630分", 1.5 * 420, 630],
     ["新繰越5日180分は2280分", 5 * 420 + 180, 2280],
     ["720分は1日300分", [calculateCarryOverMinutes_(720, 420).carry_over_days, calculateCarryOverMinutes_(720, 420).carry_over_minutes], [1, 300]]
