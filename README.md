@@ -269,6 +269,8 @@ company_calendar と連動
 
 # 📂 ファイル構成
 
+Deployment / 運用情報については [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) を参照してください。
+
 ```text
 Code.gs
 index.html
