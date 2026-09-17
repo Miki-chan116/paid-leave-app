@@ -538,8 +538,9 @@ body {
 }
 
 #typeCombinedTimeLeave {
-  font-size: 14px;
+  font-size: 13px;
   letter-spacing: -0.35px;
+  padding-inline: 2px;
   white-space: nowrap;
 }
 
@@ -1535,6 +1536,10 @@ body.personal-page-mode #requestScreen {
   .tablet-type-grid {
     grid-template-columns: repeat(4, 1fr);
     gap: 6px;
+  }
+
+  #typeCombinedTimeLeave {
+    grid-column: span 2;
   }
 
   .type-btn {
