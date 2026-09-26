@@ -7,8 +7,8 @@
 | 項目 | 値 |
 | --- | --- |
 | Deployment ID | `AKfycbw5etjnlUaElnuVeUIiWCM5yCJWf9YaPmyuzSMRpqoKDiydmMI9msxqa4M01PIOt8XD_w` |
-| 現在の本番version | `382` |
-| Version description | `Keep combined leave button on one line` |
+| 現在の本番version | `383` |
+| Version description | `fix employee admin search initialization` |
 | 種別 | Web App |
 
 本番更新では、上記の既存Deployment IDを維持したまま新しいversionへ更新します。新規Deploymentは作成しません。Deployment IDを維持する限り、既存のWeb App URLも維持されます。
