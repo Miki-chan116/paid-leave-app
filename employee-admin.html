@@ -4,12 +4,34 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <?!= include('admin-style'); ?>
   <?!= include('style'); ?>
 </head>
 
 <body>
   <?!= includeTemplate('nav'); ?>
 
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <h1 class="login-title">社員情報を管理する</h1>
+      <p class="login-subtitle">管理者を選択してPINを入力してください</p>
+      <div class="field">
+        <label for="adminUserSelect">管理者</label>
+        <select id="adminUserSelect">
+          <option value="">読み込み中...</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="adminPinInput">PIN</label>
+        <input type="password" id="adminPinInput" inputmode="numeric" placeholder="PINを入力">
+      </div>
+      <button class="btn btn-search login-btn" type="button" onclick="loginAdmin()">ログイン</button>
+      <div id="loginMessage" class="login-message"></div>
+    </div>
+  </div>
+
+  <div id="adminApp" class="admin-app-hidden">
+    <div id="loginUserBar" class="login-user-bar"></div>
   <div class="app-shell">
 
     <header class="app-header">
@@ -722,7 +744,10 @@
     </div>
   </div>
 
+  </div>
+
   <?!= include('admin-common-script'); ?>
+  <?!= include('admin-auth-script'); ?>
   <?!= include('employee-admin-script'); ?>
 
 </body>

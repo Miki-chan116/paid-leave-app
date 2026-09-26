@@ -1,4 +1,9 @@
 <script>
+let currentAdminUser = null;
+const adminAuthConfig = {
+  validateLoginInput: true,
+  clearMessageBeforeLoadUsers: false
+};
 let adminEmployees = [];
 let editingEmployeeId = "";
 let retiringEmployeeId = "";
@@ -13,9 +18,38 @@ function getDisplayName(emp) {
    初期表示
 ========================= */
 window.addEventListener("DOMContentLoaded", () => {
+  initAdminLogin();
+});
+
+function initAdminLogin() {
+  const saved = sessionStorage.getItem(ADMIN_LOGIN_KEY);
+
+  if (saved) {
+    try {
+      const session = JSON.parse(saved);
+      currentAdminUser = session && session.admin;
+
+      if (currentAdminUser && currentAdminUser.admin_id && getAdminSessionToken_()) {
+        showAdminApp();
+        return;
+      }
+    } catch (e) {
+      sessionStorage.removeItem(ADMIN_LOGIN_KEY);
+    }
+  }
+
+  showLoginScreen();
+  loadAdminUsersForLogin();
+}
+
+function showAdminApp() {
+  showAuthenticatedShell();
+}
+
+function onAdminAuthenticated() {
   initializeWorkTimeSelects();
   loadEmployees();
-});
+}
 
 /* =========================
    社員別勤務時間入力
@@ -273,8 +307,8 @@ function openRetirementLeaveRecordModal(emp) {
       syncRetirementAdjustmentFields();
     })
     .withFailureHandler(err => {
-      if (handleAdminApiFailure_(err)) return;
       document.getElementById("retirementLeaveRecordLoading").style.display = "none";
+      if (handleAdminApiFailure_(err)) return;
       setRetirementLeaveRecordStatus("退職日時点の残高を取得できませんでした。\n" + (err.message || err), "error");
     })
     .getRetirementLeaveBalancePreview(retirementRecordEmployeeId, getAdminSessionToken_());
@@ -360,8 +394,9 @@ function submitRetirementLeaveRecord() {
       loadEmployees();
     })
     .withFailureHandler(err => {
-      if (handleAdminApiFailure_(err)) return;
       document.getElementById("createRetirementLeaveRecordBtn").disabled = false;
+      setRetirementLeaveRecordStatus("", "");
+      if (handleAdminApiFailure_(err)) return;
       setRetirementLeaveRecordStatus("保存できませんでした。\n" + (err.message || err), "error");
     })
     .createRetirementLeaveRecordForRetiredEmployee({
@@ -498,6 +533,7 @@ function submitEditEmployee() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      showEditStatus("内容を確認して保存してください。", "");
       if (handleAdminApiFailure_(err)) return;
       showEditStatus("更新でエラーが発生しました。\n" + (err.message || err), "error");
     })
@@ -562,6 +598,7 @@ function submitRetire() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      showRetireStatus("退職日を入力してください。", "");
       if (handleAdminApiFailure_(err)) return;
       showRetireStatus("退職処理でエラーが発生しました。\n" + (err.message || err), "error");
     })
@@ -581,6 +618,7 @@ function runMaintain() {
     })
     .withFailureHandler(err => {
       console.error(err);
+      showStatus("検索条件を入力すると、ここに結果が表示されます。", "");
       if (handleAdminApiFailure_(err)) return;
       showStatus("社員マスター整備でエラーが発生しました。\n" + (err.message || err), "error");
     })
@@ -662,13 +700,13 @@ function submitEmployee() {
     })
     .withFailureHandler(err => {
       console.error(err);
-      if (handleAdminApiFailure_(err)) return;
-      showStatus("追加でエラーが発生しました。\n" + (err.message || err), "error");
-
       if (btn) {
         btn.disabled = false;
         btn.textContent = "社員を追加する";
       }
+      showStatus("検索条件を入力すると、ここに結果が表示されます。", "");
+      if (handleAdminApiFailure_(err)) return;
+      showStatus("追加でエラーが発生しました。\n" + (err.message || err), "error");
     })
     .addEmployeeFromAdmin(payload, getAdminSessionToken_());
 }

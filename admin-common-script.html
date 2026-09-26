@@ -14,7 +14,9 @@ function clearAdminSession_() {
 
 function handleAdminApiFailure_(err) {
   console.error("管理者APIエラー:", err);
-  const message = String(err && err.message || "");
+  const message = String(err && err.message || (typeof err === "string" ? err : ""))
+    .trim()
+    .replace(/^(?:Error:\s*)+/, "");
   if (/^ADMIN_SESSION_(REQUIRED|EXPIRED|INVALID)$/.test(message)) {
     clearAdminSession_();
     showLoginScreen();
