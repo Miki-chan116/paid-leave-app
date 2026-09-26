@@ -204,7 +204,19 @@ function getRetirementLeaveBalancePreview(employeeId, adminSessionToken) {
       employee_name: getDisplayName(employee) || String(employee.name || "").trim(),
       leave_date: formatDateValue(leaveDate)
     },
-    balance: fifoBalance,
+    balance: {
+      current_remaining_days: Number(fifoBalance.current_remaining_days || 0),
+      current_remaining_minutes: fifoBalance.current_remaining_minutes == null
+        ? null : Number(fifoBalance.current_remaining_minutes),
+      grant_details: (fifoBalance.grant_details || []).map(grant => ({
+        grant_date: String(grant.grant_date || ""),
+        valid_to: String(grant.valid_to || ""),
+        total_days: Number(grant.total_days || 0),
+        used_days: Number(grant.used_days || 0),
+        active_remaining_days: Number(grant.active_remaining_days || 0),
+        is_expired: grant.is_expired === true
+      }))
+    },
     existing_record: existingRecord ? toRetirementRecordView_(existingRecord) : null
   };
 }

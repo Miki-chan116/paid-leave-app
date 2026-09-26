@@ -287,8 +287,19 @@ function openRetirementLeaveRecordModal(emp) {
   google.script.run
     .withSuccessHandler(result => {
       document.getElementById("retirementLeaveRecordLoading").style.display = "none";
-      retirementRecordPreview = result || null;
-      const existing = result && result.existing_record;
+      if (!result || result.ok !== true || !result.employee || typeof result.employee !== "object" ||
+          Array.isArray(result.employee) || !result.balance || typeof result.balance !== "object" ||
+          Array.isArray(result.balance) ||
+          !Array.isArray(result.balance.grant_details) ||
+          typeof result.balance.current_remaining_days !== "number" ||
+          !Number.isFinite(result.balance.current_remaining_days) ||
+          !toInputDate(result.employee.leave_date)) {
+        retirementRecordPreview = null;
+        setRetirementLeaveRecordStatus("退職時有給情報を取得できませんでした。", "error");
+        return;
+      }
+      retirementRecordPreview = result;
+      const existing = result.existing_record;
       if (existing) {
         document.getElementById("retirementLeaveRecordExisting").style.display = "block";
         document.getElementById("retirementLeaveRecordExistingDetail").textContent =
