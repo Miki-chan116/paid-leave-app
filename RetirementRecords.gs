@@ -183,6 +183,133 @@ function createSpreadsheetFifoBalanceContext_(asOfDate) {
   };
 }
 
+/* 退職前の試算。既存の退職済み向けプレビューと異なり、記録シートには触れない。 */
+function previewRetirementForAdmin(employeeId, plannedLeaveDate, token) {
+  requireAdminSession_(token);
+  const targetId = String(employeeId || "").trim();
+  if (!targetId) throw new Error("employee_id がありません");
+  const dateText = String(plannedLeaveDate || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText) && !/^\d{4}\/\d{2}\/\d{2}$/.test(dateText)) {
+    throw new Error("退職日はYYYY-MM-DD形式で入力してください");
+  }
+  const leaveDate = parseLocalDate(dateText);
+  const dateKey = toDateKey(leaveDate);
+  const employee = getSpreadsheetEmployeeForRetirementRecord_(targetId);
+  if (!employee) throw new Error("対象社員が見つかりません");
+  const status = String(employee.employment_status || "").trim().toLowerCase();
+  if (status !== "active" && status !== "在職") {
+    throw new Error("在職中の社員だけ退職前の残高を確認できます");
+  }
+
+  const context = createSpreadsheetFifoBalanceContext_(leaveDate);
+  const companyCode = String(context.company_code_by_employee[targetId] || "").trim().toUpperCase();
+  const policy = getCompanyLeavePolicy(companyCode); // 対応する会社制度がない場合は試算しない。
+  const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(targetId, leaveDate, context);
+  const isMain = isMainTimeLeaveEmployeeForFifo_(targetId, context);
+  const canonical = buildRetirementPreviewFingerprintData_(targetId, dateKey, companyCode, policy, fifoBalance, isMain);
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(canonical));
+  const fingerprint = bytes.map(byte => (byte + 256).toString(16).slice(-2)).join("");
+
+  return {
+    ok: true,
+    employee: {
+      employee_id: targetId,
+      name: getDisplayName(employee) || String(employee.name || "").trim(),
+      company_code: companyCode
+    },
+    planned_leave_date: dateKey,
+    balance: {
+      unit: isMain ? "minutes" : "days",
+      remaining_days: Number(fifoBalance.current_remaining_days || 0),
+      remaining_minutes: isMain ? Number(fifoBalance.current_remaining_minutes || 0) : null
+    },
+    grant_details: (fifoBalance.grant_details || []).map(lot => ({
+      grant_date: lot.grant_date ? toDateKey(lot.grant_date) : "",
+      valid_to: lot.valid_to ? toDateKey(lot.valid_to) : "",
+      total_days: Number(lot.total_days || 0),
+      used_days: Number(lot.used_days || 0),
+      active_remaining_days: Number(lot.active_remaining_days || 0),
+      is_expired: lot.is_expired === true
+    })),
+    fingerprint: fingerprint
+  };
+}
+
+// 保存用証跡の文字数制限は適用せず、FIFO結果の計算関連フィールドだけを固定順に投影する。
+function buildRetirementPreviewFingerprintData_(employeeId, dateKey, companyCode, policy, balance, isMain) {
+  const fields = [
+    "calculation_mode", "scheduled_minutes_per_day", "current_remaining_days",
+    "current_remaining_minutes", "total_granted_days", "total_granted_minutes",
+    "used_days", "used_minutes", "allocated_used_days", "allocated_used_minutes",
+    "unallocated_used_days", "unallocated_used_minutes", "expired_days", "expired_minutes",
+    "opening_balance_days_total", "excluded_non_opening_carry_over_days_total",
+    "expiry_unconfirmed_opening_balance_days_total", "validity_warning"
+  ];
+  const grantFields = [
+    "grant_id", "source_grant_id", "lot_type", "grant_date", "valid_from", "valid_to",
+    "valid_from_date", "valid_to_date", "grant_type", "year", "validity_basis",
+    "validity_needs_review", "grant_days", "carry_over_days", "carry_over_minutes",
+    "opening_balance_days", "total_days", "total_minutes", "used_days", "used_minutes",
+    "remaining_days", "remaining_minutes", "active_remaining_days", "active_remaining_minutes",
+    "expired_days", "expired_minutes", "is_expired"
+  ];
+  const useFields = [
+    "request_id", "time_leave_id", "use_date", "leave_kind", "days", "consumed_minutes",
+    "unallocated_days", "unallocated_minutes"
+  ];
+  const allocationFields = [
+    "request_id", "time_leave_id", "use_date", "leave_kind", "grant_id", "lot_type",
+    "consumed_days", "consumed_minutes", "grant_valid_to", "calculation_version"
+  ];
+  const carryFields = [
+    "grant_id", "grant_date", "grant_type", "year", "carry_over_days", "valid_from",
+    "valid_to", "validity_basis", "validity_needs_review"
+  ];
+  return {
+    employee_id: employeeId,
+    planned_leave_date: dateKey,
+    company_code: companyCode,
+    policy_version: String(policy.policyVersion || ""),
+    unit: isMain ? "minutes" : "days",
+    balance: retirementFingerprintFields_(balance, fields),
+    grant_details: retirementFingerprintRows_(balance.grant_details, grantFields),
+    used_details: retirementFingerprintRows_(balance.used_details, useFields),
+    allocations: retirementFingerprintRows_(balance.allocations, allocationFields),
+    opening_balance_records: retirementFingerprintRows_(balance.opening_balance_records, carryFields),
+    excluded_carry_over_records: retirementFingerprintRows_(balance.excluded_carry_over_records, carryFields)
+  };
+}
+
+function retirementFingerprintRows_(rows, fields) {
+  return (rows || []).map(row => retirementFingerprintFields_(row, fields))
+    .sort((a, b) => {
+      const left = JSON.stringify(a);
+      const right = JSON.stringify(b);
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
+}
+
+function retirementFingerprintFields_(source, fields) {
+  const result = {};
+  fields.forEach(key => {
+    if (!Object.prototype.hasOwnProperty.call(source || {}, key)) return;
+    const value = source[key];
+    if (value instanceof Date) {
+      result[key] = toDateKey(value);
+    } else if (typeof value === "number") {
+      if (!Number.isFinite(value)) throw new Error("FIFO計算値が不正です: " + key);
+      result[key] = value === 0 ? 0 : value;
+    } else if (typeof value === "string" && /^(grant_date|valid_from|valid_to|use_date|grant_valid_to)$/.test(key) && value) {
+      result[key] = toDateKey(value);
+    } else if (value === null || typeof value === "string" || typeof value === "boolean") {
+      result[key] = value;
+    } else if (value !== undefined) {
+      throw new Error("FIFO計算値の形式が不正です: " + key);
+    }
+  });
+  return result;
+}
+
 function getRetirementLeaveBalancePreview(employeeId, adminSessionToken) {
   requireAdminSession_(adminSessionToken);
   const employee = assertRetiredEmployeeForRetirementRecord_(employeeId);
