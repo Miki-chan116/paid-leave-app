@@ -2,13 +2,13 @@
 
 ## 本番Web App
 
-確認日: 2026-09-17
+確認日: 2026-09-27
 
 | 項目 | 値 |
 | --- | --- |
 | Deployment ID | `AKfycbw5etjnlUaElnuVeUIiWCM5yCJWf9YaPmyuzSMRpqoKDiydmMI9msxqa4M01PIOt8XD_w` |
-| 現在の本番version | `383` |
-| Version description | `fix employee admin search initialization` |
+| 現在の本番version | `385` |
+| Version description | `fix retirement leave preview` |
 | 種別 | Web App |
 
 本番更新では、上記の既存Deployment IDを維持したまま新しいversionへ更新します。新規Deploymentは作成しません。Deployment IDを維持する限り、既存のWeb App URLも維持されます。
@@ -24,6 +24,8 @@
 7. 上記の既存本番Deployment IDを新versionへ更新する。
 8. `clasp deployments` でDeployment IDとversionを確認する。
 9. 本番Web Appで実機確認する。
+10. 実際の本番versionとVersion descriptionを再確認してから、このファイルを更新する。
+11. `docs/DEPLOYMENT.md` の変更をcommitし、pushする。
 
 ## 重要な注意
 
