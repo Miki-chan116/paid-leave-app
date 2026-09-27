@@ -473,8 +473,9 @@
               <select id="editEmploymentStatus">
                 <option value="active">在職</option>
                 <option value="leave">休職</option>
-                <option value="retired">退職</option>
+                <option id="editEmploymentStatusRetiredOption" value="retired">退職</option>
               </select>
+              <div class="field-help">在職社員の退職は、社員一覧の「退職」ボタンから行ってください。</div>
             </div>
 
             <div class="field">
@@ -624,6 +625,7 @@
         </div>
 
         <button
+          id="retireModalCloseBtn"
           type="button"
           class="modal-close-btn"
           onclick="closeRetireModal()"
@@ -633,13 +635,50 @@
 
       </div>
 
-      <div class="employee-form-grid">
+      <div id="retireInputStep">
+        <div class="employee-form-grid">
 
-        <div class="field">
-          <label>退職日 *</label>
-          <input type="date" id="retireDate">
+          <div class="field">
+            <label>退職日 *</label>
+            <input type="date" id="retireDate" oninput="handleRetireDateChange()">
+          </div>
+
         </div>
+      </div>
 
+      <div id="retireConfirmStep" style="display:none;">
+        <div id="retireRecoveryNotice" class="status-box" style="display:none;"></div>
+
+        <div class="employee-form-grid">
+          <div class="field">
+            <label>社員</label>
+            <input type="text" id="retireConfirmEmployeeName" readonly>
+          </div>
+          <div class="field">
+            <label>社員ID / 会社コード</label>
+            <input type="text" id="retireConfirmEmployeeCode" readonly>
+          </div>
+          <div class="field">
+            <label>退職日</label>
+            <input type="text" id="retireConfirmDate" readonly>
+          </div>
+          <div class="field">
+            <label>退職日時点の有給残高</label>
+            <input type="text" id="retireConfirmBalance" readonly>
+            <div id="retireConfirmBalanceUnit" class="field-help"></div>
+          </div>
+          <div class="field full-width">
+            <label>付与ロット明細</label>
+            <div id="retireConfirmGrantDetails" class="field-help"></div>
+          </div>
+          <div class="field full-width">
+            <div class="field-help">この退職処理では有給残高の調整は行いません。</div>
+            <div class="field-help">確定すると社員を退職済みにし、退職日時点の有給残高とFIFO証跡を保存します。</div>
+          </div>
+          <div class="field full-width">
+            <div id="retireFinalConfirmation" class="status-box"></div>
+          </div>
+        </div>
       </div>
 
       <div id="retireStatus" class="status-box">
@@ -649,14 +688,36 @@
       <div class="modal-actions">
 
         <button
+          id="retirePreviewBtn"
           type="button"
           class="admin-action-btn"
-          onclick="submitRetire()"
+          onclick="requestRetirementPreview()"
         >
-          退職処理する
+          退職内容を確認する
         </button>
 
         <button
+          id="retireBackBtn"
+          type="button"
+          class="admin-action-btn modal-cancel-btn"
+          style="display:none;"
+          onclick="backToRetirementInput()"
+        >
+          退職日入力へ戻る
+        </button>
+
+        <button
+          id="retireFinalizeBtn"
+          type="button"
+          class="admin-action-btn"
+          style="display:none;"
+          onclick="finalizeRetirement()"
+        >
+          この内容で退職を確定する
+        </button>
+
+        <button
+          id="retireCancelBtn"
           type="button"
           class="admin-action-btn modal-cancel-btn"
           onclick="closeRetireModal()"

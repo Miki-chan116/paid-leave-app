@@ -7,6 +7,13 @@ const adminAuthConfig = {
 let adminEmployees = [];
 let editingEmployeeId = "";
 let retiringEmployeeId = "";
+let retiringEmployeeName = "";
+let retirementPreviewState = null;
+let retirementPreviewInFlight = false;
+let retirementFinalizeInFlight = false;
+let retirementRecoveryMode = false;
+let retirementResultUnknown = false;
+let retirementModalSession = 0;
 let retirementRecordEmployeeId = "";
 let retirementRecordPreview = null;
 
@@ -463,6 +470,10 @@ function openEditEmployeeModal(emp) {
   setValue("editDepartment", emp.department);
   setValue("editEmploymentType", emp.employment_type);
   setValue("editEmploymentStatus", emp.employment_status || "active");
+  const retiredOption = document.getElementById("editEmploymentStatusRetiredOption");
+  if (retiredOption) {
+    retiredOption.disabled = String(emp.employment_status || "").trim().toLowerCase() !== "retired";
+  }
   setValue("editHireDate", toInputDate(emp.hire_date));
   setValue("editLeaveDate", toInputDate(emp.leave_date));
   setValue("editWorkDaysPerWeek", emp.work_days_per_week);
@@ -555,7 +566,14 @@ function submitEditEmployee() {
    退職モーダルを開く
 ========================= */
 function openRetireModal(emp) {
+  retirementModalSession += 1;
   retiringEmployeeId = emp.employee_id || "";
+  retiringEmployeeName = getDisplayName(emp);
+  retirementPreviewState = null;
+  retirementPreviewInFlight = false;
+  retirementFinalizeInFlight = false;
+  retirementRecoveryMode = false;
+  retirementResultUnknown = false;
 
   const subTitle = document.getElementById("retireEmployeeSubTitle");
   if (subTitle) {
@@ -563,7 +581,7 @@ function openRetireModal(emp) {
   }
 
   setValue("retireDate", "");
-
+  showRetirementInputStep_();
   showRetireStatus("退職日を入力してください。", "");
 
   const modal = document.getElementById("retireEmployeeModal");
@@ -574,16 +592,28 @@ function openRetireModal(emp) {
    退職モーダルを閉じる
 ========================= */
 function closeRetireModal() {
+  if (retirementPreviewInFlight || retirementFinalizeInFlight || retirementResultUnknown) return;
+  retirementModalSession += 1;
   retiringEmployeeId = "";
+  retiringEmployeeName = "";
+  retirementPreviewState = null;
+  retirementRecoveryMode = false;
+  retirementResultUnknown = false;
 
   const modal = document.getElementById("retireEmployeeModal");
   if (modal) modal.style.display = "none";
 }
 
 /* =========================
-   退職実行
+   退職preview / finalize
 ========================= */
-function submitRetire() {
+function handleRetireDateChange() {
+  if (retirementFinalizeInFlight || retirementResultUnknown) return;
+  retirementPreviewState = null;
+}
+
+function requestRetirementPreview() {
+  if (retirementPreviewInFlight || retirementFinalizeInFlight || retirementResultUnknown) return;
   const leaveDate = getValue("retireDate");
 
   if (!retiringEmployeeId) {
@@ -596,24 +626,329 @@ function submitRetire() {
     return;
   }
 
-  showRetireStatus("退職処理を実行しています...", "");
+  retirementPreviewState = null;
+  retirementPreviewInFlight = true;
+  setRetirementModalBusy_(true, false);
+  showRetireStatus(
+    retirementRecoveryMode ? "復旧内容を確認しています..." : "退職日時点の有給残高を確認しています...",
+    ""
+  );
 
-  google.script.run
-    .withSuccessHandler(() => {
-      showRetireStatus("退職処理を完了しました。", "ok");
-      loadEmployees();
+  const employeeId = retiringEmployeeId;
+  const session = retirementModalSession;
+  const runner = google.script.run
+    .withSuccessHandler(result => {
+      if (session !== retirementModalSession || employeeId !== retiringEmployeeId) return;
+      retirementPreviewInFlight = false;
+      setRetirementModalBusy_(false, false);
+      if (!isValidRetirementPreview_(result, employeeId, leaveDate)) {
+        retirementPreviewState = null;
+        showRetireStatus("退職内容を確認できませんでした。入力内容を確認してください。", "error");
+        return;
+      }
 
-      setTimeout(() => {
-        closeRetireModal();
-      }, 500);
+      retirementPreviewState = {
+        employeeId: employeeId,
+        plannedLeaveDate: result.planned_leave_date,
+        fingerprint: result.fingerprint,
+        response: result,
+        recoveryMode: retirementRecoveryMode
+      };
+      renderRetirementPreview_(result, retirementRecoveryMode);
+      showRetireStatus(
+        retirementRecoveryMode ? "復旧する退職内容を確認してください。" : "退職内容を確認してください。",
+        ""
+      );
     })
     .withFailureHandler(err => {
+      if (session !== retirementModalSession || employeeId !== retiringEmployeeId) return;
+      retirementPreviewInFlight = false;
+      retirementPreviewState = null;
+      setRetirementModalBusy_(false, false);
       console.error(err);
-      showRetireStatus("退職日を入力してください。", "");
       if (handleAdminApiFailure_(err)) return;
-      showRetireStatus("退職処理でエラーが発生しました。\n" + (err.message || err), "error");
+      showRetireStatus("退職内容を確認できませんでした。\n" + getAdminErrorMessage_(err), "error");
+    });
+
+  if (retirementRecoveryMode) {
+    runner.previewRetirementRecoveryForAdmin(employeeId, leaveDate, getAdminSessionToken_());
+  } else {
+    runner.previewRetirementForAdmin(employeeId, leaveDate, getAdminSessionToken_());
+  }
+}
+
+function finalizeRetirement() {
+  if (retirementPreviewInFlight || retirementFinalizeInFlight || !retirementPreviewState) return;
+  const state = retirementPreviewState;
+  if (!retirementResultUnknown &&
+      (state.employeeId !== retiringEmployeeId || state.plannedLeaveDate !== getValue("retireDate"))) {
+    retirementPreviewState = null;
+    showRetirementInputStep_();
+    showRetireStatus("退職日が変更されました。もう一度退職内容を確認してください。", "error");
+    return;
+  }
+
+  const confirmation = retirementResultUnknown
+    ? "前回と同じ内容で退職確定結果を再確認します。完了済みの場合は重複して処理されません。"
+    : `${retiringEmployeeName || state.employeeId}さんを${state.plannedLeaveDate}付で退職確定します。\n` +
+      "退職日時点の有給残高とFIFO証跡が保存されます。\n" +
+      "この操作は通常の社員編集から元に戻せません。";
+  if (!confirm(confirmation + "\n\nこの内容で確定しますか？")) return;
+
+  retirementFinalizeInFlight = true;
+  setRetirementModalBusy_(false, true);
+  showRetireStatus(state.recoveryMode ? "退職処理を復旧しています..." : "退職処理を確定しています...", "");
+
+  const session = retirementModalSession;
+  google.script.run
+    .withSuccessHandler(result => {
+      if (session !== retirementModalSession) return;
+      retirementFinalizeInFlight = false;
+      if (!result || result.ok !== true || !["completed", "already_completed", "recovered"].includes(result.status)) {
+        retirementResultUnknown = true;
+        setRetirementUnknownResultState_();
+        showRetireStatus("退職処理の結果を確認できませんでした。再度確定操作を行うと、完了済みの場合は重複せず確認できます。", "error");
+        return;
+      }
+
+      retirementResultUnknown = false;
+      const messages = {
+        completed: "退職処理が完了しました。",
+        already_completed: "この退職処理はすでに確定済みです。",
+        recovered: "前回途中になっていた退職処理を復旧し、退職確定が完了しました。"
+      };
+      const warning = String(result.warning || "").trim();
+      retirementPreviewState = null;
+      setRetirementCompletionState_();
+      loadEmployees();
+      if (warning) {
+        showRetireStatus(messages[result.status] + "\n\n警告: " + warning, "ok");
+        return;
+      }
+
+      showRetireStatus(messages[result.status], "ok");
+      setTimeout(() => {
+        if (session === retirementModalSession) closeRetireModal();
+      }, 800);
     })
-    .retireEmployeeFromAdmin(retiringEmployeeId, leaveDate, getAdminSessionToken_());
+    .withFailureHandler(err => {
+      if (session !== retirementModalSession) return;
+      retirementFinalizeInFlight = false;
+      console.error(err);
+      setRetirementModalBusy_(false, false);
+      if (handleAdminApiFailure_(err)) return;
+      handleRetirementFinalizeFailure_(err);
+    })
+    .finalizeRetirementWithLeaveRecord({
+      employee_id: state.employeeId,
+      planned_leave_date: state.plannedLeaveDate,
+      preview_fingerprint: state.fingerprint
+    }, getAdminSessionToken_());
+}
+
+function handleRetirementFinalizeFailure_(err) {
+  const code = getRetirementErrorCode_(err);
+  if (code === "RETIREMENT_PREVIEW_STALE") {
+    retirementResultUnknown = false;
+    const keepRecoveryMode = retirementPreviewState && retirementPreviewState.recoveryMode;
+    retirementPreviewState = null;
+    retirementRecoveryMode = !!keepRecoveryMode;
+    showRetirementInputStep_();
+    showRetireStatus("確認後に有給情報が変更されました。もう一度退職内容を確認してください。", "error");
+    return;
+  }
+
+  if (code === "RETIREMENT_INCOMPLETE") {
+    retirementResultUnknown = false;
+    retirementPreviewState = null;
+    retirementRecoveryMode = true;
+    showRetirementInputStep_();
+    showRetireStatus("前回の退職処理が途中で終了しています。復旧内容を確認してください。", "error");
+    return;
+  }
+
+  const conflictCodes = [
+    "RETIREMENT_RECORD_CONFLICT",
+    "RETIREMENT_STATE_CONFLICT",
+    "RETIREMENT_RECOVERY_REQUIRED",
+    "RETIREMENT_FIFO_DATA_CONFLICT"
+  ];
+  if (conflictCodes.includes(code)) {
+    retirementResultUnknown = false;
+    setRetirementBlockedState_();
+    showRetireStatus(
+      "退職データの状態を確認する必要があります。処理を続けず管理者データを確認してください。\nエラーコード: " + code,
+      "error"
+    );
+    return;
+  }
+
+  retirementResultUnknown = true;
+  setRetirementUnknownResultState_();
+  showRetireStatus(
+    "退職処理の結果を確認できませんでした。再度確定操作を行うと、完了済みの場合は重複せず確認できます。",
+    "error"
+  );
+}
+
+function backToRetirementInput() {
+  if (retirementPreviewInFlight || retirementFinalizeInFlight || retirementResultUnknown) return;
+  retirementPreviewState = null;
+  showRetirementInputStep_();
+  showRetireStatus(
+    retirementRecoveryMode ? "復旧する退職内容をもう一度確認してください。" : "退職日を入力してください。",
+    ""
+  );
+}
+
+function showRetirementInputStep_() {
+  const inputStep = document.getElementById("retireInputStep");
+  const confirmStep = document.getElementById("retireConfirmStep");
+  if (inputStep) inputStep.style.display = "block";
+  if (confirmStep) confirmStep.style.display = "none";
+  setRetirementElementDisplay_("retirePreviewBtn", "inline-block");
+  setRetirementElementDisplay_("retireBackBtn", "none");
+  setRetirementElementDisplay_("retireFinalizeBtn", "none");
+  const dateInput = document.getElementById("retireDate");
+  if (dateInput) dateInput.disabled = retirementRecoveryMode;
+  const previewButton = document.getElementById("retirePreviewBtn");
+  if (previewButton) previewButton.textContent = retirementRecoveryMode ? "復旧内容を確認する" : "退職内容を確認する";
+  const cancelButton = document.getElementById("retireCancelBtn");
+  if (cancelButton) cancelButton.textContent = "キャンセル";
+  setRetirementModalBusy_(false, false);
+}
+
+function renderRetirementPreview_(result, recoveryMode) {
+  const inputStep = document.getElementById("retireInputStep");
+  const confirmStep = document.getElementById("retireConfirmStep");
+  if (inputStep) inputStep.style.display = "none";
+  if (confirmStep) confirmStep.style.display = "block";
+  setValue("retireConfirmEmployeeName", result.employee.name || retiringEmployeeName || result.employee.employee_id);
+  setValue("retireConfirmEmployeeCode", `${result.employee.employee_id} / ${result.employee.company_code || "-"}`);
+  setValue("retireConfirmDate", result.planned_leave_date);
+  setValue("retireConfirmBalance", formatRetirementPreviewBalance_(result.balance));
+  const unit = document.getElementById("retireConfirmBalanceUnit");
+  if (unit) unit.textContent = result.balance.unit === "minutes" ? "管理単位: 時間（分）" : "管理単位: 日数";
+  renderRetirementPreviewGrantDetails_(result.grant_details);
+  const notice = document.getElementById("retireRecoveryNotice");
+  if (notice) {
+    notice.style.display = recoveryMode ? "block" : "none";
+    notice.textContent = recoveryMode
+      ? "前回の退職処理が途中で終了しています。以下の内容を確認して、復旧して確定してください。"
+      : "";
+  }
+  const confirmation = document.getElementById("retireFinalConfirmation");
+  if (confirmation) {
+    confirmation.textContent = `${result.employee.name || retiringEmployeeName || result.employee.employee_id}さんを${result.planned_leave_date}付で退職確定します。\n` +
+      "退職日時点の有給残高とFIFO証跡が保存されます。\n" +
+      "この操作は通常の社員編集から元に戻せません。";
+  }
+  setRetirementElementDisplay_("retirePreviewBtn", "none");
+  setRetirementElementDisplay_("retireBackBtn", "inline-block");
+  setRetirementElementDisplay_("retireFinalizeBtn", "inline-block");
+  const finalizeButton = document.getElementById("retireFinalizeBtn");
+  if (finalizeButton) finalizeButton.textContent = recoveryMode
+    ? "復旧して退職を確定する"
+    : "この内容で退職を確定する";
+}
+
+function renderRetirementPreviewGrantDetails_(lots) {
+  const area = document.getElementById("retireConfirmGrantDetails");
+  if (!area) return;
+  if (!lots.length) {
+    area.textContent = "対象となる付与ロットはありません。";
+    return;
+  }
+  area.innerHTML = lots.map(lot =>
+    `${escapeHtml(lot.grant_date || "-")} / 期限 ${escapeHtml(lot.valid_to || "-")} / ` +
+    `付与 ${escapeHtml(formatRetirementDays(lot.total_days))}日 / ` +
+    `使用 ${escapeHtml(formatRetirementDays(lot.used_days))}日 / ` +
+    `有効残 ${escapeHtml(formatRetirementDays(lot.active_remaining_days))}日` +
+    (lot.is_expired ? "（期限切れ）" : "")
+  ).join("<br>");
+}
+
+function formatRetirementPreviewBalance_(balance) {
+  if (balance.unit === "minutes") {
+    const minutes = Number(balance.remaining_minutes);
+    return `${Math.floor(minutes / 60)}時間${minutes % 60}分（合計${minutes}分）`;
+  }
+  return `${formatRetirementDays(balance.remaining_days)}日`;
+}
+
+function isValidRetirementPreview_(result, employeeId, leaveDate) {
+  if (!result || result.ok !== true || !result.employee || !result.balance || !Array.isArray(result.grant_details)) return false;
+  if (String(result.employee.employee_id || "") !== String(employeeId || "")) return false;
+  if (String(result.planned_leave_date || "") !== String(leaveDate || "")) return false;
+  if (!/^[a-f0-9]{64}$/.test(String(result.fingerprint || ""))) return false;
+  if (!["days", "minutes"].includes(result.balance.unit)) return false;
+  if (!Number.isFinite(result.balance.remaining_days) || result.balance.remaining_days < 0) return false;
+  if (result.balance.unit === "minutes" &&
+      (!Number.isInteger(result.balance.remaining_minutes) || result.balance.remaining_minutes < 0)) return false;
+  return true;
+}
+
+function setRetirementModalBusy_(previewBusy, finalizeBusy) {
+  const previewButton = document.getElementById("retirePreviewBtn");
+  const finalizeButton = document.getElementById("retireFinalizeBtn");
+  const backButton = document.getElementById("retireBackBtn");
+  const cancelButton = document.getElementById("retireCancelBtn");
+  const closeButton = document.getElementById("retireModalCloseBtn");
+  const dateInput = document.getElementById("retireDate");
+  if (previewButton) previewButton.disabled = !!previewBusy || retirementResultUnknown;
+  if (finalizeButton) finalizeButton.disabled = !!finalizeBusy;
+  if (backButton) backButton.disabled = !!finalizeBusy || retirementResultUnknown;
+  if (cancelButton) cancelButton.disabled = !!previewBusy || !!finalizeBusy || retirementResultUnknown;
+  if (closeButton) closeButton.disabled = !!previewBusy || !!finalizeBusy || retirementResultUnknown;
+  if (dateInput) dateInput.disabled = !!previewBusy || !!finalizeBusy || retirementRecoveryMode || retirementResultUnknown;
+}
+
+function setRetirementUnknownResultState_() {
+  setRetirementModalBusy_(false, false);
+  const finalizeButton = document.getElementById("retireFinalizeBtn");
+  if (finalizeButton) {
+    finalizeButton.disabled = false;
+    finalizeButton.textContent = "退職確定結果を再確認する";
+  }
+}
+
+function setRetirementCompletionState_() {
+  setRetirementElementDisplay_("retireBackBtn", "none");
+  setRetirementElementDisplay_("retireFinalizeBtn", "none");
+  setRetirementElementDisplay_("retirePreviewBtn", "none");
+  const cancelButton = document.getElementById("retireCancelBtn");
+  const closeButton = document.getElementById("retireModalCloseBtn");
+  if (cancelButton) {
+    cancelButton.disabled = false;
+    cancelButton.textContent = "閉じる";
+  }
+  if (closeButton) closeButton.disabled = false;
+}
+
+function setRetirementBlockedState_() {
+  const finalizeButton = document.getElementById("retireFinalizeBtn");
+  const backButton = document.getElementById("retireBackBtn");
+  if (finalizeButton) finalizeButton.disabled = true;
+  if (backButton) backButton.disabled = true;
+  const cancelButton = document.getElementById("retireCancelBtn");
+  const closeButton = document.getElementById("retireModalCloseBtn");
+  if (cancelButton) cancelButton.disabled = false;
+  if (closeButton) closeButton.disabled = false;
+}
+
+function setRetirementElementDisplay_(id, display) {
+  const element = document.getElementById(id);
+  if (element) element.style.display = display;
+}
+
+function getAdminErrorMessage_(err) {
+  return String(err && err.message || (typeof err === "string" ? err : "不明なエラー"))
+    .trim().replace(/^(?:Error:\s*)+/, "");
+}
+
+function getRetirementErrorCode_(err) {
+  const match = getAdminErrorMessage_(err).match(/(RETIREMENT_[A-Z_]+)/);
+  return match ? match[1] : "";
 }
 
 /* =========================

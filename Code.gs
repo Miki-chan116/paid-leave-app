@@ -7365,6 +7365,14 @@ function assertRetirementCompletedEmployeeUpdateIsSafe_(employeeId, beforeObj, n
   }
 }
 
+function assertEmployeeRetirementTransitionUsesFinalize_(currentStatus, requestedStatus) {
+  const current = String(currentStatus || "").trim().toLowerCase();
+  const requested = String(requestedStatus || "").trim().toLowerCase();
+  if (current !== "retired" && requested === "retired") {
+    throw new Error("RETIREMENT_FINALIZE_REQUIRED");
+  }
+}
+
 // Spreadsheetを変更しない回帰確認。確定済み記録の有無は別途assert側で判定する。
 function testRetirementCompletedEmployeeUpdateProtectionNoWrite_() {
   const before = {
@@ -7404,6 +7412,21 @@ function updateEmployeeFromAdmin_(data, adminSessionToken) {
   }
 
   const sheet = getSheet("employees");
+
+  // 退職への状態遷移は、スキーマ補完を含む一切の書込みより前に拒否する。
+  const transitionHeaders = requireHeaders(sheet, ["employee_id", "employment_status"]);
+  const transitionRows = sheet.getDataRange().getValues();
+  const transitionRow = transitionRows.slice(1).find(row =>
+    String(row[transitionHeaders.map.employee_id] || "").trim() === String(data.employee_id || "").trim()
+  );
+  if (!transitionRow) {
+    throw new Error("対象社員が見つかりません");
+  }
+  assertEmployeeRetirementTransitionUsesFinalize_(
+    transitionRow[transitionHeaders.map.employment_status],
+    data.employment_status
+  );
+
   EMPLOYEE_TIME_LEAVE_WORK_SCHEDULE_HEADERS.forEach(header => ensureSheetColumn_(sheet, header));
   const headerInfo = requireHeaders(sheet, [
     "employee_id",
@@ -7529,64 +7552,7 @@ function updateEmployeeFromAdmin_(data, adminSessionToken) {
    退職処理
 ========================= */
 function retireEmployeeFromAdmin(employeeId, leaveDate, adminSessionToken) {
-  return withRetirementFifoWriteLock_(() => retireEmployeeFromAdmin_(employeeId, leaveDate, adminSessionToken));
-}
-
-function retireEmployeeFromAdmin_(employeeId, leaveDate, adminSessionToken) {
-  requireAdminSession_(adminSessionToken);
-  if (!employeeId) {
-    throw new Error("employeeId がありません");
-  }
-
-  if (!leaveDate) {
-    throw new Error("退職日を入力してください");
-  }
-
-  const sheet = getSheet("employees");
-  const headerInfo = requireHeaders(sheet, [
-    "employee_id",
-    "employment_status",
-    "leave_date",
-    "leave_management_target",
-    "updated_at"
-  ]);
-
-  const data = sheet.getDataRange().getValues();
-
-  const rowIndex = data.findIndex((row, index) => {
-    if (index === 0) return false;
-    const rowObj = rowToObject(row, headerInfo.headers);
-    return String(rowObj.employee_id || "").trim() === String(employeeId || "").trim();
-  });
-
-  if (rowIndex === -1) {
-    throw new Error("対象社員が見つかりません");
-  }
-
-  const sheetRow = rowIndex + 1;
-  const currentStatus = String(data[rowIndex][headerInfo.map.employment_status] || "").trim().toLowerCase();
-  if (currentStatus === "retired") {
-    throw new Error("RETIREMENT_STATE_CONFLICT");
-  }
-
-  sheet.getRange(sheetRow, headerInfo.map.employment_status + 1).setValue("retired");
-  sheet.getRange(sheetRow, headerInfo.map.leave_date + 1).setValue(parseLocalDate(leaveDate));
-  sheet.getRange(sheetRow, headerInfo.map.leave_management_target + 1).setValue(false);
-  sheet.getRange(sheetRow, headerInfo.map.updated_at + 1).setValue(new Date());
-
-  maintainEmployeeDisplayOrderOnly_();
-  clearAppCache();
-
-  appendEmployeeMasterLog(
-    "employee_retire",
-    employeeId,
-    "退職処理を実行しました。退職日: " + leaveDate
-  );
-
-  return {
-    ok: true,
-    message: "退職処理を完了しました"
-  };
+  throw new Error("RETIRE_EMPLOYEE_LEGACY_DISABLED");
 }
 
 function getCompanyCalendarMapForRequest() {
