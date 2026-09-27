@@ -414,6 +414,7 @@ function executeCompanyLeaveYearRollover(companyCode, fiscalYear, options, admin
     ]);
 
     dryRun.rows.forEach(row => {
+      assertNoCompletedRetirementLeaveRecordForFifoMutation_(row.employee_id, "年度繰越・年次有給付与");
       if (hasYearlyGrantForFiscalYear_(row.employee_id, dates.next_fiscal_year)) {
         throw new Error(
           row.employee_id +

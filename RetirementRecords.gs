@@ -86,6 +86,34 @@ function assertRetiredEmployeeForRetirementRecord_(employeeId) {
   return employee;
 }
 
+// FIFO入力の保護判定用。記録シートが未作成なら、確定済み記録は存在しない。
+// ensureLeaveRetirementRecordsSheet_ は書込み得るため、ここでは呼び出さない。
+function getCompletedRetirementLeaveRecords_() {
+  const sheet = getAppSpreadsheet().getSheetByName(LEAVE_RETIREMENT_RECORDS_SHEET);
+  if (!sheet) return [];
+  const headerInfo = requireHeaders(sheet, ["employee_id", "leave_date", "record_status"]);
+  return sheet.getDataRange().getValues().slice(1)
+    .map(row => rowToObject(row, headerInfo.headers))
+    .filter(rowObj =>
+      String(rowObj.employee_id || "").trim() &&
+      String(rowObj.record_status || "").trim().toLowerCase() === "completed"
+    );
+}
+
+function hasCompletedRetirementLeaveRecord_(employeeId) {
+  const targetEmployeeId = String(employeeId || "").trim();
+  if (!targetEmployeeId) return false;
+  return getCompletedRetirementLeaveRecords_().some(rowObj =>
+    String(rowObj.employee_id || "").trim() === targetEmployeeId
+  );
+}
+
+function assertNoCompletedRetirementLeaveRecordForFifoMutation_(employeeId, actionLabel) {
+  if (!hasCompletedRetirementLeaveRecord_(employeeId)) return;
+  throw new Error("RETIREMENT_RECORD_FINALIZED: 退職時有給記録の確定後は" +
+    String(actionLabel || "FIFO入力の変更") + "を実行できません");
+}
+
 /*
  * 退職時記録はSpreadsheetを正DBとして算出する。
  * 既存ダッシュボード用のFIFO本体は変更せず、同じFIFO関数へ渡すコンテキストだけを
@@ -202,8 +230,33 @@ function previewRetirementForAdmin(employeeId, plannedLeaveDate, token) {
     throw new Error("在職中の社員だけ退職前の残高を確認できます");
   }
 
+  return buildRetirementPreviewResponse_(targetId, dateKey, leaveDate, employee);
+}
+
+/* 中核更新の途中状態またはC状態だけ、再読込後の再確認を許可する。 */
+function previewRetirementRecoveryForAdmin(employeeId, plannedLeaveDate, token) {
+  requireAdminSession_(token);
+  const targetId = String(employeeId || "").trim();
+  const dateKey = String(plannedLeaveDate || "").trim();
+  if (!targetId) throw new Error("RETIREMENT_INVALID_EMPLOYEE");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new Error("RETIREMENT_INVALID_DATE");
+  let leaveDate;
+  try { leaveDate = parseLocalDate(dateKey); } catch (err) { throw new Error("RETIREMENT_INVALID_DATE"); }
+  const source = getRetirementFinalizeEmployeeRow_(targetId);
+  const records = getRetirementFinalizeRecordRows_(targetId).records;
+  const state = classifyRetirementFinalizeState_(source.employee, records, dateKey);
+  if (state.kind !== "recovery" && state.kind !== "partial_recovery") {
+    throw new Error("RETIREMENT_RECOVERY_REQUIRED");
+  }
+  return buildRetirementPreviewResponse_(targetId, dateKey, leaveDate, source.employee, true);
+}
+
+function buildRetirementPreviewResponse_(targetId, dateKey, leaveDate, employee, verifyCompany) {
   const context = createSpreadsheetFifoBalanceContext_(leaveDate);
   const companyCode = String(context.company_code_by_employee[targetId] || "").trim().toUpperCase();
+  if (verifyCompany && companyCode !== String(employee.company_code || "").trim().toUpperCase()) {
+    throw new Error("RETIREMENT_STATE_CONFLICT");
+  }
   const policy = getCompanyLeavePolicy(companyCode); // 対応する会社制度がない場合は試算しない。
   const fifoBalance = calculateFifoBalanceWithOpeningBalanceFromContext_(targetId, leaveDate, context);
   const isMain = isMainTimeLeaveEmployeeForFifo_(targetId, context);
@@ -331,7 +384,8 @@ function retirementFingerprintFields_(source, fields, isMain) {
     } else if (key === "is_expired" || key === "validity_needs_review") {
       if (typeof value !== "boolean") throw new Error("FIFO論理値が不正です: " + key);
       result[key] = value;
-    } else if (/(_minutes|_days)(_total)?$/.test(key) || key === "scheduled_minutes_per_day") {
+    } else if (/(_minutes|_days)(_total)?$/.test(key) || key === "days" ||
+        key === "scheduled_minutes_per_day") {
       if (typeof value !== "number" || !Number.isFinite(value) ||
           ((key.endsWith("_minutes") || key === "scheduled_minutes_per_day") && !Number.isInteger(value))) {
         throw new Error("FIFO計算値が不正です: " + key);
@@ -667,6 +721,270 @@ function createRetirementLeaveRecordForRetiredEmployee(payload, adminSessionToke
   } finally {
     lock.releaseLock();
   }
+}
+
+/* 退職前プレビューに対応する確定API。既存の後追い記録APIとは独立させる。 */
+function finalizeRetirementWithLeaveRecord(payload, token) {
+  const adminUser = requireAdminSession_(token);
+  const input = payload || {};
+  const employeeId = String(input.employee_id || "").trim();
+  const dateKey = String(input.planned_leave_date || "").trim();
+  const previewFingerprint = String(input.preview_fingerprint || "").trim();
+  if (!employeeId) throw new Error("RETIREMENT_INVALID_EMPLOYEE");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new Error("RETIREMENT_INVALID_DATE");
+  let leaveDate;
+  try { leaveDate = parseLocalDate(dateKey); } catch (err) { throw new Error("RETIREMENT_INVALID_DATE"); }
+  if (!/^[a-f0-9]{64}$/.test(previewFingerprint)) throw new Error("RETIREMENT_PREVIEW_STALE");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    // ロック後に社員・記録・FIFO入力をすべて再読取りする。ensure* は書込み得るため使用しない。
+    const employeeSource = getRetirementFinalizeEmployeeRow_(employeeId);
+    const recordSource = getRetirementFinalizeRecordRows_(employeeId);
+    const state = classifyRetirementFinalizeState_(employeeSource.employee, recordSource.records, dateKey);
+    const context = createSpreadsheetFifoBalanceContext_(leaveDate);
+    const companyCode = String(context.company_code_by_employee[employeeId] || "").trim().toUpperCase();
+    if (companyCode !== String(employeeSource.employee.company_code || "").trim().toUpperCase()) {
+      throw new Error("RETIREMENT_STATE_CONFLICT");
+    }
+    let policy, balance, isMain, fingerprint;
+    try {
+      policy = getCompanyLeavePolicy(companyCode);
+      balance = calculateFifoBalanceWithOpeningBalanceFromContext_(employeeId, leaveDate, context);
+      isMain = isMainTimeLeaveEmployeeForFifo_(employeeId, context);
+      fingerprint = createRetirementPreviewFingerprint_(employeeId, dateKey, companyCode, policy, balance, isMain);
+    } catch (err) {
+      throw new Error("RETIREMENT_FIFO_DATA_CONFLICT: " + err.message);
+    }
+    if (fingerprint !== previewFingerprint) throw new Error("RETIREMENT_PREVIEW_STALE");
+
+    const record = state.kind === "already_completed"
+      ? state.record
+      : buildRetirementFinalizeRecord_(recordSource.headers, employeeId, leaveDate, adminUser, balance, isMain);
+    if (state.kind === "already_completed") {
+      assertRetirementFinalizeRecordOnly_(record, balance, isMain);
+      // 再送は完全に読取り専用。付随処理の補完は通常の再送に混ぜない。
+      return {
+        ok: true, status: "already_completed", employee_id: employeeId, leave_date: dateKey,
+        retirement_record_id: String(record.retirement_record_id),
+        balance: {
+          unit: isMain ? "minutes" : "days",
+          remaining_days: Number(balance.current_remaining_days),
+          remaining_minutes: isMain ? Number(balance.current_remaining_minutes) : null
+        },
+        warning: ""
+      };
+    }
+
+    // 付随処理のヘッダーも先に検証し、中核処理後の失敗を減らす。
+    requireHeaders(getSheet("usage_log"), ["log_id", "request_id", "action_type", "operator_id", "operator_name", "action_date", "comment"]);
+    requireHeaders(employeeSource.sheet, ["display_employee_id", "name", "name_kana", "display_order"]);
+
+    let completed;
+    try {
+      if (state.kind === "new" || state.kind === "partial_recovery") {
+        const map = employeeSource.headers.map;
+        if (state.kind === "new") {
+          employeeSource.sheet.getRange(employeeSource.rowNumber, map.employment_status + 1).setValue("retired");
+        }
+        if (state.kind === "new" || state.stage === "status_only") {
+          employeeSource.sheet.getRange(employeeSource.rowNumber, map.leave_date + 1).setValue(leaveDate);
+        }
+        employeeSource.sheet.getRange(employeeSource.rowNumber, map.leave_management_target + 1).setValue(false);
+        employeeSource.sheet.getRange(employeeSource.rowNumber, map.updated_at + 1).setValue(new Date());
+        SpreadsheetApp.flush();
+      }
+      if (state.kind !== "already_completed") {
+        appendRowFast_(recordSource.sheet, objectToRow(record, recordSource.headers.headers));
+        SpreadsheetApp.flush();
+      }
+      completed = verifyRetirementFinalizeCore_(employeeId, dateKey, record.retirement_record_id);
+    } catch (err) {
+      if (err.message === "RETIREMENT_INCOMPLETE" ||
+          String(err.message).indexOf("RETIREMENT_INCOMPLETE: ") === 0) throw err;
+      throw new Error("RETIREMENT_INCOMPLETE: " + err.message);
+    }
+    const warning = finishRetirementFinalizeSideEffects_(employeeId, dateKey, completed, adminUser);
+    return {
+      ok: true,
+      status: state.kind === "new" ? "completed" : "recovered",
+      employee_id: employeeId,
+      leave_date: dateKey,
+      retirement_record_id: String(completed.retirement_record_id),
+      balance: {
+        unit: isMain ? "minutes" : "days",
+        remaining_days: Number(balance.current_remaining_days),
+        remaining_minutes: isMain ? Number(balance.current_remaining_minutes) : null
+      },
+      warning: warning
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getRetirementFinalizeEmployeeRow_(employeeId) {
+  const sheet = getSheet("employees");
+  const headers = requireHeaders(sheet, ["employee_id", "company_code", "employment_status",
+    "leave_date", "leave_management_target", "updated_at"]);
+  const matches = sheet.getDataRange().getValues().map((row, index) => ({ row: row, rowNumber: index + 1 }))
+    .slice(1).filter(item => String(item.row[headers.map.employee_id] || "").trim() === employeeId);
+  if (matches.length !== 1) throw new Error("RETIREMENT_STATE_CONFLICT");
+  return { sheet: sheet, headers: headers, row: matches[0].row,
+    rowNumber: matches[0].rowNumber, employee: rowToObject(matches[0].row, headers.headers) };
+}
+
+function getRetirementFinalizeRecordRows_(employeeId) {
+  const sheet = getSheet(LEAVE_RETIREMENT_RECORDS_SHEET);
+  const headers = requireHeaders(sheet,
+    LEAVE_RETIREMENT_RECORD_HEADERS.concat(LEAVE_RETIREMENT_RECORD_MINUTE_HEADERS));
+  const records = sheet.getDataRange().getValues().slice(1)
+    .map(row => rowToObject(row, headers.headers))
+    .filter(row => String(row.employee_id || "").trim() === employeeId);
+  return { sheet: sheet, headers: headers, records: records };
+}
+
+function classifyRetirementFinalizeState_(employee, records, dateKey) {
+  const status = String(employee.employment_status || "").trim().toLowerCase();
+  const employeeDate = employee.leave_date ? toDateKey(employee.leave_date) : "";
+  const completed = records.filter(row => String(row.record_status || "").trim().toLowerCase() === "completed");
+  if (completed.length > 1) throw new Error("RETIREMENT_RECORD_CONFLICT");
+  if (completed.length === 1 && (!completed[0].leave_date || toDateKey(completed[0].leave_date) !== dateKey)) {
+    throw new Error("RETIREMENT_RECORD_CONFLICT");
+  }
+  if (records.some(row => String(row.record_status || "").trim().toLowerCase() !== "completed")) {
+    throw new Error("RETIREMENT_RECOVERY_REQUIRED");
+  }
+  if (status === "active" || status === "在職") {
+    if (completed.length || employeeDate) throw new Error("RETIREMENT_STATE_CONFLICT");
+    return { kind: "new" };
+  }
+  if (status !== "retired" || (employeeDate && employeeDate !== dateKey)) {
+    throw new Error("RETIREMENT_STATE_CONFLICT");
+  }
+  if (completed.length) {
+    if (employeeDate !== dateKey || employee.leave_management_target !== false) {
+      throw new Error("RETIREMENT_STATE_CONFLICT");
+    }
+    return { kind: "already_completed", record: completed[0] };
+  }
+  if (records.length !== 0) throw new Error("RETIREMENT_RECOVERY_REQUIRED");
+  if (employeeDate === dateKey && employee.leave_management_target === false) return { kind: "recovery" };
+  if (employee.leave_management_target === true) {
+    if (!employeeDate) return { kind: "partial_recovery", stage: "status_only" };
+    if (employeeDate === dateKey) return { kind: "partial_recovery", stage: "date_written" };
+  }
+  throw new Error("RETIREMENT_STATE_CONFLICT");
+}
+
+function buildRetirementFinalizeRecord_(headers, employeeId, leaveDate, adminUser, balance, isMain) {
+  const days = Number(balance.current_remaining_days);
+  const minutes = isMain ? Number(balance.current_remaining_minutes) : null;
+  if (!Number.isFinite(days) || days < 0 || (isMain && (!Number.isInteger(minutes) || minutes < 0))) {
+    throw new Error("RETIREMENT_FIFO_DATA_CONFLICT");
+  }
+  const evidence = serializeRetirementFifoEvidence_(balance);
+  const now = new Date();
+  const row = createEmptyRowObject(headers.headers);
+  row.retirement_record_id = Utilities.getUuid();
+  row.employee_id = employeeId;
+  row.leave_date = leaveDate;
+  row.balance_as_of_leave_date = days;
+  row.adjustment_days = isMain ? "" : 0;
+  row.balance_after_adjustment = isMain ? "" : days;
+  row.adjustment_type = "none";
+  row.reason = "retirement_settlement";
+  row.notes = "";
+  row.calculation_version = isMain ? "fifo_minutes_v1" : "fifo_with_opening_balance_v1";
+  row.fifo_grant_details_json = evidence.grant_details_json;
+  row.fifo_allocations_json = evidence.allocations_json;
+  row.calculated_at = now;
+  row.operator_id = adminUser.admin_id;
+  row.operator_name = adminUser.admin_name;
+  row.record_status = "completed";
+  row.revision = 1;
+  row.supersedes_record_id = "";
+  row.created_at = now;
+  row.updated_at = now;
+  if (isMain) {
+    row.remaining_minutes = minutes;
+    row.remaining_full_days = Number(balance.remaining_full_days || 0);
+    row.remaining_hours = Number(balance.remaining_hours || 0);
+    row.remaining_remainder_minutes = Number(balance.remaining_remainder_minutes || 0);
+    row.adjustment_minutes = 0;
+    row.adjusted_remaining_minutes = minutes;
+  }
+  return row;
+}
+
+function assertRetirementFinalizeRecordOnly_(record, balance, isMain) {
+  const days = Number(balance.current_remaining_days);
+  const evidence = serializeRetirementFifoEvidence_(balance);
+  const requiredNumber = value => value !== "" && value !== null && value !== undefined &&
+    typeof value !== "boolean" && String(value).trim() !== "" && Number.isFinite(Number(value));
+  if (!String(record.retirement_record_id || "").trim()) {
+    throw new Error("RETIREMENT_RECORD_CONFLICT");
+  }
+  const hasNoAdjustment = String(record.adjustment_type || "").trim() === "none";
+  const sameDays = requiredNumber(record.balance_as_of_leave_date) &&
+    Number(record.balance_as_of_leave_date) === days;
+  const sameUnit = isMain
+    ? requiredNumber(record.remaining_minutes) && requiredNumber(record.adjustment_minutes) &&
+      requiredNumber(record.adjusted_remaining_minutes) &&
+      Number(record.remaining_minutes) === Number(balance.current_remaining_minutes) &&
+      Number(record.adjustment_minutes) === 0 &&
+      Number(record.adjusted_remaining_minutes) === Number(balance.current_remaining_minutes) &&
+      record.adjustment_days === "" && record.balance_after_adjustment === ""
+    : requiredNumber(record.adjustment_days) && requiredNumber(record.balance_after_adjustment) &&
+      Number(record.adjustment_days) === 0 && Number(record.balance_after_adjustment) === days;
+  if (!hasNoAdjustment || !sameDays || !sameUnit ||
+      String(record.fifo_grant_details_json || "") !== evidence.grant_details_json ||
+      String(record.fifo_allocations_json || "") !== evidence.allocations_json ||
+      String(record.calculation_version || "").trim() !==
+        (isMain ? "fifo_minutes_v1" : "fifo_with_opening_balance_v1")) {
+    throw new Error("RETIREMENT_RECORD_CONFLICT");
+  }
+}
+
+function verifyRetirementFinalizeCore_(employeeId, dateKey, recordId) {
+  const employee = getRetirementFinalizeEmployeeRow_(employeeId).employee;
+  const records = getRetirementFinalizeRecordRows_(employeeId).records
+    .filter(row => String(row.record_status || "").trim().toLowerCase() === "completed" &&
+      row.leave_date && toDateKey(row.leave_date) === dateKey);
+  if (String(employee.employment_status || "").trim().toLowerCase() !== "retired" ||
+      !employee.leave_date || toDateKey(employee.leave_date) !== dateKey ||
+      employee.leave_management_target !== false || records.length !== 1 ||
+      String(records[0].retirement_record_id || "").trim() !== String(recordId || "").trim()) {
+    throw new Error("RETIREMENT_INCOMPLETE");
+  }
+  return records[0];
+}
+
+function finishRetirementFinalizeSideEffects_(employeeId, dateKey, record, adminUser) {
+  const warnings = [];
+  try { maintainEmployeeDisplayOrderOnly_(); } catch (err) { warnings.push("display_order: " + err.message); }
+  // maintainEmployeeDisplayOrderOnly_ は内部で cache を消すが、失敗時にも個別に再試行する。
+  try { clearAppCache(); } catch (err) { warnings.push("cache: " + err.message); }
+  try {
+    const logSheet = getSheet("usage_log");
+    const headers = requireHeaders(logSheet, ["request_id", "action_type", "comment"]);
+    const marker = "retirement_record_id=" + String(record.retirement_record_id);
+    const logged = logSheet.getDataRange().getValues().slice(1).some(row => {
+      const item = rowToObject(row, headers.headers);
+      return String(item.request_id || "").trim() === employeeId &&
+        String(item.action_type || "").trim() === "employee_retire_with_leave_record" &&
+        String(item.comment || "").indexOf(marker) !== -1;
+    });
+    if (!logged) appendUsageLog({
+      request_id: employeeId,
+      action_type: "employee_retire_with_leave_record",
+      operator_id: adminUser.admin_id,
+      operator_name: adminUser.admin_name,
+      comment: "退職・退職時有給記録を確定しました: 退職日=" + dateKey + " / " + marker
+    });
+  } catch (err) { warnings.push("audit_log: " + err.message); }
+  return warnings.join("; ");
 }
 
 /* 読み取り・純粋計算のみの手動実行テスト。Spreadsheetデータは変更しない。 */

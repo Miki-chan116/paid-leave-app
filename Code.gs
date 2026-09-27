@@ -4383,6 +4383,9 @@ function approveTimeLeaveRequest_(requestId, adminUser) {
     lock.waitLock(30000);
     lockAcquired = true;
 
+    const lockedTarget = getPendingApprovalTarget_(requestId);
+    assertNoCompletedRetirementLeaveRecordForFifoMutation_(lockedTarget.employee_id, "有給申請の承認");
+
     stage = "TIME_LEAVE_APPROVAL_BALANCE_VALIDATING";
     const balanceResults = validateMainApprovalBalancesForRequests_([requestId]);
     const balanceResult = balanceResults[0] || {};
@@ -4457,6 +4460,9 @@ function approveRequestsBatchWithFifoValidation_(requestIds, adminUser) {
   lock.waitLock(30000);
   try {
     const targets = getPendingApprovalTargets_(requestIds);
+    targets.forEach(target => assertNoCompletedRetirementLeaveRecordForFifoMutation_(
+      target.employee_id, "有給申請の一括承認"
+    ));
     const targetRequestIds = targets.map(target => target.request_id);
     validateApprovalTargetsByCompany_(targets);
     const timeRequestIds = targets
@@ -4629,6 +4635,10 @@ appendRowFast_(
    個人ページ用：承認待ち申請の修正
 ========================= */
 function updatePendingLeaveRequestForEmployee(requestId, employeeId, data) {
+  return withRetirementFifoWriteLock_(() => updatePendingLeaveRequestForEmployee_(requestId, employeeId, data));
+}
+
+function updatePendingLeaveRequestForEmployee_(requestId, employeeId, data) {
   const targetRequestId = String(requestId || "").trim();
   const targetEmployeeId = String(employeeId || "").trim();
 
@@ -4732,6 +4742,10 @@ function updatePendingLeaveRequestForEmployee(requestId, employeeId, data) {
    個人ページ用：承認待ち申請の取消
 ========================= */
 function cancelPendingLeaveRequestForEmployee(requestId, employeeId) {
+  return withRetirementFifoWriteLock_(() => cancelPendingLeaveRequestForEmployee_(requestId, employeeId));
+}
+
+function cancelPendingLeaveRequestForEmployee_(requestId, employeeId) {
   const targetRequestId = String(requestId || "").trim();
   const targetEmployeeId = String(employeeId || "").trim();
 
@@ -5817,100 +5831,22 @@ function approveRequestsBatch(requestIds, adminSessionToken) {
   return approveRequestsBatchWithFifoValidation_(requestIds, adminUser);
 }
 
-// 旧日数のみの一括承認実装。Phase 4以降は上記の共通FIFO検証経由でのみ呼び出す。
+// 廃止済みの旧一括承認経路。承認は approveRequestsBatch() のみを使用すること。
 function approveRequestsBatchLegacy_(requestIds, adminUser) {
-  const sheet = getSheet("leave_requests");
-  const headerInfo = requireHeaders(sheet, [
-    "request_id",
-    "status",
-    "approver_id",
-    "approver_name",
-    "approved_at",
-    "updated_at"
-  ]);
+  throw new Error("APPROVE_REQUESTS_BATCH_LEGACY_DISABLED: approveRequestsBatch() を使用してください");
+}
 
-  const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
-
-  if (lastRow <= 1) {
-    throw new Error("申請データがありません");
+// Spreadsheetを参照・変更せず、旧経路が必ず停止することだけを確認する。
+function testApproveRequestsBatchLegacyDisabledNoWrite_() {
+  try {
+    approveRequestsBatchLegacy_(["TEST-REQUEST"], { admin_id: "test" });
+  } catch (err) {
+    return {
+      ok: String(err && err.message || err).indexOf("APPROVE_REQUESTS_BATCH_LEGACY_DISABLED") === 0,
+      error: String(err && err.message || err)
+    };
   }
-
-  const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-  const targetIdSet = new Set(requestIds.map(id => String(id)));
-
-  const now = new Date();
-
-  const operatorId = adminUser && adminUser.admin_id
-    ? String(adminUser.admin_id).trim()
-    : "admin";
-
-  const operatorName = adminUser && adminUser.admin_name
-    ? String(adminUser.admin_name).trim()
-    : "管理者";
-
-  let updatedCount = 0;
-
-  const updatedRows = data.slice(1).map(row => {
-    const requestId = String(row[headerInfo.map.request_id] || "");
-
-    if (!targetIdSet.has(requestId)) {
-      return row;
-    }
-
-    row[headerInfo.map.status] = STATUS.APPROVED;
-    row[headerInfo.map.approver_id] = operatorId;
-    row[headerInfo.map.approver_name] = operatorName;
-    row[headerInfo.map.approved_at] = now;
-    row[headerInfo.map.updated_at] = now;
-
-    updatedCount++;
-
-    return row;
-  });
-
-  if (updatedCount === 0) {
-    throw new Error("承認対象の申請が見つかりません");
-  }
-
-  sheet.getRange(2, 1, updatedRows.length, lastCol).setValues(updatedRows);
-
-  const logSheet = getSheet("usage_log");
-  const logHeaderInfo = requireHeaders(logSheet, [
-    "log_id",
-    "request_id",
-    "action_type",
-    "operator_id",
-    "operator_name",
-    "action_date",
-    "comment"
-  ]);
-
-  const logRows = requestIds.map(requestId => {
-    const rowObj = createEmptyRowObject(logHeaderInfo.headers);
-
-    rowObj.log_id = Utilities.getUuid();
-    rowObj.request_id = requestId;
-    rowObj.action_type = "approve";
-    rowObj.operator_id = operatorId;
-    rowObj.operator_name = operatorName;
-    rowObj.action_date = now;
-    rowObj.comment = "Batch approved by " + operatorName;
-
-    return objectToRow(rowObj, logHeaderInfo.headers);
-  });
-
-  const logStartRow = logSheet.getLastRow() + 1;
-  logSheet
-    .getRange(logStartRow, 1, logRows.length, logRows[0].length)
-    .setValues(logRows);
-
-  clearAppCache();
-
-  return {
-    ok: true,
-    count: updatedCount
-  };
+  return { ok: false, error: "旧一括承認経路が停止しませんでした" };
 }
 
 function approveRequest(requestId, adminSessionToken) {
@@ -5925,6 +5861,7 @@ function approveRequest(requestId, adminSessionToken) {
   lock.waitLock(30000);
   try {
     const lockedTarget = getPendingApprovalTarget_(target.request_id);
+    assertNoCompletedRetirementLeaveRecordForFifoMutation_(lockedTarget.employee_id, "有給申請の承認");
     validateApprovalTargetsByCompany_([lockedTarget]);
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
@@ -5993,7 +5930,17 @@ function approveRequest(requestId, adminSessionToken) {
 /* =========================
    管理画面用：承認後取消
 ========================= */
+function withRetirementFifoWriteLock_(callback) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try { return callback(); } finally { lock.releaseLock(); }
+}
+
 function cancelApprovedRequestByAdmin(requestId, reason, adminSessionToken) {
+  return withRetirementFifoWriteLock_(() => cancelApprovedRequestByAdmin_(requestId, reason, adminSessionToken));
+}
+
+function cancelApprovedRequestByAdmin_(requestId, reason, adminSessionToken) {
   const adminUser = requireAdminSession_(adminSessionToken);
   const targetRequestId = String(requestId || "").trim();
 
@@ -6004,6 +5951,7 @@ function cancelApprovedRequestByAdmin(requestId, reason, adminSessionToken) {
   const sheet = getSheet("leave_requests");
   const headerInfo = requireHeaders(sheet, [
     "request_id",
+    "employee_id",
     "status",
     "updated_at"
   ]);
@@ -6031,6 +5979,8 @@ function cancelApprovedRequestByAdmin(requestId, reason, adminSessionToken) {
   if (currentStatus !== STATUS.APPROVED) {
     throw new Error("承認済みの申請だけ管理者取消できます");
   }
+  const employeeId = String(rowValues[headerInfo.map.employee_id] || "").trim();
+  assertNoCompletedRetirementLeaveRecordForFifoMutation_(employeeId, "承認済み有給申請の取消");
 
   const now = new Date();
   const operatorId = adminUser && adminUser.admin_id
@@ -6076,6 +6026,10 @@ function cancelApprovedRequestByAdmin(requestId, reason, adminSessionToken) {
    否認
 ========================= */
 function rejectRequest(requestId, reason, adminSessionToken) {
+  return withRetirementFifoWriteLock_(() => rejectRequest_(requestId, reason, adminSessionToken));
+}
+
+function rejectRequest_(requestId, reason, adminSessionToken) {
   const adminUser = requireAdminSession_(adminSessionToken);
   if (!requestId) {
     throw new Error("requestId がありません");
@@ -6106,6 +6060,9 @@ function rejectRequest(requestId, reason, adminSessionToken) {
   }
 
   const sheetRow = rowIndex + 1;
+  if (norm(data[rowIndex][headerInfo.map.status]) !== STATUS.PENDING) {
+    throw new Error("承認待ちの申請だけ否認できます");
+  }
   const now = new Date();
 
   sheet.getRange(sheetRow, headerInfo.map.status + 1).setValue(STATUS.REJECTED);
@@ -7056,6 +7013,10 @@ function getEmploymentStatusOrder_(status) {
    社員追加
 ========================= */
 function addEmployeeFromAdmin(data, adminSessionToken) {
+  return withRetirementFifoWriteLock_(() => addEmployeeFromAdmin_(data, adminSessionToken));
+}
+
+function addEmployeeFromAdmin_(data, adminSessionToken) {
   requireAdminSession_(adminSessionToken);
   if (!data || typeof data !== "object") {
     throw new Error("社員データがありません");
@@ -7362,7 +7323,77 @@ function normalizeEmployeeLogValue(value, type) {
 /* =========================
    社員情報更新
 ========================= */
+// 確定済み退職時記録は当時のFIFO計算事実を保存している。社員マスターのうち、その
+// 事実または退職状態を変える項目だけを保護し、氏名・部署などは引き続き編集可能にする。
+function normalizeRetirementProtectedText_(value) {
+  return String(value == null ? "" : value).trim();
+}
+
+function normalizeRetirementProtectedDate_(value) {
+  return value ? toDateKey(value) : "";
+}
+
+function normalizeRetirementProtectedNumber_(value) {
+  if (value === "" || value === null || value === undefined) return "";
+  const number = Number(value);
+  return Number.isFinite(number) ? String(number) : normalizeRetirementProtectedText_(value);
+}
+
+function getRetirementProtectedEmployeeFieldChanges_(beforeObj, nextObj) {
+  const before = beforeObj || {};
+  const next = nextObj || {};
+  const checks = [
+    ["employment_status", "在職状態", value => normalizeRetirementProtectedText_(value).toLowerCase()],
+    ["leave_date", "退職日", normalizeRetirementProtectedDate_],
+    ["leave_management_target", "有給管理対象", value => String(value === true || String(value).toUpperCase() === "TRUE")],
+    ["company_code", "会社コード", value => normalizeRetirementProtectedText_(value).toUpperCase()],
+    ["work_days_per_week", "週所定労働日数", normalizeRetirementProtectedNumber_],
+    ["work_start_minute", "勤務開始時刻", normalizeRetirementProtectedNumber_],
+    ["work_end_minute", "勤務終了時刻", normalizeRetirementProtectedNumber_],
+    ["fiscal_start_month", "有給年度開始月", normalizeRetirementProtectedNumber_]
+  ];
+  return checks.filter(item => item[2](before[item[0]]) !== item[2](next[item[0]]))
+    .map(item => item[1]);
+}
+
+function assertRetirementCompletedEmployeeUpdateIsSafe_(employeeId, beforeObj, nextObj) {
+  if (!hasCompletedRetirementLeaveRecord_(employeeId)) return;
+  const changes = getRetirementProtectedEmployeeFieldChanges_(beforeObj, nextObj);
+  if (changes.length > 0) {
+    throw new Error("RETIREMENT_RECORD_CONFLICT: 確定済み退職時記録と整合しないため変更できません: " +
+      changes.join("、"));
+  }
+}
+
+// Spreadsheetを変更しない回帰確認。確定済み記録の有無は別途assert側で判定する。
+function testRetirementCompletedEmployeeUpdateProtectionNoWrite_() {
+  const before = {
+    employment_status: "retired", leave_date: "2026-09-30", leave_management_target: false,
+    company_code: "MAIN", work_days_per_week: 5, work_start_minute: 540,
+    work_end_minute: 1020, fiscal_start_month: 4, name: "退職 太郎", department: "総務"
+  };
+  const same = Object.assign({}, before, {
+    employment_status: " RETIRED ", leave_date: "2026/09/30", leave_management_target: "FALSE",
+    company_code: " main ", work_days_per_week: "5", work_start_minute: "540",
+    work_end_minute: "1020", fiscal_start_month: "4", name: "退職 花子", department: "人事"
+  });
+  const protectedChanges = getRetirementProtectedEmployeeFieldChanges_(before, Object.assign({}, before, {
+    company_code: "PARTNER", leave_date: "2026-10-01", work_start_minute: 480
+  }));
+  return {
+    ok: getRetirementProtectedEmployeeFieldChanges_(before, same).length === 0 &&
+      protectedChanges.join(",") === "退職日,会社コード,勤務開始時刻",
+    unchanged_protected_field_count: getRetirementProtectedEmployeeFieldChanges_(before, same).length,
+    protected_changes: protectedChanges,
+    non_protected_fields_remain_editable: true
+  };
+}
+
 function updateEmployeeFromAdmin(data, adminSessionToken) {
+  return withRetirementFifoWriteLock_(() => updateEmployeeFromAdmin_(data, adminSessionToken));
+}
+
+function updateEmployeeFromAdmin_(data, adminSessionToken) {
   requireAdminSession_(adminSessionToken);
   if (!data || typeof data !== "object") {
     throw new Error("社員データがありません");
@@ -7413,39 +7444,57 @@ function updateEmployeeFromAdmin(data, adminSessionToken) {
   const sheetRow = rowIndex + 1;
   const beforeObj = rowToObject(dataRange[rowIndex], headerInfo.headers);
 
+  // 後続の書込みと同じ正規化値で、確定済み記録への影響を先に判定する。
+  const companyCode = String(data.company_code || "").trim().toUpperCase();
+  const leaveDate = data.leave_date ? parseLocalDate(data.leave_date) : "";
+  const hireDate = data.hire_date ? parseLocalDate(data.hire_date) : "";
+  const workDaysPerWeek = data.work_days_per_week ? Number(data.work_days_per_week) : "";
+  const workStartMinute = data.work_start_minute === "" || data.work_start_minute == null
+    ? "" : getOptionalEmployeeWorkMinute_(data.work_start_minute, "work_start_minute");
+  const workEndMinute = data.work_end_minute === "" || data.work_end_minute == null
+    ? "" : getOptionalEmployeeWorkMinute_(data.work_end_minute, "work_end_minute");
+  const fiscalStartMonth = getFiscalStartMonthForCompanyCode_(companyCode, data.fiscal_start_month);
+  const leaveManagementTarget = String(data.leave_management_target || "").toUpperCase() === "TRUE";
+  resolveEmployeeTimeLeavePolicy_(data.employee_id, Object.assign({}, beforeObj, {
+    company_code: companyCode, work_start_minute: workStartMinute, work_end_minute: workEndMinute
+  }));
+  assertRetirementCompletedEmployeeUpdateIsSafe_(data.employee_id, beforeObj, {
+    employment_status: String(data.employment_status || "").trim(),
+    leave_date: leaveDate,
+    leave_management_target: leaveManagementTarget,
+    company_code: companyCode,
+    work_days_per_week: workDaysPerWeek,
+    work_start_minute: workStartMinute,
+    work_end_minute: workEndMinute,
+    fiscal_start_month: fiscalStartMonth
+  });
+
   sheet.getRange(sheetRow, headerInfo.map.name + 1).setValue(String(data.name || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.display_name + 1).setValue(String(data.display_name || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.name_kana + 1).setValue(String(data.name_kana || "").trim());
-  sheet.getRange(sheetRow, headerInfo.map.company_code + 1).setValue(String(data.company_code || "").trim().toUpperCase());
+  sheet.getRange(sheetRow, headerInfo.map.company_code + 1).setValue(companyCode);
   sheet.getRange(sheetRow, headerInfo.map.company_name + 1).setValue(String(data.company_name || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.department + 1).setValue(String(data.department || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.employment_type + 1).setValue(String(data.employment_type || "").trim());
   sheet.getRange(sheetRow, headerInfo.map.employment_status + 1).setValue(String(data.employment_status || "").trim());
 
   sheet.getRange(sheetRow, headerInfo.map.hire_date + 1)
-    .setValue(data.hire_date ? parseLocalDate(data.hire_date) : "");
+    .setValue(hireDate);
 
   sheet.getRange(sheetRow, headerInfo.map.leave_date + 1)
-    .setValue(data.leave_date ? parseLocalDate(data.leave_date) : "");
+    .setValue(leaveDate);
 
   sheet.getRange(sheetRow, headerInfo.map.work_days_per_week + 1)
-    .setValue(data.work_days_per_week ? Number(data.work_days_per_week) : "");
+    .setValue(workDaysPerWeek);
 
-  const workStartMinute = data.work_start_minute === "" || data.work_start_minute == null
-    ? "" : getOptionalEmployeeWorkMinute_(data.work_start_minute, "work_start_minute");
-  const workEndMinute = data.work_end_minute === "" || data.work_end_minute == null
-    ? "" : getOptionalEmployeeWorkMinute_(data.work_end_minute, "work_end_minute");
-  resolveEmployeeTimeLeavePolicy_(data.employee_id, Object.assign({}, beforeObj, {
-    company_code: data.company_code, work_start_minute: workStartMinute, work_end_minute: workEndMinute
-  }));
   sheet.getRange(sheetRow, headerInfo.map.work_start_minute + 1).setValue(workStartMinute);
   sheet.getRange(sheetRow, headerInfo.map.work_end_minute + 1).setValue(workEndMinute);
 
   sheet.getRange(sheetRow, headerInfo.map.fiscal_start_month + 1)
-    .setValue(getFiscalStartMonthForCompanyCode_(data.company_code, data.fiscal_start_month));
+    .setValue(fiscalStartMonth);
 
   sheet.getRange(sheetRow, headerInfo.map.leave_management_target + 1)
-    .setValue(String(data.leave_management_target || "").toUpperCase() === "TRUE");
+    .setValue(leaveManagementTarget);
 
   sheet.getRange(sheetRow, headerInfo.map.is_driver + 1)
     .setValue(String(data.is_driver || "").toUpperCase() === "TRUE");
@@ -7480,6 +7529,10 @@ function updateEmployeeFromAdmin(data, adminSessionToken) {
    退職処理
 ========================= */
 function retireEmployeeFromAdmin(employeeId, leaveDate, adminSessionToken) {
+  return withRetirementFifoWriteLock_(() => retireEmployeeFromAdmin_(employeeId, leaveDate, adminSessionToken));
+}
+
+function retireEmployeeFromAdmin_(employeeId, leaveDate, adminSessionToken) {
   requireAdminSession_(adminSessionToken);
   if (!employeeId) {
     throw new Error("employeeId がありません");
@@ -7511,6 +7564,10 @@ function retireEmployeeFromAdmin(employeeId, leaveDate, adminSessionToken) {
   }
 
   const sheetRow = rowIndex + 1;
+  const currentStatus = String(data[rowIndex][headerInfo.map.employment_status] || "").trim().toLowerCase();
+  if (currentStatus === "retired") {
+    throw new Error("RETIREMENT_STATE_CONFLICT");
+  }
 
   sheet.getRange(sheetRow, headerInfo.map.employment_status + 1).setValue("retired");
   sheet.getRange(sheetRow, headerInfo.map.leave_date + 1).setValue(parseLocalDate(leaveDate));
@@ -7578,6 +7635,120 @@ function getCompanyCalendarDateRowMap_(sheet, headerInfo) {
   });
 
   return map;
+}
+
+function normalizeCompanyCalendarAdminRows_(rows) {
+  if (!Array.isArray(rows)) throw new Error("更新データが不正です");
+  const validTypes = [
+    CALENDAR_TYPE.WORKDAY,
+    CALENDAR_TYPE.HOLIDAY,
+    CALENDAR_TYPE.NO_LEAVE
+  ];
+  const seenDates = new Set();
+
+  return rows.map(item => {
+    if (!item || typeof item !== "object") throw new Error("更新データが不正です");
+    const date = parseLocalDate(item.date);
+    const dateKey = toDateKey(date);
+    if (seenDates.has(dateKey)) {
+      throw new Error("COMPANY_CALENDAR_DUPLICATE_DATE: " + dateKey + " が重複しています");
+    }
+    seenDates.add(dateKey);
+
+    const type = norm(item.type);
+    if (validTypes.indexOf(type) === -1) {
+      throw new Error(dateKey + " の区分が不正です");
+    }
+    return {
+      date: date,
+      date_key: dateKey,
+      type: type,
+      notes: String(item.notes || "").trim()
+    };
+  });
+}
+
+function isEffectiveCompanyCalendarWorkday_(dateValue, type) {
+  const date = parseLocalDate(dateValue);
+  return date.getDay() !== 0 && norm(type) === CALENDAR_TYPE.WORKDAY;
+}
+
+function assertCompanyCalendarChangesPreserveCompletedRetirementFifo_(normalizedRows, rowMap) {
+  const changedDateMap = {};
+  normalizedRows.forEach(item => {
+    const existing = rowMap[item.date_key];
+    const currentType = existing ? norm(existing.rowObj.type) : CALENDAR_TYPE.WORKDAY;
+    if (isEffectiveCompanyCalendarWorkday_(item.date, currentType) !==
+        isEffectiveCompanyCalendarWorkday_(item.date, item.type)) {
+      changedDateMap[item.date_key] = item.date;
+    }
+  });
+  const changedDateKeys = Object.keys(changedDateMap);
+  if (changedDateKeys.length === 0) return;
+
+  const completedByEmployee = {};
+  getCompletedRetirementLeaveRecords_().forEach(record => {
+    const employeeId = String(record.employee_id || "").trim();
+    if (!employeeId || !record.leave_date) return;
+    if (!completedByEmployee[employeeId]) completedByEmployee[employeeId] = [];
+    completedByEmployee[employeeId].push(parseLocalDate(record.leave_date));
+  });
+  if (Object.keys(completedByEmployee).length === 0) return;
+
+  const requestSheet = getSheet("leave_requests");
+  const requestHeaders = requireHeaders(requestSheet, [
+    "employee_id", "start_date", "end_date", "status"
+  ]);
+  requestSheet.getDataRange().getValues().slice(1).forEach(row => {
+    const request = rowToObject(row, requestHeaders.headers);
+    const employeeId = String(request.employee_id || "").trim();
+    const completedDates = completedByEmployee[employeeId];
+    if (!completedDates || norm(request.status) !== STATUS.APPROVED) return;
+    const requestType = String(request.type || "paid_leave").trim();
+    if (requestType && requestType !== "paid_leave") return;
+    if (isTimeLeaveSegmentRequestRow_(request)) return;
+    if (!request.start_date || !request.end_date) return;
+
+    const start = parseLocalDate(request.start_date);
+    const end = parseLocalDate(request.end_date);
+    changedDateKeys.forEach(dateKey => {
+      const date = changedDateMap[dateKey];
+      if (date < start || date > end) return;
+      if (!completedDates.some(leaveDate => date <= leaveDate)) return;
+      throw new Error(
+        "RETIREMENT_CALENDAR_CONFLICT: " + dateKey +
+        " は退職確定済み社員 " + employeeId +
+        " のFIFO証跡に影響するため変更できません"
+      );
+    });
+  });
+}
+
+function buildCompanyCalendarWritePlan_(sheet, headerInfo, rowMap, normalizedRows) {
+  const data = sheet.getDataRange().getValues();
+  const finalRows = data.map(row => row.slice());
+  let updatedCount = 0;
+  let addedCount = 0;
+
+  normalizedRows.forEach(item => {
+    const existing = rowMap[item.date_key];
+    const rowObj = existing
+      ? rowToObject(existing.row, headerInfo.headers)
+      : createEmptyRowObject(headerInfo.headers);
+    rowObj.date = item.date;
+    rowObj.type = item.type;
+    rowObj.notes = item.notes;
+    const values = objectToRow(rowObj, headerInfo.headers);
+    if (existing) {
+      finalRows[existing.rowNumber - 1] = values;
+      updatedCount++;
+    } else {
+      finalRows.push(values);
+      addedCount++;
+    }
+  });
+
+  return { rows: finalRows, updated_count: updatedCount, added_count: addedCount };
 }
 
 function getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth) {
@@ -7674,12 +7845,16 @@ function getCompanyCalendarRowsForAdmin(fiscalYear, fiscalStartMonth, adminSessi
 }
 
 function generateCompanyCalendarFiscalYear(fiscalYear, fiscalStartMonth, adminSessionToken) {
+  return withRetirementFifoWriteLock_(() => generateCompanyCalendarFiscalYear_(fiscalYear, fiscalStartMonth, adminSessionToken));
+}
+
+function generateCompanyCalendarFiscalYear_(fiscalYear, fiscalStartMonth, adminSessionToken) {
   requireAdminSession_(adminSessionToken);
   const period = getCompanyCalendarPeriod_(fiscalYear, fiscalStartMonth);
-  const sheet = ensureCompanyCalendarNotesColumn_();
-  const headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
+  let sheet = getSheet("company_calendar");
+  let headerInfo = requireHeaders(sheet, ["date", "type"]);
   const rowMap = getCompanyCalendarDateRowMap_(sheet, headerInfo);
-  const rowsToAppend = [];
+  const rowsToAdd = [];
   let skippedCount = 0;
   let cursor = new Date(period.start);
 
@@ -7692,24 +7867,25 @@ function generateCompanyCalendarFiscalYear(fiscalYear, fiscalStartMonth, adminSe
       continue;
     }
 
-    const rowObj = createEmptyRowObject(headerInfo.headers);
-    rowObj.date = new Date(cursor);
-    rowObj.type = cursor.getDay() === 0
-      ? CALENDAR_TYPE.HOLIDAY
-      : CALENDAR_TYPE.WORKDAY;
-    rowObj.notes = "";
-    rowsToAppend.push(objectToRow(rowObj, headerInfo.headers));
+    rowsToAdd.push({
+      date: new Date(cursor),
+      type: cursor.getDay() === 0 ? CALENDAR_TYPE.HOLIDAY : CALENDAR_TYPE.WORKDAY,
+      notes: ""
+    });
 
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  if (rowsToAppend.length > 0) {
-    sheet
-      .getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headerInfo.headers.length)
-      .setValues(rowsToAppend);
+  const normalizedRows = normalizeCompanyCalendarAdminRows_(rowsToAdd);
+  assertCompanyCalendarChangesPreserveCompletedRetirementFifo_(normalizedRows, rowMap);
+  if (normalizedRows.length > 0) {
+    sheet = ensureCompanyCalendarNotesColumn_();
+    headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
+    const refreshedRowMap = getCompanyCalendarDateRowMap_(sheet, headerInfo);
+    const plan = buildCompanyCalendarWritePlan_(sheet, headerInfo, refreshedRowMap, normalizedRows);
+    sheet.getRange(1, 1, plan.rows.length, headerInfo.headers.length).setValues(plan.rows);
+    clearAppCache();
   }
-
-  clearAppCache();
 
   return {
     ok: true,
@@ -7717,61 +7893,37 @@ function generateCompanyCalendarFiscalYear(fiscalYear, fiscalStartMonth, adminSe
     fiscal_start_month: period.fiscal_start_month,
     start_date: period.start_date,
     end_date: period.end_date,
-    added_count: rowsToAppend.length,
+    added_count: normalizedRows.length,
     skipped_count: skippedCount
   };
 }
 
 function updateCompanyCalendarRowsForAdmin(rows, adminSessionToken) {
+  return withRetirementFifoWriteLock_(() => updateCompanyCalendarRowsForAdmin_(rows, adminSessionToken));
+}
+
+function updateCompanyCalendarRowsForAdmin_(rows, adminSessionToken) {
   requireAdminSession_(adminSessionToken);
-  if (!Array.isArray(rows)) {
-    throw new Error("更新データが不正です");
-  }
-
-  const sheet = ensureCompanyCalendarNotesColumn_();
-  const headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
+  const normalizedRows = normalizeCompanyCalendarAdminRows_(rows);
+  let sheet = getSheet("company_calendar");
+  let headerInfo = requireHeaders(sheet, ["date", "type"]);
   const rowMap = getCompanyCalendarDateRowMap_(sheet, headerInfo);
-  const validTypes = [
-    CALENDAR_TYPE.WORKDAY,
-    CALENDAR_TYPE.HOLIDAY,
-    CALENDAR_TYPE.NO_LEAVE
-  ];
-  let updatedCount = 0;
-  let addedCount = 0;
+  assertCompanyCalendarChangesPreserveCompletedRetirementFifo_(normalizedRows, rowMap);
 
-  rows.forEach(item => {
-    const dateKey = toDateKey(item.date);
-    const type = norm(item.type);
-
-    if (validTypes.indexOf(type) === -1) {
-      throw new Error(dateKey + " の区分が不正です");
-    }
-
-    const notes = String(item.notes || "").trim();
-    const existing = rowMap[dateKey];
-    const rowObj = existing
-      ? rowToObject(existing.row, headerInfo.headers)
-      : createEmptyRowObject(headerInfo.headers);
-
-    rowObj.date = parseLocalDate(dateKey);
-    rowObj.type = type;
-    rowObj.notes = notes;
-
-    if (existing) {
-      updateSheetRowFast_(sheet, existing.rowNumber, objectToRow(rowObj, headerInfo.headers));
-      updatedCount++;
-    } else {
-      appendRowFast_(sheet, objectToRow(rowObj, headerInfo.headers));
-      addedCount++;
-    }
-  });
-
+  if (normalizedRows.length === 0) {
+    return { ok: true, updated_count: 0, added_count: 0 };
+  }
+  sheet = ensureCompanyCalendarNotesColumn_();
+  headerInfo = requireHeaders(sheet, ["date", "type", "notes"]);
+  const refreshedRowMap = getCompanyCalendarDateRowMap_(sheet, headerInfo);
+  const plan = buildCompanyCalendarWritePlan_(sheet, headerInfo, refreshedRowMap, normalizedRows);
+  sheet.getRange(1, 1, plan.rows.length, headerInfo.headers.length).setValues(plan.rows);
   clearAppCache();
 
   return {
     ok: true,
-    updated_count: updatedCount,
-    added_count: addedCount
+    updated_count: plan.updated_count,
+    added_count: plan.added_count
   };
 }
 
@@ -8150,6 +8302,7 @@ function grantSixMonthPaidLeave(employeeId, adminSessionToken, options) {
     const employees = getEmployeesForAdmin_();
     const emp = employees.find(e => String(e.employee_id) === String(employeeId));
     validateInitialPaidLeaveGrantEmployee_(emp, employeeId);
+    assertNoCompletedRetirementLeaveRecordForFifoMutation_(employeeId, "初回有給付与");
 
     const eligibility = calculateInitialPaidLeaveGrantEligibility_(
       emp,
@@ -8216,6 +8369,7 @@ function markSixMonthGrantCandidateProcessed(employeeId, reason, adminSessionTok
     const employees = getEmployeesForAdmin_();
     const emp = employees.find(e => String(e.employee_id) === String(employeeId));
     validateInitialPaidLeaveGrantEmployee_(emp, employeeId);
+    assertNoCompletedRetirementLeaveRecordForFifoMutation_(employeeId, "初回付与処理済み記録の追加");
 
     const eligibility = calculateInitialPaidLeaveGrantEligibility_(
       emp,
@@ -9962,6 +10116,10 @@ function getYearlyGrantCandidates(options, adminSessionToken) {
    年次付与実行
 ========================= */
 function grantYearlyPaidLeave(employeeId, adminSessionToken, options) {
+  return withRetirementFifoWriteLock_(() => grantYearlyPaidLeave_(employeeId, adminSessionToken, options));
+}
+
+function grantYearlyPaidLeave_(employeeId, adminSessionToken, options) {
   const adminUser = requireAdminSession_(adminSessionToken);
   if (!employeeId) throw new Error("employeeId がありません");
 
@@ -9969,6 +10127,14 @@ function grantYearlyPaidLeave(employeeId, adminSessionToken, options) {
   const emp = employees.find(e => String(e.employee_id) === String(employeeId));
 
   if (!emp) throw new Error("対象社員が見つかりません");
+  const employmentStatus = String(emp.employment_status || "").trim().toLowerCase();
+  if (employmentStatus !== "active" && employmentStatus !== "在職") {
+    throw new Error("この社員は在職中ではないため年次有給付与を実行できません");
+  }
+  if (emp.leave_management_target !== true) {
+    throw new Error("この社員は有給管理の対象ではありません");
+  }
+  assertNoCompletedRetirementLeaveRecordForFifoMutation_(employeeId, "年次有給付与");
   if (!emp.hire_date) throw new Error("入社日がありません");
 
   const today = new Date();
